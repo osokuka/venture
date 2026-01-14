@@ -1,0 +1,1462 @@
+{
+  "project": {
+    "key": "VL",
+    "name": "VentureLink Platform",
+    "description": "Django REST API backend for VentureLink startup platform"
+  },
+  "epics": [
+    {
+      "key": "VL-1",
+      "summary": "Project Foundation & Infrastructure",
+      "description": "Set up Django project structure, Docker environment, database, and authentication system",
+      "type": "Epic",
+      "priority": "Highest"
+    },
+    {
+      "key": "VL-2",
+      "summary": "User Registration & Profile Management",
+      "description": "Implement registration flows and profile CRUD for Ventures, Investors, and Mentors",
+      "type": "Epic",
+      "priority": "Highest"
+    },
+    {
+      "key": "VL-3",
+      "summary": "Approval Workflow System",
+      "description": "Build admin review and approval system with status management and notifications",
+      "type": "Epic",
+      "priority": "High"
+    },
+    {
+      "key": "VL-4",
+      "summary": "Visibility & Browsing System",
+      "description": "Implement role-based visibility rules and browsing functionality",
+      "type": "Epic",
+      "priority": "High"
+    },
+    {
+      "key": "VL-5",
+      "summary": "Messaging System",
+      "description": "Build secure in-platform messaging between approved users",
+      "type": "Epic",
+      "priority": "High"
+    },
+    {
+      "key": "VL-6",
+      "summary": "Matching Engine",
+      "description": "Develop matching algorithm to connect ventures with investors and mentors",
+      "type": "Epic",
+      "priority": "Medium"
+    },
+    {
+      "key": "VL-7",
+      "summary": "Content Management",
+      "description": "Implement FAQ, success stories, resources, and contact information APIs",
+      "type": "Epic",
+      "priority": "Medium"
+    },
+    {
+      "key": "VL-8",
+      "summary": "Production Deployment",
+      "description": "Production hardening, Docker setup, Nginx configuration, and deployment",
+      "type": "Epic",
+      "priority": "High"
+    }
+  ],
+  "stories": [
+    {
+      "key": "VL-101",
+      "summary": "Set up Django project structure and core configuration",
+      "description": "Create Django project with proper app structure, settings management (base/dev/prod), and URL routing",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "Highest",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Django project created with config/ directory",
+        "Settings split into base.py, development.py, production.py",
+        "URL routing configured with /api/ prefix",
+        "All core apps created (accounts, ventures, investors, mentors, approvals, matching, messaging, content)"
+      ],
+      "tasks": [
+        {
+          "summary": "Create Django project structure",
+          "description": "Initialize Django project with proper directory structure",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Configure settings for multiple environments",
+          "description": "Split settings into base, development, and production",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Set up URL routing",
+          "description": "Configure main urls.py and app-level URL patterns",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create all Django apps",
+          "description": "Create apps: accounts, ventures, investors, mentors, approvals, matching, messaging, content",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-102",
+      "summary": "Set up PostgreSQL database and migrations",
+      "description": "Configure PostgreSQL connection, create initial migrations, and set up database models",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "Highest",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "PostgreSQL database configured and connected",
+        "Database migrations run successfully",
+        "Database connection pooling configured"
+      ],
+      "tasks": [
+        {
+          "summary": "Configure PostgreSQL database settings",
+          "description": "Set up database configuration in settings",
+          "type": "Task",
+          "estimate": "1h"
+        },
+        {
+          "summary": "Create initial migrations",
+          "description": "Run makemigrations and migrate commands",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-103",
+      "summary": "Implement JWT authentication system",
+      "description": "Set up djangorestframework-simplejwt for token-based authentication",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "Highest",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "JWT token generation on login",
+        "Token refresh endpoint working",
+        "Token validation middleware configured",
+        "Access token expires in 15 minutes",
+        "Refresh token expires in 7 days"
+      ],
+      "tasks": [
+        {
+          "summary": "Install and configure djangorestframework-simplejwt",
+          "description": "Add JWT library and configure token settings",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create login and refresh endpoints",
+          "description": "Implement POST /api/auth/login and POST /api/auth/refresh",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Configure token authentication middleware",
+          "description": "Set up authentication classes and permissions",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-104",
+      "summary": "Implement email verification system",
+      "description": "Create email verification tokens and endpoints for email confirmation",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "EmailVerificationToken model created",
+        "Verification email sent on registration",
+        "POST /api/auth/verify-email endpoint working",
+        "POST /api/auth/resend-verification endpoint working",
+        "Tokens expire after 24 hours"
+      ],
+      "tasks": [
+        {
+          "summary": "Create EmailVerificationToken model",
+          "description": "Model with user, token, expires_at, used_at fields",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create verification email template",
+          "description": "Design and create email template with verification link",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Implement verification endpoints",
+          "description": "Create verify-email and resend-verification endpoints",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Set up Celery task for sending emails",
+          "description": "Create async task for sending verification emails",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-105",
+      "summary": "Set up Docker development environment",
+      "description": "Create Docker Compose file with all required services for development",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "Highest",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "docker-compose.yml created with all services",
+        "PostgreSQL, Redis, Django web, Celery, Celery-beat services configured",
+        "One command brings up entire environment",
+        "Migrations run automatically on startup",
+        "Volumes configured for database and media files"
+      ],
+      "tasks": [
+        {
+          "summary": "Create Dockerfile for Django application",
+          "description": "Multi-stage Dockerfile for development",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create docker-compose.yml with all services",
+          "description": "Configure PostgreSQL, Redis, web, celery, celery-beat services",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Create entrypoint script",
+          "description": "Script to run migrations and start server",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create .env.example file",
+          "description": "Document all required environment variables",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-201",
+      "summary": "Create User and Account models",
+      "description": "Implement User model with roles and email verification status",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Highest",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "User model with email, password, full_name, role fields",
+        "Role choices: VENTURE, INVESTOR, MENTOR, ADMIN",
+        "is_email_verified boolean field",
+        "Email field is unique and indexed"
+      ],
+      "tasks": [
+        {
+          "summary": "Create User model",
+          "description": "Define User model with all required fields",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate and apply database migrations",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-202",
+      "summary": "Implement user registration endpoint",
+      "description": "Create POST /api/auth/register endpoint for user registration",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Highest",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "POST /api/auth/register accepts email, password, role",
+        "Password validation (min length, complexity)",
+        "User created with DRAFT status",
+        "Verification email sent automatically",
+        "Returns user data and success message"
+      ],
+      "tasks": [
+        {
+          "summary": "Create registration serializer",
+          "description": "Serializer with validation for email, password, role",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create registration view",
+          "description": "API view to handle registration requests",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add password validation",
+          "description": "Implement password strength requirements",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Integrate with email verification",
+          "description": "Trigger verification email on registration",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-203",
+      "summary": "Implement Venture profile models",
+      "description": "Create VentureProfile, Founder, TeamMember, VentureNeed, VentureDocument models",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "VentureProfile model with all required fields",
+        "Founder model with venture relationship",
+        "TeamMember model with venture relationship",
+        "VentureNeed model for multi-select needs",
+        "VentureDocument model for file uploads",
+        "All relationships properly configured"
+      ],
+      "tasks": [
+        {
+          "summary": "Create VentureProfile model",
+          "description": "Model with user, company info, status fields",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create Founder model",
+          "description": "Model linked to VentureProfile",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create TeamMember model",
+          "description": "Model for team members",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create VentureNeed model",
+          "description": "Model for venture needs (finance, market access, etc.)",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create VentureDocument model",
+          "description": "Model for pitch deck and other documents",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for all venture models",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-204",
+      "summary": "Implement Venture profile CRUD endpoints",
+      "description": "Create endpoints for venture profile creation, update, and retrieval",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "POST /api/ventures/profile creates/updates draft profile",
+        "GET /api/ventures/profile/me returns own profile",
+        "Website and LinkedIn URL validation",
+        "Support for nested founder and team member creation",
+        "Profile can be saved as DRAFT before submission"
+      ],
+      "tasks": [
+        {
+          "summary": "Create VentureProfile serializer",
+          "description": "Serializer with nested serializers for founders and team",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Create profile create/update view",
+          "description": "POST endpoint for profile management",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create profile retrieve view",
+          "description": "GET /api/ventures/profile/me endpoint",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Add URL validation",
+          "description": "Validate website and LinkedIn URLs",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-205",
+      "summary": "Implement Investor profile models and endpoints",
+      "description": "Create InvestorProfile model and CRUD endpoints",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "InvestorProfile model created",
+        "POST /api/investors/profile endpoint",
+        "GET /api/investors/profile/me endpoint",
+        "PATCH /api/investors/profile/me endpoint",
+        "Support for stage and industry preferences"
+      ],
+      "tasks": [
+        {
+          "summary": "Create InvestorProfile model",
+          "description": "Model with preferences and visibility settings",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create investor serializers and views",
+          "description": "CRUD endpoints for investor profiles",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for investor models",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-206",
+      "summary": "Implement Mentor profile models and endpoints",
+      "description": "Create MentorProfile model and CRUD endpoints",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "MentorProfile model created",
+        "POST /api/mentors/profile endpoint",
+        "GET /api/mentors/profile/me endpoint",
+        "PATCH /api/mentors/profile/me endpoint",
+        "Support for expertise, pricing, and availability"
+      ],
+      "tasks": [
+        {
+          "summary": "Create MentorProfile model",
+          "description": "Model with expertise, pricing, and visibility settings",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create mentor serializers and views",
+          "description": "CRUD endpoints for mentor profiles",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for mentor models",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-207",
+      "summary": "Implement profile submission endpoints",
+      "description": "Create submit endpoints that change profile status to SUBMITTED",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "POST /api/ventures/profile/submit changes status to SUBMITTED",
+        "POST /api/investors/profile/submit changes status to SUBMITTED",
+        "POST /api/mentors/profile/submit changes status to SUBMITTED",
+        "Validation ensures all required fields are filled",
+        "Creates ReviewRequest automatically"
+      ],
+      "tasks": [
+        {
+          "summary": "Create submission views for all roles",
+          "description": "Implement submit endpoints for ventures, investors, mentors",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Add submission validation",
+          "description": "Validate all required fields before allowing submission",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-301",
+      "summary": "Create ReviewRequest model",
+      "description": "Implement generic review request model for all profile types",
+      "type": "Story",
+      "epic": "VL-3",
+      "priority": "High",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "ReviewRequest model with ContentType generic relation",
+        "Status field: SUBMITTED, APPROVED, REJECTED",
+        "Reviewer and reviewed_at fields",
+        "Internal notes field for admin use"
+      ],
+      "tasks": [
+        {
+          "summary": "Create ReviewRequest model",
+          "description": "Model with generic foreign key to profiles",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for ReviewRequest",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-302",
+      "summary": "Implement pitch deck upload endpoint",
+      "description": "Create endpoint for uploading pitch deck with validation",
+      "type": "Story",
+      "epic": "VL-3",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "POST /api/ventures/documents/pitch-deck accepts file upload",
+        "Validates file is PDF",
+        "Validates file size <= 10MB",
+        "Stores file in media directory",
+        "Returns document metadata"
+      ],
+      "tasks": [
+        {
+          "summary": "Create document upload serializer",
+          "description": "Serializer for file upload with validation",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create upload view",
+          "description": "POST endpoint for pitch deck upload",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add file validation",
+          "description": "Validate PDF MIME type and file size",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-303",
+      "summary": "Implement admin approval endpoints",
+      "description": "Create endpoints for admin to view and approve/reject submissions",
+      "type": "Story",
+      "epic": "VL-3",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "GET /api/reviews/pending lists pending reviews",
+        "Filter by type (venture/investor/mentor)",
+        "POST /api/reviews/{id}/approve approves submission",
+        "POST /api/reviews/{id}/reject rejects submission",
+        "Updates profile status and ReviewRequest",
+        "Sends notification email to user"
+      ],
+      "tasks": [
+        {
+          "summary": "Create review serializers",
+          "description": "Serializers for review list and detail",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create pending reviews list view",
+          "description": "GET endpoint with filtering",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create approve/reject views",
+          "description": "POST endpoints for approval actions",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Add admin permission checks",
+          "description": "Ensure only admin/reviewer can access",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create notification emails",
+          "description": "Email templates for approval/rejection",
+          "type": "Task",
+          "estimate": "3h"
+        }
+      ]
+    },
+    {
+      "key": "VL-401",
+      "summary": "Implement visibility-based browsing for ventures",
+      "description": "Create endpoint for investors/mentors to browse approved ventures",
+      "type": "Story",
+      "epic": "VL-4",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "GET /api/ventures/public returns approved ventures only",
+        "Only accessible to approved investors/mentors",
+        "Pagination implemented",
+        "Filtering by sector/industry",
+        "Search functionality"
+      ],
+      "tasks": [
+        {
+          "summary": "Create ventures list serializer",
+          "description": "Serializer for public venture listing",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create public ventures view",
+          "description": "GET endpoint with permission checks",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add pagination",
+          "description": "Implement pagination for list endpoint",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Add filtering and search",
+          "description": "Filter by sector, search by name",
+          "type": "Task",
+          "estimate": "3h"
+        }
+      ]
+    },
+    {
+      "key": "VL-402",
+      "summary": "Implement visibility toggle for investors/mentors",
+      "description": "Allow investors and mentors to toggle visible_to_ventures setting",
+      "type": "Story",
+      "epic": "VL-4",
+      "priority": "High",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "PATCH /api/investors/profile/me allows updating visible_to_ventures",
+        "PATCH /api/mentors/profile/me allows updating visible_to_ventures",
+        "Only approved investors/mentors can toggle visibility",
+        "Changes take effect immediately"
+      ],
+      "tasks": [
+        {
+          "summary": "Update investor serializer",
+          "description": "Allow visible_to_ventures field in PATCH",
+          "type": "Task",
+          "estimate": "1h"
+        },
+        {
+          "summary": "Update mentor serializer",
+          "description": "Allow visible_to_ventures field in PATCH",
+          "type": "Task",
+          "estimate": "1h"
+        },
+        {
+          "summary": "Add permission checks",
+          "description": "Ensure only approved users can update",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-403",
+      "summary": "Implement browsing for investors/mentors by ventures",
+      "description": "Create endpoints for ventures to browse visible investors/mentors",
+      "type": "Story",
+      "epic": "VL-4",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "GET /api/investors/public returns only visible approved investors",
+        "GET /api/mentors/public returns only visible approved mentors",
+        "Only accessible to approved ventures",
+        "Pagination and filtering implemented"
+      ],
+      "tasks": [
+        {
+          "summary": "Create investors public list view",
+          "description": "GET endpoint filtered by visibility",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create mentors public list view",
+          "description": "GET endpoint filtered by visibility",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add permission checks",
+          "description": "Ensure only approved ventures can access",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-501",
+      "summary": "Create Conversation and Message models",
+      "description": "Implement messaging data models",
+      "type": "Story",
+      "epic": "VL-5",
+      "priority": "High",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Conversation model with M2M participants",
+        "Message model with conversation FK",
+        "read_at field for message read status",
+        "last_message_at field on Conversation"
+      ],
+      "tasks": [
+        {
+          "summary": "Create Conversation model",
+          "description": "Model with participants M2M",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create Message model",
+          "description": "Model with conversation FK and sender",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for messaging models",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-502",
+      "summary": "Implement messaging endpoints",
+      "description": "Create endpoints for conversations and messages",
+      "type": "Story",
+      "epic": "VL-5",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "GET /api/messages/conversations lists user's conversations",
+        "POST /api/messages/conversations creates new conversation",
+        "GET /api/messages/conversations/{id} gets conversation with messages",
+        "POST /api/messages/conversations/{id}/messages sends message",
+        "POST /api/messages/conversations/{id}/read marks as read",
+        "Permission checks ensure only approved users can message",
+        "Visibility rules enforced (ventures can only message visible investors/mentors)"
+      ],
+      "tasks": [
+        {
+          "summary": "Create conversation serializers",
+          "description": "Serializers for conversation list and detail",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create message serializer",
+          "description": "Serializer for message creation and display",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create conversation views",
+          "description": "List, create, and detail endpoints",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Create message views",
+          "description": "Send message and mark as read endpoints",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add permission and visibility checks",
+          "description": "Enforce messaging rules",
+          "type": "Task",
+          "estimate": "4h"
+        }
+      ]
+    },
+    {
+      "key": "VL-601",
+      "summary": "Create Match model",
+      "description": "Implement Match model for storing computed matches",
+      "type": "Story",
+      "epic": "VL-6",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Match model with venture, target_type, target_object_id",
+        "Score field (0-100)",
+        "Reasons JSONField for match explanations",
+        "refreshed_at timestamp"
+      ],
+      "tasks": [
+        {
+          "summary": "Create Match model",
+          "description": "Model for storing match results",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for Match model",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-602",
+      "summary": "Implement matching algorithm",
+      "description": "Create matching logic to score compatibility between ventures and investors/mentors",
+      "type": "Story",
+      "epic": "VL-6",
+      "priority": "Medium",
+      "storyPoints": 13,
+      "acceptanceCriteria": [
+        "Matching algorithm considers sector/industry overlap",
+        "Considers stage preferences for investors",
+        "Considers expertise for mentors",
+        "Considers needs vs preferences",
+        "Generates score (0-100) and reasons",
+        "Stores matches in Match table"
+      ],
+      "tasks": [
+        {
+          "summary": "Design matching algorithm",
+          "description": "Define scoring rules and weights",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Implement matching service",
+          "description": "Service class with matching logic",
+          "type": "Task",
+          "estimate": "8h"
+        },
+        {
+          "summary": "Create Celery task for match computation",
+          "description": "Async task to compute all matches",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Add match refresh endpoint",
+          "description": "POST /api/matches/refresh for admin",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-603",
+      "summary": "Implement matches API endpoints",
+      "description": "Create endpoints for users to view their matches",
+      "type": "Story",
+      "epic": "VL-6",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "GET /api/matches/me returns matches for current user",
+        "Filter by type (investor/mentor)",
+        "Only shows matches respecting visibility rules",
+        "Returns score and reasons"
+      ],
+      "tasks": [
+        {
+          "summary": "Create match serializer",
+          "description": "Serializer for match display",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create matches view",
+          "description": "GET endpoint with filtering",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add visibility filtering",
+          "description": "Filter matches based on visibility rules",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-604",
+      "summary": "Set up Celery beat for nightly match refresh",
+      "description": "Configure scheduled task to refresh matches daily",
+      "type": "Story",
+      "epic": "VL-6",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Celery beat configured",
+        "Scheduled task runs nightly",
+        "Matches refreshed for all approved ventures"
+      ],
+      "tasks": [
+        {
+          "summary": "Configure Celery beat",
+          "description": "Set up celery beat in settings",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create periodic task",
+          "description": "Schedule match refresh task",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-701",
+      "summary": "Create content models",
+      "description": "Implement FAQItem, SuccessStory, Resource, ContactInfo models",
+      "type": "Story",
+      "epic": "VL-7",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "FAQItem model with question, answer, order, published",
+        "SuccessStory model with title, summary, venture FK, published",
+        "Resource model with category, title, file/url, published",
+        "ContactInfo model with contact details"
+      ],
+      "tasks": [
+        {
+          "summary": "Create FAQItem model",
+          "description": "Model for FAQ items",
+          "type": "Task",
+          "estimate": "1h"
+        },
+        {
+          "summary": "Create SuccessStory model",
+          "description": "Model for success stories",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create Resource model",
+          "description": "Model for resources",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create ContactInfo model",
+          "description": "Model for contact information",
+          "type": "Task",
+          "estimate": "1h"
+        },
+        {
+          "summary": "Create and run migrations",
+          "description": "Generate migrations for content models",
+          "type": "Task",
+          "estimate": "1h"
+        }
+      ]
+    },
+    {
+      "key": "VL-702",
+      "summary": "Implement content API endpoints",
+      "description": "Create public endpoints for FAQ, success stories, resources, contacts",
+      "type": "Story",
+      "epic": "VL-7",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "GET /api/content/faq returns published FAQ items",
+        "GET /api/content/success-stories returns published stories",
+        "GET /api/content/resources returns published resources with category filter",
+        "GET /api/content/contacts returns contact information",
+        "All endpoints are public (no auth required)"
+      ],
+      "tasks": [
+        {
+          "summary": "Create content serializers",
+          "description": "Serializers for all content types",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create content views",
+          "description": "List views for all content endpoints",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Add filtering for resources",
+          "description": "Category filter for resources endpoint",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-801",
+      "summary": "Set up production Docker environment",
+      "description": "Create production Docker Compose with Gunicorn and Nginx",
+      "type": "Story",
+      "epic": "VL-8",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "docker-compose.prod.yml created",
+        "Gunicorn configured for Django",
+        "Nginx configured as reverse proxy",
+        "Static and media files served by Nginx",
+        "Environment variables for secrets"
+      ],
+      "tasks": [
+        {
+          "summary": "Create production Dockerfile",
+          "description": "Multi-stage Dockerfile optimized for production",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create docker-compose.prod.yml",
+          "description": "Production compose file with all services",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Configure Gunicorn",
+          "description": "Gunicorn configuration file",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Create Nginx configuration",
+          "description": "Nginx config for reverse proxy and static files",
+          "type": "Task",
+          "estimate": "4h"
+        },
+        {
+          "summary": "Update entrypoint script",
+          "description": "Script to run migrations and collectstatic",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-802",
+      "summary": "Implement security hardening",
+      "description": "Add security headers, rate limiting, and security best practices",
+      "type": "Story",
+      "epic": "VL-8",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Security headers configured (CORS, CSRF, etc.)",
+        "Rate limiting on auth endpoints",
+        "HTTPS enforced in production",
+        "Secret key management via environment variables",
+        "Database credentials secured"
+      ],
+      "tasks": [
+        {
+          "summary": "Configure security middleware",
+          "description": "Add security headers and CSRF settings",
+          "type": "Task",
+          "estimate": "2h"
+        },
+        {
+          "summary": "Add rate limiting",
+          "description": "Rate limit auth endpoints",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Secure environment variables",
+          "description": "Ensure all secrets use env vars",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-803",
+      "summary": "Set up logging and monitoring",
+      "description": "Configure structured logging and basic monitoring",
+      "type": "Story",
+      "epic": "VL-8",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Structured logging configured",
+        "Log levels appropriate for production",
+        "Error tracking setup (optional)",
+        "Health check endpoint"
+      ],
+      "tasks": [
+        {
+          "summary": "Configure Django logging",
+          "description": "Set up structured logging",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Create health check endpoint",
+          "description": "GET /health endpoint for monitoring",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-804",
+      "summary": "Create deployment documentation",
+      "description": "Document deployment process and requirements",
+      "type": "Story",
+      "epic": "VL-8",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "README with setup instructions",
+        "Environment variables documented",
+        "Deployment guide created",
+        "Troubleshooting section"
+      ],
+      "tasks": [
+        {
+          "summary": "Create comprehensive README",
+          "description": "Document setup and usage",
+          "type": "Task",
+          "estimate": "3h"
+        },
+        {
+          "summary": "Document environment variables",
+          "description": "List all required env vars",
+          "type": "Task",
+          "estimate": "2h"
+        }
+      ]
+    },
+    {
+      "key": "VL-805",
+      "summary": "Implement Admin Dashboard",
+      "description": "Create comprehensive admin dashboard for superuser with platform statistics, user management, and approval workflows",
+      "type": "Story",
+      "epic": "VL-3",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "Admin dashboard component created in frontend",
+        "Overview tab with platform statistics",
+        "User management tab (placeholder with Django Admin link)",
+        "Approval management tab (placeholder)",
+        "Analytics tab (placeholder)",
+        "Role-based routing to AdminDashboard for admin users",
+        "Link to Django Admin Panel",
+        "Responsive design with modern UI"
+      ],
+      "tasks": [
+        {
+          "summary": "Create AdminDashboard component",
+          "description": "Build React component with tabs for overview, users, approvals, analytics",
+          "type": "Task",
+          "estimate": "6h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement role-based dashboard routing",
+          "description": "Update App.tsx to route admin users to AdminDashboard",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add admin role support to AuthContext",
+          "description": "Update UserRole type and role mapping to include admin",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-806",
+      "summary": "Create Demo Accounts System",
+      "description": "Implement automatic demo account creation for testing and development",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Management command to create demo accounts",
+        "9 demo accounts created (4 ventures, 3 investors, 2 mentors)",
+        "All demo accounts use password 'demo123'",
+        "Demo accounts auto-created on Docker startup",
+        "Demo accounts automatically email-verified",
+        "Documentation for demo accounts created"
+      ],
+      "tasks": [
+        {
+          "summary": "Create create_demo_accounts management command",
+          "description": "Build Django management command to create demo accounts",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Integrate demo account creation in entrypoint.sh",
+          "description": "Add demo account creation to Docker entrypoint script",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Document demo accounts",
+          "description": "Create DEMO_ACCOUNTS.md with all account credentials",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-807",
+      "summary": "Document Role Interconnection System",
+      "description": "Create comprehensive documentation for role management between frontend and backend",
+      "type": "Story",
+      "epic": "VL-1",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "ROLE_ANALYSIS.md created with detailed role interconnection analysis",
+        "ROLE_INTERCONNECTION_SUMMARY.md created as quick reference",
+        "Role mapping logic documented",
+        "Permission system documented",
+        "Admin role handling documented"
+      ],
+      "tasks": [
+        {
+          "summary": "Create role interconnection analysis document",
+          "description": "Document how roles are mapped between frontend and backend",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create role quick reference guide",
+          "description": "Create summary document with role mapping tables and quick links",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-808",
+      "summary": "Consolidate Project Documentation",
+      "description": "Move all project documentation to working_scope directory and create documentation index",
+      "type": "Story",
+      "epic": "VL-8",
+      "priority": "Medium",
+      "storyPoints": 2,
+      "acceptanceCriteria": [
+        "All project markdown files moved to working_scope/",
+        "DOCUMENTATION_INDEX.md created",
+        "Documentation structure organized",
+        "All documentation links updated"
+      ],
+      "tasks": [
+        {
+          "summary": "Move project documentation to working_scope",
+          "description": "Move ROLE_ANALYSIS.md, DEMO_ACCOUNTS.md, ROLE_INTERCONNECTION_SUMMARY.md to working_scope/",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create documentation index",
+          "description": "Create DOCUMENTATION_INDEX.md with links to all documentation",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-809",
+      "summary": "Multi-Product Architecture for Ventures",
+      "description": "Decouple user registration from product registration. Users can create up to 3 products. Products can be activated/deactivated by users but only admin can delete.",
+      "type": "Epic",
+      "epic": null,
+      "priority": "Highest",
+      "storyPoints": 21,
+      "acceptanceCriteria": [
+        "User registration is separate from product creation",
+        "Users can create up to 3 products after email verification",
+        "Each product requires separate admin approval",
+        "Users can activate/deactivate products",
+        "Users cannot delete products (admin only)",
+        "Full CRUD operations for products",
+        "Product limit validation (max 3)",
+        "Updated registration flow",
+        "Updated dashboard with product management"
+      ],
+      "tasks": [
+        {
+          "summary": "Update data model: Rename VentureProfile to VentureProduct",
+          "description": "Rename model and change OneToOneField to ForeignKey",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add is_active field to VentureProduct",
+          "description": "Add BooleanField for user activation/deactivation",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create database migration for multi-product architecture",
+          "description": "Migration to change OneToOne to ForeignKey and add is_active",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update all related models (Founder, TeamMember, etc.)",
+          "description": "Change foreign key references from VentureProfile to VentureProduct",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement product CRUD endpoints with 3-product limit",
+          "description": "Create POST, GET, PATCH endpoints with validation",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement product activation/deactivation endpoint",
+          "description": "PATCH endpoint for users to toggle is_active",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement admin product deletion endpoint",
+          "description": "DELETE endpoint (admin only) for product deletion",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update registration flow: Simplify to user-only",
+          "description": "Update VentureRegistration to only create user account",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create product creation UI in dashboard",
+          "description": "Add product creation form/modal to VentureDashboard",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update dashboard to show product list",
+          "description": "Display all user products with status and actions",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add product activation/deactivation UI",
+          "description": "Toggle switch/button for is_active in dashboard",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update admin dashboard: Product management tab",
+          "description": "Add product management with admin-only delete",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        }
+      ],
+      "status": "In Progress"
+    }
+  ],
+  "bugs": [],
+  "metadata": {
+    "created": "2025-01-27",
+    "updated": "2025-01-14",
+    "version": "1.1",
+    "totalStories": 32,
+    "totalTasks": 130,
+    "estimatedStoryPoints": 166
+  }
+}

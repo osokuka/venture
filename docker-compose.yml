@@ -1,0 +1,161 @@
+
+
+# Combined Docker Compose for VentureLink Platform
+# Includes both frontend and backend services
+
+services:
+  # Frontend - React/Vite Development Server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: venturelink_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8001/api
+      - NODE_ENV=development
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - venturelink-network
+
+  # Backend - Django REST API
+  web:
+    build:
+      context: ./backend
+    container_name: venturelink_web
+    command: python manage.py runserver 0.0.0.0:8000
+    entrypoint: /app/entrypoint.sh
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000
+      - FRONTEND_URL=http://localhost:3000
+      - EMAIL_HOST=mail.prosolutions-ks.com
+      - EMAIL_PORT=465
+      - EMAIL_USE_SSL=True
+      - EMAIL_HOST_USER=ventures@prosolutions-ks.com
+      - EMAIL_HOST_PASSWORD=ventures_APP!@
+      - DEFAULT_FROM_EMAIL=ventures@prosolutions-ks.com
+      - DJANGO_SUPERUSER_EMAIL=admin@venturelink.com
+      - DJANGO_SUPERUSER_PASSWORD=admin123
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - venturelink-network
+
+  # Database - PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: venturelink_db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-venturelink}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Changed to avoid conflict with other postgres instances
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - venturelink-network
+
+  # Redis - For Celery
+  redis:
+    image: redis:7-alpine
+    container_name: venturelink_redis
+    ports:
+      - "6381:6379"  # Changed to avoid conflict with other redis instances
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - venturelink-network
+
+  # Celery Worker
+  celery:
+    build:
+      context: ./backend
+    container_name: venturelink_celery
+    command: celery -A config worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=http://localhost:3000
+      - EMAIL_HOST=mail.prosolutions-ks.com
+      - EMAIL_PORT=465
+      - EMAIL_USE_SSL=True
+      - EMAIL_HOST_USER=ventures@prosolutions-ks.com
+      - EMAIL_HOST_PASSWORD=ventures_APP!@
+      - DEFAULT_FROM_EMAIL=ventures@prosolutions-ks.com
+    depends_on:
+      - db
+      - redis
+      - web
+    restart: unless-stopped
+    networks:
+      - venturelink-network
+
+  # Celery Beat - Scheduler
+  celery-beat:
+    build:
+      context: ./backend
+    container_name: venturelink_celery_beat
+    command: celery -A config beat --loglevel=info
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=http://localhost:3000
+      - EMAIL_HOST=mail.prosolutions-ks.com
+      - EMAIL_PORT=465
+      - EMAIL_USE_SSL=True
+      - EMAIL_HOST_USER=ventures@prosolutions-ks.com
+      - EMAIL_HOST_PASSWORD=ventures_APP!@
+      - DEFAULT_FROM_EMAIL=ventures@prosolutions-ks.com
+    depends_on:
+      - db
+      - redis
+      - celery
+    restart: unless-stopped
+    networks:
+      - venturelink-network
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+
+networks:
+  venturelink-network:
+    driver: bridge
