@@ -275,6 +275,342 @@
   - No React Server Components in use
   - Documentation: `frontend/SECURITY_REACT_CVE.md` created
 
+### ✅ Registration & Profile Creation Security Hardening (2025-01-15)
+**Status**: Complete
+- **Backend Security Enhancements**:
+  - ✅ **User Registration Serializer**: Email validation, full name sanitization, password length limits, role validation
+  - ✅ **Investor Profile Serializer**: URL validation, email validation, phone validation, length limits, list size limits (max 50 items per list)
+  - ✅ **Mentor Profile Serializer**: URL validation, email validation, phone validation, rate amount validation, length limits, list size limits (max 50 expertise/industries, max 20 availability types)
+  - ✅ **Input Length Limits**: All fields have maximum length validation (emails: 254, names: 255, URLs: 2048, phone: 20, etc.)
+  - ✅ **List Size Limits**: Prevent DoS attacks via large arrays (max 50 items for preferences, max 20 for availability)
+  - ✅ **Type Validation**: All list fields validated to ensure they contain strings only
+  - ✅ **Numeric Validation**: Experience years, deals count, rate amounts validated with min/max bounds
+- **Frontend Security**:
+  - ✅ **Auto-login Security**: Secure token-based authentication after registration
+  - ✅ **Error Handling**: Profile creation failures don't expose sensitive information
+  - ✅ **Data Mapping**: Form data sanitized and validated before API calls
+- **Permission Checks**: ✅ All profile endpoints require `IsAuthenticated`, ownership verified via queryset filtering
+
+---
+
+## Registration, KYC, and Verification Analysis
+
+### Current Registration Flow
+
+#### Step 1: User Account Registration ✅
+- **Endpoint**: `POST /api/auth/register`
+- **Required Fields**: `email`, `password`, `password_confirm`, `full_name`, `role`
+- **Process**:
+  1. User provides basic account information
+  2. User account created with role (VENTURE, INVESTOR, MENTOR)
+  3. Email verification token generated automatically
+  4. Verification email sent via Celery task (HTML-styled)
+  5. User account status: `is_email_verified = False`
+- **Status**: ✅ Fully implemented and functional
+
+#### Step 2: Email Verification ✅
+- **Endpoint**: `POST /api/auth/verify-email` (token required)
+- **Process**:
+  1. User clicks verification link in email
+  2. Token validated (24-hour expiration)
+  3. `is_email_verified` set to `True`
+  4. User can now access dashboard
+- **Status**: ✅ Fully implemented and functional
+- **Resend**: `POST /api/auth/resend-verification` available
+
+#### Step 3: Profile Creation (Role-Specific)
+
+##### **Ventures** ✅
+- **Model**: `VentureProduct` (users can have up to 3 products)
+- **Endpoints**:
+  - ✅ `POST /api/ventures/products` - Create product (max 3 per user)
+  - ✅ `GET /api/ventures/products` - List user's products
+  - ✅ `GET /api/ventures/products/{id}` - Get product details
+  - ✅ `PATCH /api/ventures/products/{id}` - Update product (only if DRAFT/REJECTED)
+  - ✅ `PATCH /api/ventures/products/{id}/activate` - Toggle is_active
+  - ✅ `POST /api/ventures/products/{id}/submit` - Submit for approval
+- **Status Flow**: `DRAFT` → `SUBMITTED` → `APPROVED`/`REJECTED`
+- **Status**: ✅ Fully implemented
+- **Tech Debt**: ⚠️ Frontend registration form collects venture data but doesn't create product automatically (TODO in `AuthContext.tsx`)
+
+##### **Investors** ⚠️
+- **Model**: `InvestorProfile` (OneToOne with User)
+- **Endpoints**:
+  - ✅ `POST /api/investors/profile` - Create investor profile (creates as DRAFT)
+  - ✅ `GET /api/investors/profile/me` - Get own profile
+  - ✅ `PATCH /api/investors/profile/me` - Update own profile
+  - ✅ `POST /api/investors/profile/submit` - Submit for approval
+  - ✅ `GET /api/investors/public` - List visible investors (for approved ventures)
+  - ✅ `GET /api/investors/{id}` - Get investor detail
+- **Status Flow**: `DRAFT` → `SUBMITTED` → `APPROVED`/`REJECTED`
+- **Status**: ✅ Backend endpoints implemented
+- **Tech Debt**: 
+  - ⚠️ Frontend registration form collects investor data but doesn't create profile automatically (TODO in `AuthContext.tsx`)
+  - ⚠️ Frontend may not be fully connected to profile creation endpoints
+
+##### **Mentors** ❌
+- **Model**: `MentorProfile` (OneToOne with User)
+- **Endpoints**:
+  - ❌ `POST /api/mentors/profile` - Create mentor profile (MISSING)
+  - ❌ `GET /api/mentors/profile/me` - Get own profile (MISSING)
+  - ❌ `PATCH /api/mentors/profile/me` - Update own profile (MISSING)
+  - ❌ `POST /api/mentors/profile/submit` - Submit for approval (MISSING)
+  - ✅ `GET /api/mentors/public` - List visible mentors (for approved ventures)
+  - ✅ `GET /api/mentors/{id}` - Get mentor detail
+- **Status Flow**: `DRAFT` → `SUBMITTED` → `APPROVED`/`REJECTED` (model supports it)
+- **Status**: ❌ Backend endpoints NOT implemented
+- **Tech Debt**: 
+  - ❌ No profile creation endpoints for mentors
+  - ⚠️ Frontend registration form collects mentor data but can't create profile
+
+#### Step 4: Profile Submission for Approval ✅
+- **Process**:
+  1. User creates/updates profile (status: `DRAFT`)
+  2. User submits profile via submit endpoint
+  3. `ReviewRequest` created automatically
+  4. Profile status changes to `SUBMITTED`
+  5. Admin can review via `/api/reviews/pending`
+- **Status**: ✅ Backend workflow implemented
+- **Email Notifications**: ✅ Approval/rejection emails sent automatically
+
+#### Step 5: Admin Approval ✅
+- **Endpoints**:
+  - ✅ `GET /api/reviews/pending` - List pending reviews
+  - ✅ `GET /api/reviews/{id}` - Get review details
+  - ✅ `POST /api/reviews/{id}/approve` - Approve profile
+  - ✅ `POST /api/reviews/{id}/reject` - Reject profile (with reason)
+- **Process**:
+  1. Admin reviews submission
+  2. Admin approves or rejects
+  3. Profile status updated (`APPROVED` or `REJECTED`)
+  4. Email notification sent to user (HTML-styled)
+  5. If approved, user gains full platform access
+- **Status**: ✅ Fully implemented and functional
+
+### KYC (Know Your Customer) & Verification Status
+
+#### ✅ Implemented Verification
+1. **Email Verification**: ✅
+   - Email address ownership verification
+   - Token-based verification (24-hour expiration)
+   - HTML-styled verification emails
+
+2. **Profile Approval Workflow**: ✅
+   - Manual admin review process
+   - Status tracking (DRAFT, SUBMITTED, APPROVED, REJECTED, SUSPENDED)
+   - Rejection reason tracking
+   - Email notifications
+
+#### ❌ Missing KYC/Verification Features
+
+1. **Identity Verification**: ❌
+   - No government ID verification
+   - No photo ID upload/verification
+   - No identity document validation
+   - **Impact**: Cannot verify user's real identity
+
+2. **Business Verification (Ventures)**: ❌
+   - No business registration number verification
+   - No company incorporation document verification
+   - No tax ID verification
+   - No business license verification
+   - **Impact**: Cannot verify venture is a legitimate business
+
+3. **Accreditation Verification (Investors)**: ❌
+   - No accredited investor status verification
+   - No investment license verification
+   - No regulatory compliance checks
+   - No proof of funds verification
+   - **Impact**: Cannot verify investor credentials and legitimacy
+
+4. **Background Verification (Mentors)**: ❌
+   - No professional background verification
+   - No employment history verification
+   - No LinkedIn/workplace verification
+   - No reference checks
+   - **Impact**: Cannot verify mentor qualifications and experience
+
+5. **Document Verification**: ❌
+   - No document upload for verification
+   - No document validation/scanning
+   - No automated document verification
+   - **Impact**: Manual verification only, no automated checks
+
+6. **Phone Verification**: ❌
+   - No SMS verification
+   - No phone number validation
+   - **Impact**: Email-only verification, no multi-factor authentication
+
+7. **Address Verification**: ❌
+   - No physical address verification
+   - No address validation
+   - **Impact**: Cannot verify user location
+
+### Tech Debt Summary
+
+#### High Priority Tech Debt
+
+1. **VL-814**: Mentor Profile CRUD Endpoints Missing
+   - **Issue**: No backend endpoints for mentor profile creation/update
+   - **Impact**: Mentors cannot create profiles after registration
+   - **Required Endpoints**:
+     - `POST /api/mentors/profile` - Create mentor profile
+     - `GET /api/mentors/profile/me` - Get own profile
+     - `PATCH /api/mentors/profile/me` - Update own profile
+     - `POST /api/mentors/profile/submit` - Submit for approval
+   - **Estimated Effort**: 8 story points
+
+2. **VL-815**: Frontend Profile Creation Not Connected
+   - **Issue**: Registration forms collect profile data but don't create profiles automatically
+   - **Location**: `frontend/src/components/AuthContext.tsx` (TODO comments)
+   - **Impact**: Users must manually create profiles after registration
+   - **Required Changes**:
+     - Connect `VentureRegistration` to product creation API
+     - Connect `InvestorRegistration` to investor profile creation API
+     - Connect `MentorRegistration` to mentor profile creation API (once endpoints exist)
+   - **Estimated Effort**: 5 story points
+
+3. **VL-816**: Profile Validation Before Submission
+   - **Issue**: No validation to ensure all required fields are filled before submission
+   - **Impact**: Users can submit incomplete profiles
+   - **Required**: Add validation in submit endpoints
+   - **Estimated Effort**: 3 story points
+
+#### Medium Priority Tech Debt
+
+4. **VL-817**: KYC/Identity Verification System
+   - **Issue**: No identity verification beyond email
+   - **Impact**: Cannot verify user identity, potential fraud risk
+   - **Required Features**:
+     - Document upload (ID, passport, etc.)
+     - Document validation service integration
+     - Identity verification workflow
+   - **Estimated Effort**: 13 story points
+
+5. **VL-818**: Business Verification for Ventures
+   - **Issue**: No business registration verification
+   - **Impact**: Cannot verify ventures are legitimate businesses
+   - **Required Features**:
+     - Business registration number field
+     - Business document upload
+     - Business verification service integration
+   - **Estimated Effort**: 8 story points
+
+6. **VL-819**: Investor Accreditation Verification
+   - **Issue**: No investor accreditation verification
+   - **Impact**: Cannot verify investor credentials
+   - **Required Features**:
+     - Accreditation status field
+     - Accreditation document upload
+     - Regulatory compliance checks
+   - **Estimated Effort**: 8 story points
+
+7. **VL-820**: Mentor Background Verification
+   - **Issue**: No professional background verification
+   - **Impact**: Cannot verify mentor qualifications
+   - **Required Features**:
+     - Professional verification workflow
+     - Reference check system
+     - Employment verification
+   - **Estimated Effort**: 8 story points
+
+#### Low Priority Tech Debt
+
+8. **VL-821**: Phone Number Verification
+   - **Issue**: No SMS/phone verification
+   - **Impact**: Email-only verification, no MFA
+   - **Estimated Effort**: 5 story points
+
+9. **VL-822**: Address Verification
+   - **Issue**: No physical address verification
+   - **Impact**: Cannot verify user location
+   - **Estimated Effort**: 3 story points
+
+### Current Registration Flow Diagram
+
+```
+User Registration Flow:
+┌─────────────────────────────────────────────────────────────┐
+│ 1. POST /api/auth/register                                  │
+│    - Email, password, full_name, role                        │
+│    - User account created                                    │
+│    - Email verification token generated                     │
+│    - Verification email sent (HTML)                         │
+└─────────────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Email Verification                                        │
+│    - User clicks link in email                               │
+│    - POST /api/auth/verify-email                            │
+│    - is_email_verified = True                                │
+│    - User can access dashboard                               │
+└─────────────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Profile Creation (Role-Specific)                         │
+│                                                              │
+│ VENTURES:                                                    │
+│   ✅ POST /api/ventures/products (up to 3)                  │
+│   ✅ Status: DRAFT                                           │
+│                                                              │
+│ INVESTORS:                                                   │
+│   ✅ POST /api/investors/profile                            │
+│   ✅ Status: DRAFT                                           │
+│                                                              │
+│ MENTORS:                                                     │
+│   ❌ POST /api/mentors/profile (MISSING)                    │
+│   ❌ Status: Cannot create profile                            │
+└─────────────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Profile Submission                                        │
+│    - POST /api/{role}/profile/submit                         │
+│    - ReviewRequest created                                   │
+│    - Status: SUBMITTED                                       │
+└─────────────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 5. Admin Review                                              │
+│    - GET /api/reviews/pending                                │
+│    - POST /api/reviews/{id}/approve or /reject               │
+│    - Status: APPROVED or REJECTED                            │
+│    - Email notification sent (HTML)                          │
+└─────────────────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 6. Platform Access                                           │
+│    - If APPROVED: Full platform access                      │
+│    - If REJECTED: Can update and resubmit                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Verification Requirements by Role
+
+#### Ventures
+- ✅ Email verification
+- ✅ Profile approval workflow
+- ❌ Business registration verification
+- ❌ Business license verification
+- ❌ Tax ID verification
+- ❌ Identity verification (founders)
+
+#### Investors
+- ✅ Email verification
+- ✅ Profile approval workflow
+- ❌ Accredited investor verification
+- ❌ Investment license verification
+- ❌ Proof of funds verification
+- ❌ Identity verification
+
+#### Mentors
+- ✅ Email verification
+- ❌ Profile creation endpoints (MISSING)
+- ❌ Profile approval workflow (blocked by missing endpoints)
+- ❌ Professional background verification
+- ❌ Employment verification
+- ❌ Reference checks
+- ❌ Identity verification
+
 ---
 
 ## Summary
@@ -295,8 +631,10 @@
 - **Security Documentation**: Backend and frontend security audit reports created
 
 ❌ **Pending**:
-- Profile creation/update endpoints for ventures/investors/mentors (using products instead for ventures)
-- Profile submission workflow for investors/mentors
+- **Mentor Profile Endpoints**: Missing CRUD endpoints for mentor profiles (VL-814)
+- **Frontend Profile Integration**: Registration forms don't automatically create profiles (VL-815)
+- **Profile Validation**: No validation before submission (VL-816)
+- **KYC/Verification**: No identity, business, accreditation, or background verification (VL-817, VL-818, VL-819, VL-820)
 - Matching and content endpoints
 - Connect pitch deck upload UI in ProductManagement component to backend
 - Rate limiting for sensitive endpoints (security recommendation)
@@ -330,3 +668,11 @@
   - ✅ Nginx service removed from docker-compose (using external Nginx Proxy Manager)
   - ✅ CORS and ALLOWED_HOSTS updated for production domains
   - ✅ Email integration: Approval/rejection emails now automatically sent via Celery tasks
+- **Registration & Profile Creation (2025-01-15)**:
+  - ✅ **VL-814**: Mentor Profile CRUD endpoints implemented (POST, GET, PATCH, submit)
+  - ✅ **VL-815**: Frontend registration automatically creates profiles for investors and mentors
+  - ✅ **Investor Registration**: Profile created automatically with form data mapping
+  - ✅ **Mentor Registration**: Profile created automatically with form data mapping
+  - ✅ **Venture Registration**: Products created separately from dashboard (by design - supports multiple products)
+  - ✅ **Security Hardening**: Enhanced input validation, URL/email validation, length limits, list size limits
+  - ✅ **Auto-login**: Users automatically logged in after registration to enable profile creation

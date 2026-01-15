@@ -47,7 +47,75 @@ export interface MentorProfile {
   updated_at: string;
 }
 
+export interface MentorProfileCreatePayload {
+  full_name: string;
+  job_title: string;
+  company: string;
+  linkedin_or_website: string;
+  contact_email: string;
+  phone?: string;
+  expertise_fields: string[];
+  experience_overview: string;
+  industries_of_interest: string[];
+  engagement_type: 'PAID' | 'PRO_BONO' | 'BOTH';
+  paid_rate_type?: 'HOURLY' | 'DAILY' | 'MONTHLY';
+  paid_rate_amount?: string;
+  availability_types: string[];
+  preferred_engagement: 'VIRTUAL' | 'IN_PERSON' | 'BOTH';
+  visible_to_ventures?: boolean;
+}
+
+export interface MentorProfileUpdatePayload extends Partial<MentorProfileCreatePayload> {}
+
 export const mentorService = {
+  /**
+   * Get current user's mentor profile
+   */
+  async getMyProfile(): Promise<MentorProfile> {
+    try {
+      const response = await apiClient.get('/mentors/profile/me');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Create mentor profile (draft)
+   */
+  async createProfile(data: MentorProfileCreatePayload): Promise<MentorProfile> {
+    try {
+      const response = await apiClient.post('/mentors/profile', data);
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Update mentor profile (only if DRAFT or REJECTED)
+   */
+  async updateProfile(data: MentorProfileUpdatePayload): Promise<MentorProfile> {
+    try {
+      const response = await apiClient.patch('/mentors/profile/me', data);
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Submit mentor profile for approval
+   */
+  async submitProfile(): Promise<{ detail: string; review_id: string }> {
+    try {
+      const response = await apiClient.post('/mentors/profile/submit');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
   /**
    * Get list of visible mentors (for approved ventures/admin)
    */

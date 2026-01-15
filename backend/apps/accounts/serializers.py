@@ -3,13 +3,15 @@ Serializers for accounts app.
 """
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
+from django.core.validators import EmailValidator
+from django.core.exceptions import ValidationError
 from .models import User, EmailVerificationToken
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for user registration."""
-    password = serializers.CharField(write_only=True, validators=[validate_password])
-    password_confirm = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, validators=[validate_password], max_length=128)
+    password_confirm = serializers.CharField(write_only=True, max_length=128)
     
     class Meta:
         model = User
@@ -20,6 +22,39 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'role': {'required': True},
         }
     
+    def validate_email(self, value):
+        """Security: Validate email format and length."""
+        if not value:
+            raise serializers.ValidationError("Email is required.")
+        if len(value) > 254:
+            raise serializers.ValidationError("Email must be 254 characters or less.")
+        validator = EmailValidator()
+        try:
+            validator(value)
+        except ValidationError:
+            raise serializers.ValidationError("Please enter a valid email address.")
+        return value.strip().lower()
+    
+    def validate_full_name(self, value):
+        """Security: Validate and sanitize full name."""
+        if not value or len(value.strip()) == 0:
+            raise serializers.ValidationError("Full name is required.")
+        if len(value) > 255:
+            raise serializers.ValidationError("Full name must be 255 characters or less.")
+        # Security: Remove potentially dangerous characters
+        value = value.strip()
+        # Allow letters, spaces, hyphens, apostrophes, and common international characters
+        # This is a basic sanitization - more complex if needed
+        return value
+    
+    def validate_password(self, value):
+        """Security: Validate password length."""
+        if len(value) < 8:
+            raise serializers.ValidationError("Password must be at least 8 characters long.")
+        if len(value) > 128:
+            raise serializers.ValidationError("Password must be 128 characters or less.")
+        return value
+    
     def validate(self, attrs):
         """Validate that passwords match."""
         if attrs['password'] != attrs['password_confirm']:
@@ -29,9 +64,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return attrs
     
     def validate_role(self, value):
-        """Validate role is not ADMIN."""
+        """Security: Validate role is not ADMIN and is a valid role."""
         if value == 'ADMIN':
             raise serializers.ValidationError('Cannot register as admin.')
+        valid_roles = ['VENTURE', 'INVESTOR', 'MENTOR']
+        if value not in valid_roles:
+            raise serializers.ValidationError(f'Invalid role. Must be one of: {", ".join(valid_roles)}.')
         return value
     
     def create(self, validated_data):

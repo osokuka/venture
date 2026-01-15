@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { authService, type UserResponse } from '../services/authService';
+import { investorService, type InvestorProfileCreatePayload } from '../services/investorService';
+import { mentorService, type MentorProfileCreatePayload } from '../services/mentorService';
 import { type FrontendUser } from '../types';
 
 export type UserRole = 'venture' | 'investor' | 'mentor' | 'admin';
@@ -145,15 +147,134 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: backendRole,
       });
 
-      // TODO: Create profile based on role
-      // For now, set user and show pending status
+      // Automatically log in the user after registration so they can create profiles
+      // This allows profile creation to work (requires authentication)
+      try {
+        await authService.login({
+          email: userData.email,
+          password: userData.password,
+        });
+      } catch (loginError) {
+        console.warn('Auto-login after registration failed:', loginError);
+        // Continue anyway - user can log in manually
+      }
+
+      // After successful registration and login, try to create profile based on role
+      // Note: This happens before email verification, but user is authenticated
+      let profileCreated = false;
+      let profileError: Error | null = null;
+
+      try {
+        if (registrationRole === 'investor' && userData.organizationName) {
+          // Map investor registration form data to API payload
+          // Note: Investor form doesn't collect experience_years or deals_count, so we use defaults
+          const investorPayload: InvestorProfileCreatePayload = {
+            full_name: userData.name || registeredUser.full_name || '',
+            organization_name: userData.organizationName || '',
+            linkedin_or_website: userData.linkedinUrl || userData.website || '',
+            email: userData.email,
+            phone: userData.phone || undefined,
+            investment_experience_years: 0, // Default - user can update later
+            deals_count: undefined, // Not collected in registration form
+            stage_preferences: userData.investmentStages || [],
+            industry_preferences: userData.industries || [],
+            average_ticket_size: userData.ticketSize || `${userData.minInvestment || '0'}-${userData.maxInvestment || '0'}`,
+            visible_to_ventures: userData.isVisible !== false, // Default to true
+          };
+          
+          await investorService.createProfile(investorPayload);
+          profileCreated = true;
+        } else if (registrationRole === 'mentor' && userData.jobTitle) {
+          // Map mentor registration form data to API payload
+          // Determine engagement type from form data
+          let engagementType: 'PAID' | 'PRO_BONO' | 'BOTH' = 'PRO_BONO';
+          if (userData.availabilityType && Array.isArray(userData.availabilityType)) {
+            const hasPaid = userData.availabilityType.some((type: string) => 
+              type.toLowerCase().includes('paid')
+            );
+            const hasProBono = userData.availabilityType.some((type: string) => 
+              type.toLowerCase().includes('pro-bono') || type.toLowerCase().includes('pro bono')
+            );
+            
+            if (hasPaid && hasProBono) {
+              engagementType = 'BOTH';
+            } else if (hasPaid) {
+              engagementType = 'PAID';
+            }
+          } else if (userData.isProBono === false && userData.hourlyRate) {
+            engagementType = 'PAID';
+          }
+
+          // Determine preferred engagement from sessionFormat
+          // Form uses: "Virtual/Video Call", "In-Person", "Phone Call", "Email/Async"
+          let preferredEngagement: 'VIRTUAL' | 'IN_PERSON' | 'BOTH' = 'BOTH';
+          if (userData.sessionFormat && Array.isArray(userData.sessionFormat)) {
+            const hasVirtual = userData.sessionFormat.some((format: string) => 
+              format.toLowerCase().includes('virtual') || format.toLowerCase().includes('video')
+            );
+            const hasInPerson = userData.sessionFormat.some((format: string) => 
+              format.toLowerCase().includes('in-person') || format.toLowerCase().includes('in person')
+            );
+            
+            if (hasVirtual && hasInPerson) {
+              preferredEngagement = 'BOTH';
+            } else if (hasVirtual) {
+              preferredEngagement = 'VIRTUAL';
+            } else if (hasInPerson) {
+              preferredEngagement = 'IN_PERSON';
+            }
+          }
+
+          const mentorPayload: MentorProfileCreatePayload = {
+            full_name: userData.name || registeredUser.full_name || '',
+            job_title: userData.jobTitle || '',
+            company: userData.company || '',
+            linkedin_or_website: userData.linkedinUrl || '',
+            contact_email: userData.email,
+            phone: userData.phone || undefined,
+            expertise_fields: userData.expertise || [],
+            experience_overview: userData.bio || '',
+            industries_of_interest: userData.industries || [],
+            engagement_type: engagementType,
+            paid_rate_type: userData.hourlyRate ? 'HOURLY' : undefined,
+            paid_rate_amount: userData.hourlyRate ? userData.hourlyRate.toString() : undefined,
+            availability_types: userData.availabilityType || [],
+            preferred_engagement: preferredEngagement,
+            visible_to_ventures: userData.isVisible !== false, // Default to true
+          };
+          
+          await mentorService.createProfile(mentorPayload);
+          profileCreated = true;
+        }
+        // Note: Ventures don't create products during registration
+        // They only create account, then create products from dashboard after email verification
+      } catch (error: any) {
+        // Profile creation failed - log but don't block registration
+        // User can create profile manually after email verification
+        console.warn('Profile creation failed during registration:', error);
+        profileError = error;
+        profileCreated = false;
+      }
+
+      // Fetch current user to get full user data (including email verification status)
+      let currentUserData = registeredUser;
+      try {
+        currentUserData = await authService.getCurrentUser();
+      } catch (error) {
+        // If getCurrentUser fails, use registeredUser data
+        console.warn('Failed to fetch current user after registration:', error);
+      }
+
+      // Set user state
       setUser({
-        id: registeredUser.id,
-        email: registeredUser.email,
+        id: currentUserData.id,
+        email: currentUserData.email,
         role: registrationRole!,
         profile: {
           ...userData,
-          approvalStatus: 'pending' as const
+          approvalStatus: 'pending' as const,
+          profileCreated, // Track if profile was created
+          profileError: profileError?.message, // Store error message if any
         }
       } as User);
       

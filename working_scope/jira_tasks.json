@@ -1940,9 +1940,9 @@
   "metadata": {
     "created": "2025-01-27",
     "updated": "2025-01-15",
-    "version": "1.2",
-    "totalStories": 36,
-    "totalTasks": 190,
-    "estimatedStoryPoints": 197
+    "version": "1.3",
+    "totalStories": 44,
+    "totalTasks": 220,
+    "estimatedStoryPoints": 250
   }
 }
