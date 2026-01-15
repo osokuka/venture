@@ -302,7 +302,7 @@ Frontend Role → Component
 ### Automatic Creation
 
 Demo accounts are automatically created when Docker containers start for the first time via:
-- Management command: `create_demo_accounts`
+- Management command: `seed_demo_data`
 - Called in `backend/entrypoint.sh` after superuser creation
 
 ### Demo Account List
@@ -315,7 +315,7 @@ See `DEMO_ACCOUNTS.md` for complete list of demo accounts.
 
 To manually create demo accounts:
 ```bash
-docker-compose exec web python manage.py create_demo_accounts
+docker-compose exec web python manage.py seed_demo_data
 ```
 
 ---

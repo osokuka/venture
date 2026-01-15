@@ -1,16 +1,17 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Alert, AlertDescription } from "./ui/alert";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, LogIn, Mail, Lock, Users, DollarSign, MessageSquare } from "lucide-react";
-import { mockVentures, mockInvestors, mockMentors } from './MockData';
+import { ArrowLeft, LogIn, Users, DollarSign, MessageSquare } from "lucide-react";
 import { sanitizeInput, validateEmail } from '../utils/security';
 
 export function LoginForm() {
-  const { login, setView } = useAuth();
+  const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -37,7 +38,10 @@ export function LoginForm() {
 
     try {
       const success = await login(sanitizedEmail, password);
-      if (!success) {
+      if (success) {
+        // Navigate to dashboard using React Router
+        navigate('/dashboard');
+      } else {
         setError('Invalid email or password. Please check your credentials and try again.');
       }
     } catch (err: any) {
@@ -47,21 +51,10 @@ export function LoginForm() {
     }
   };
 
-  const handleDemoLogin = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('demo123');
-    setIsLoading(true);
-    try {
-      const success = await login(demoEmail, 'demo123');
-      if (!success) {
-        setError('Demo login failed. Please try again.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleBackToHome = () => {
+    navigate('/');
   };
+
 
   return (
     <div className="min-h-screen bg-background py-12 px-6">
@@ -69,7 +62,7 @@ export function LoginForm() {
         <div className="mb-8">
           <Button 
             variant="outline" 
-            onClick={() => setView('landing')}
+            onClick={handleBackToHome}
             className="mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -133,7 +126,7 @@ export function LoginForm() {
                   <p>Don't have an account?</p>
                   <Button 
                     variant="link" 
-                    onClick={() => setView('landing')}
+                    onClick={handleBackToHome}
                     className="p-0 h-auto"
                   >
                     Register here
@@ -143,95 +136,62 @@ export function LoginForm() {
             </CardContent>
           </Card>
 
-          {/* Demo Accounts */}
+          {/* Information Card */}
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Demo Accounts</CardTitle>
+                <CardTitle>Get Started</CardTitle>
                 <p className="text-muted-foreground">
-                  Try the platform with these pre-configured accounts
+                  New to VentureUP Link? Create your account to get started.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Venture Accounts */}
-                <div>
-                  <div className="flex items-center mb-2">
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full justify-start"
+                    onClick={() => navigate('/register/venture')}
+                  >
                     <Users className="w-4 h-4 text-blue-600 mr-2" />
-                    <h4 className="text-sm">Venture Accounts</h4>
-                  </div>
-                  <div className="space-y-2">
-                    {mockVentures.slice(0, 2).map(venture => (
-                      <Button
-                        key={venture.id}
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-left"
-                        onClick={() => handleDemoLogin(venture.email)}
-                      >
-                        <div>
-                          <div className="text-sm">{venture.profile.companyName}</div>
-                          <div className="text-xs text-muted-foreground">{venture.email}</div>
-                        </div>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                    <div className="text-left">
+                      <div className="text-sm font-medium">Register as Venture</div>
+                      <div className="text-xs text-muted-foreground">For startups seeking funding</div>
+                    </div>
+                  </Button>
 
-                {/* Investor Accounts */}
-                <div>
-                  <div className="flex items-center mb-2">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full justify-start"
+                    onClick={() => navigate('/register/investor')}
+                  >
                     <DollarSign className="w-4 h-4 text-green-600 mr-2" />
-                    <h4 className="text-sm">Investor Accounts</h4>
-                  </div>
-                  <div className="space-y-2">
-                    {mockInvestors.slice(0, 2).map(investor => (
-                      <Button
-                        key={investor.id}
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-left"
-                        onClick={() => handleDemoLogin(investor.email)}
-                      >
-                        <div>
-                          <div className="text-sm">
-                            {investor.profile.organizationName || investor.profile.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground">{investor.email}</div>
-                        </div>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                    <div className="text-left">
+                      <div className="text-sm font-medium">Register as Investor</div>
+                      <div className="text-xs text-muted-foreground">For investors seeking opportunities</div>
+                    </div>
+                  </Button>
 
-                {/* Mentor Accounts */}
-                <div>
-                  <div className="flex items-center mb-2">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full justify-start"
+                    onClick={() => navigate('/register/mentor')}
+                  >
                     <MessageSquare className="w-4 h-4 text-purple-600 mr-2" />
-                    <h4 className="text-sm">Mentor Accounts</h4>
-                  </div>
-                  <div className="space-y-2">
-                    {mockMentors.slice(0, 2).map(mentor => (
-                      <Button
-                        key={mentor.id}
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-left"
-                        onClick={() => handleDemoLogin(mentor.email)}
-                      >
-                        <div>
-                          <div className="text-sm">{mentor.profile.name}</div>
-                          <div className="text-xs text-muted-foreground">{mentor.email}</div>
-                        </div>
-                      </Button>
-                    ))}
-                  </div>
+                    <div className="text-left">
+                      <div className="text-sm font-medium">Register as Mentor</div>
+                      <div className="text-xs text-muted-foreground">For mentors offering guidance</div>
+                    </div>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-muted/50">
               <CardContent className="p-4">
-                <h4 className="text-sm mb-2">Demo Features</h4>
+                <h4 className="text-sm mb-2 font-medium">Platform Features</h4>
                 <ul className="text-xs text-muted-foreground space-y-1">
                   <li>• Browse all ventures, public investors & mentors</li>
                   <li>• View detailed profiles and pitch documents</li>

@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean frontend-install
+.PHONY: help build up down restart logs shell migrate makemigrations createsuperuser test clean frontend-install seed-demo
 
 help:
 	@echo "Available commands:"
@@ -14,6 +14,7 @@ help:
 	@echo "  make test           - Run tests"
 	@echo "  make clean          - Remove containers and volumes"
 	@echo "  make frontend-install - Install frontend dependencies"
+	@echo "  make seed-demo      - Seed database with demo data"
 
 build:
 	docker-compose build
@@ -51,3 +52,6 @@ clean:
 
 frontend-install:
 	docker-compose exec frontend npm install
+
+seed-demo:
+	docker-compose exec web python manage.py seed_demo_data

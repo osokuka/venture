@@ -83,11 +83,11 @@ Demo accounts are available for testing the platform. These accounts are created
 
 ## Creating Demo Accounts
 
-Demo accounts are automatically created when the Docker container starts via the `create_demo_accounts` management command in `entrypoint.sh`.
+Demo accounts are automatically created when the Docker container starts via the `seed_demo_data` management command in `entrypoint.sh`.
 
 To manually create demo accounts:
 ```bash
-docker-compose exec web python manage.py create_demo_accounts
+docker-compose exec web python manage.py seed_demo_data
 ```
 
 ## Notes

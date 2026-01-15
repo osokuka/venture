@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="matches",
-                        to="ventures.ventureprofile",
+                        to="ventures.ventureproduct",
                     ),
                 ),
             ],

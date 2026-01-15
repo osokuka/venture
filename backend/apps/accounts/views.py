@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.db.models import Q, Count
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.contenttypes.models import ContentType
 from .models import User, EmailVerificationToken
 from .serializers import (
     UserRegistrationSerializer,
@@ -344,7 +345,57 @@ def admin_stats(request):
         )
         
         # Count pending approvals
-        pending_approvals = ReviewRequest.objects.filter(status='SUBMITTED').count()
+        # Include ReviewRequests with status='SUBMITTED'
+        # Also count products/profiles with status='SUBMITTED' that might not have ReviewRequests
+        # (for backward compatibility with old data)
+        pending_review_requests = ReviewRequest.objects.filter(status='SUBMITTED').count()
+        
+        # Count products/profiles with SUBMITTED status that don't have a ReviewRequest
+        # This handles cases where data was submitted before ReviewRequests were created
+        content_type_product = ContentType.objects.get_for_model(VentureProduct)
+        content_type_investor = ContentType.objects.get_for_model(InvestorProfile)
+        content_type_mentor = ContentType.objects.get_for_model(MentorProfile)
+        
+        # Get IDs of products/profiles that already have ReviewRequests
+        products_with_reviews = set(
+            ReviewRequest.objects.filter(
+                content_type=content_type_product,
+                status='SUBMITTED'
+            ).values_list('object_id', flat=True)
+        )
+        investors_with_reviews = set(
+            ReviewRequest.objects.filter(
+                content_type=content_type_investor,
+                status='SUBMITTED'
+            ).values_list('object_id', flat=True)
+        )
+        mentors_with_reviews = set(
+            ReviewRequest.objects.filter(
+                content_type=content_type_mentor,
+                status='SUBMITTED'
+            ).values_list('object_id', flat=True)
+        )
+        
+        # Count SUBMITTED items without ReviewRequests
+        products_without_reviews = VentureProduct.objects.filter(
+            status='SUBMITTED'
+        ).exclude(id__in=products_with_reviews).count()
+        
+        investors_without_reviews = InvestorProfile.objects.filter(
+            status='SUBMITTED'
+        ).exclude(id__in=investors_with_reviews).count()
+        
+        mentors_without_reviews = MentorProfile.objects.filter(
+            status='SUBMITTED'
+        ).exclude(id__in=mentors_with_reviews).count()
+        
+        # Total pending = ReviewRequests + items without ReviewRequests
+        pending_approvals = (
+            pending_review_requests +
+            products_without_reviews +
+            investors_without_reviews +
+            mentors_without_reviews
+        )
         
         # Count messages
         total_messages = Message.objects.count()

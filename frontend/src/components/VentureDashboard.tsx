@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -41,28 +41,50 @@ import {
   Briefcase,
   Award,
   TrendingDown,
-  Globe
+  Globe,
+  Loader2,
+  ArrowLeft
 } from "lucide-react";
-import { type User, type Venture, type Investor, type Mentor, mockVentures, mockInvestors, mockMentors, getUnreadMessagesForUser } from './MockData';
+import { type FrontendUser } from '../types';
 import { EditProfile } from './EditProfile';
 import { Settings } from './Settings';
 import { UserProfile } from './UserProfile';
 import { ProductManagement } from './ProductManagement';
+import { MessagingSystem } from './MessagingSystem';
 import { messagingService } from '../services/messagingService';
+import { investorService, type InvestorProfile } from '../services/investorService';
+import { mentorService, type MentorProfile } from '../services/mentorService';
+import { productService } from '../services/productService';
 import { validateUuid, sanitizeInput } from '../utils/security';
 import { SafeText } from './SafeText';
 
 interface VentureDashboardProps {
-  user: User;
+  user: FrontendUser;
   activeView?: string;
   onViewChange?: (view: string) => void;
-  onProfileUpdate?: (updatedUser: User) => void;
+  onProfileUpdate?: (updatedUser: FrontendUser) => void;
+  onRefreshUnreadCount?: () => void; // Callback to refresh global unread count
 }
 
-export function VentureDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate }: VentureDashboardProps) {
-  const venture = user as Venture;
-  const unreadMessages = getUnreadMessagesForUser(user.id);
+export function VentureDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate, onRefreshUnreadCount }: VentureDashboardProps) {
+  // Track selected user ID and details for messaging (when user clicks Contact but hasn't sent a message yet)
+  const [selectedMessagingUserId, setSelectedMessagingUserId] = useState<string | undefined>(undefined);
+  const [selectedMessagingUserName, setSelectedMessagingUserName] = useState<string | undefined>(undefined);
+  const [selectedMessagingUserRole, setSelectedMessagingUserRole] = useState<string | undefined>(undefined);
+  // Remove reference to venture variable - use user directly
+  // State for unread messages count
+  const [unreadCount, setUnreadCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // State for real API data
+  const [investors, setInvestors] = useState<InvestorProfile[]>([]);
+  const [mentors, setMentors] = useState<MentorProfile[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [isLoadingInvestors, setIsLoadingInvestors] = useState(false);
+  const [isLoadingMentors, setIsLoadingMentors] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [selectedMentor, setSelectedMentor] = useState<MentorProfile | null>(null);
+  const [isLoadingMentorProfile, setIsLoadingMentorProfile] = useState(false);
   
   // Security: Sanitize search term
   const handleSearchChange = (value: string) => {
@@ -72,6 +94,95 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   const [filterSector, setFilterSector] = useState('all');
   const [filterStage, setFilterStage] = useState('all');
   const [filterCheckSize, setFilterCheckSize] = useState('all');
+
+  // Fetch investors when component mounts or view changes to investors
+  useEffect(() => {
+    if (activeView === 'investors') {
+      fetchInvestors();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, searchTerm, filterStage]);
+
+  // Fetch mentors when component mounts or view changes to mentors
+  useEffect(() => {
+    if (activeView === 'mentors') {
+      fetchMentors();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, searchTerm]);
+
+  // Fetch products for stats
+  useEffect(() => {
+    if (activeView === 'overview') {
+      fetchProducts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView]);
+
+  // Fetch unread message count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await messagingService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+    fetchUnreadCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchInvestors = async () => {
+    setIsLoadingInvestors(true);
+    try {
+      const data = await investorService.getPublicInvestors({
+        search: searchTerm || undefined,
+        stage: filterStage !== 'all' ? filterStage : undefined,
+      });
+      // Handle both array and paginated response
+      const investorsList = Array.isArray(data) ? data : (data.results || data.data || []);
+      setInvestors(investorsList);
+    } catch (error: any) {
+      console.error('Failed to fetch investors:', error);
+      const errorMessage = error?.response?.status === 403 
+        ? 'You need to be approved to view investors. Please wait for admin approval.'
+        : (error instanceof Error ? error.message : 'Failed to load investors');
+      toast.error(errorMessage);
+      setInvestors([]); // Set empty array on error
+    } finally {
+      setIsLoadingInvestors(false);
+    }
+  };
+
+  const fetchMentors = async () => {
+    setIsLoadingMentors(true);
+    try {
+      const data = await mentorService.getPublicMentors({
+        search: searchTerm || undefined,
+      });
+      setMentors(data);
+    } catch (error) {
+      console.error('Failed to fetch mentors:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load mentors');
+    } finally {
+      setIsLoadingMentors(false);
+    }
+  };
+
+  const fetchProducts = async () => {
+    setIsLoadingProducts(true);
+    try {
+      const data = await productService.getMyProducts();
+      setProducts(data);
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
 
   // Handle profile and settings views
   if (activeView === 'edit-profile') {
@@ -86,174 +197,32 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     return <UserProfile user={user} onEdit={() => onViewChange?.('edit-profile')} isOwnProfile={true} />;
   }
 
-  // Mock data for the dashboard
+  // TODO: VL-811 - Replace hardcoded stats with API calls
   const stats = {
-    fundingGoal: venture.profile.fundingAmount || '$2M',
-    fundingRaised: '$450K',
-    fundingProgress: 23,
-    investors: 8,
-    mentors: 3,
-    pitchViews: 127,
-    totalMessages: unreadMessages.length + 15,
-    valuation: '$8M',
+    fundingGoal: '$0', // TODO: VL-811 - Get from GET /api/ventures/funding
+    fundingRaised: '$0', // TODO: VL-811 - Get from GET /api/ventures/funding
+    fundingProgress: 0, // TODO: VL-811 - Calculate from GET /api/ventures/funding
+    investors: investors.length,
+    mentors: mentors.length,
+    pitchViews: 0, // TODO: VL-811 - Get from GET /api/ventures/products/{id}/analytics
+    totalMessages: unreadCount,
+    valuation: '$0', // TODO: VL-811 - Get from GET /api/ventures/funding
+    products: products.length,
   };
 
-  const recentActivity = [
-    {
-      id: 1,
-      type: 'investor',
-      title: 'New investor interest from TechVentures',
-      description: 'John Smith viewed your pitch deck and expressed interest',
-      time: '2 hours ago',
-      icon: Eye,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100'
-    },
-    {
-      id: 2,
-      type: 'meeting',
-      title: 'Meeting scheduled with Sarah Johnson',
-      description: 'Initial investment discussion at 3:00 PM tomorrow',
-      time: '4 hours ago',
-      icon: Calendar,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100'
-    },
-    {
-      id: 3,
-      type: 'mentor',
-      title: 'New mentoring session with Emily Carter',
-      description: 'Product development strategy discussion completed',
-      time: '1 day ago',
-      icon: Users,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100'
-    },
-    {
-      id: 4,
-      type: 'pitch',
-      title: 'Pitch deck updated',
-      description: 'Financial projections section updated with Q4 data',
-      time: '2 days ago',
-      icon: FileText,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100'
-    }
-  ];
-
-  const interestedInvestors = [
-    {
-      id: 'inv1',
-      name: 'John Smith',
-      firm: 'TechVentures Capital',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=60&h=60&fit=crop&crop=face',
-      checkSize: '$250K - $1M',
-      sectors: ['AI/ML', 'SaaS'],
-      stage: 'Series A',
-      status: 'interested',
-      lastContact: '2 hours ago',
-      pitchViewed: true,
-      location: 'San Francisco, CA'
-    },
-    {
-      id: 'inv2',
-      name: 'Sarah Johnson',
-      firm: 'Innovation Partners',
-      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b60f163b?w=60&h=60&fit=crop&crop=face',
-      checkSize: '$500K - $2M',
-      sectors: ['FinTech', 'AI/ML'],
-      stage: 'Seed',
-      status: 'meeting_scheduled',
-      lastContact: '1 day ago',
-      pitchViewed: true,
-      location: 'New York, NY'
-    },
-    {
-      id: 'inv3',
-      name: 'Michael Chen',
-      firm: 'Future Fund',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=60&h=60&fit=crop&crop=face',
-      checkSize: '$100K - $500K',
-      sectors: ['AI/ML', 'Enterprise'],
-      stage: 'Seed',
-      status: 'pitch_requested',
-      lastContact: '3 days ago',
-      pitchViewed: false,
-      location: 'Austin, TX'
-    }
-  ];
-
-  const currentMentors = [
-    {
-      id: 'm1',
-      name: 'Emily Carter',
-      expertise: 'Product Development',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=60&h=60&fit=crop&crop=face',
-      company: 'Former VP at TechCorp',
-      rating: 4.9,
-      sessions: 8,
-      nextSession: 'Tomorrow, 2:00 PM',
-      progress: 75
-    },
-    {
-      id: 'm2',
-      name: 'David Rodriguez',
-      expertise: 'Sales & Marketing',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=60&h=60&fit=crop&crop=face',
-      company: 'Former CMO at SaaS Inc',
-      rating: 4.8,
-      sessions: 12,
-      nextSession: 'Friday, 10:00 AM',
-      progress: 60
-    }
-  ];
-
-  const fundraisingMetrics = [
-    { label: 'Investors Contacted', value: 45, target: 100, color: 'blue' },
-    { label: 'Pitch Decks Sent', value: 28, target: 50, color: 'green' },
-    { label: 'Meetings Scheduled', value: 12, target: 20, color: 'orange' },
-    { label: 'Term Sheets', value: 2, target: 5, color: 'purple' }
-  ];
-
+  // TODO: VL-811 - Replace empty arrays with API calls
+  const recentActivity: any[] = []; // TODO: VL-811 - Get from GET /api/activity/feed
+  const interestedInvestors: any[] = []; // TODO: VL-811 - Implement interested investors tracking API
+  const currentMentors: any[] = []; // TODO: VL-811 - Get from GET /api/mentors/mentees (for ventures)
+  const fundraisingMetrics: any[] = []; // TODO: VL-811 - Get from GET /api/ventures/funding/metrics
   const pitchDeckMetrics = {
-    views: 127,
-    downloads: 23,
-    averageViewTime: '4m 32s',
-    lastUpdated: '2 days ago',
-    version: '3.2'
+    views: 0, // TODO: VL-811 - Get from GET /api/ventures/products/{id}/analytics
+    downloads: 0, // TODO: VL-811 - Get from GET /api/ventures/products/{id}/analytics
+    averageViewTime: '0m', // TODO: VL-811 - Get from GET /api/ventures/products/{id}/analytics
+    lastUpdated: 'Never', // TODO: VL-811 - Get from product document updated_at
+    version: '1.0' // TODO: VL-811 - Get from product document version
   };
-
-  const upcomingMeetings = [
-    {
-      id: 1,
-      investor: 'Sarah Johnson',
-      firm: 'Innovation Partners',
-      time: 'Tomorrow, 3:00 PM',
-      duration: '45 min',
-      type: 'video',
-      topic: 'Initial Investment Discussion',
-      status: 'confirmed'
-    },
-    {
-      id: 2,
-      mentor: 'Emily Carter',
-      time: 'Friday, 2:00 PM',
-      duration: '60 min',
-      type: 'video',
-      topic: 'Product Strategy Session',
-      status: 'confirmed'
-    },
-    {
-      id: 3,
-      investor: 'Michael Chen',
-      firm: 'Future Fund',
-      time: 'Next Monday, 11:00 AM',
-      duration: '30 min',
-      type: 'phone',
-      topic: 'Pitch Presentation',
-      status: 'pending'
-    }
-  ];
+  const upcomingMeetings: any[] = []; // TODO: VL-811 - Get from meetings/calendar API
 
   const handleContactInvestor = async (investorId: string) => {
     // Security: Validate UUID format
@@ -262,19 +231,12 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
       return;
     }
     
-    try {
-      // Create or get existing conversation with investor
-      const conversation = await messagingService.createConversation(investorId);
-      
-      // For now, just show success - in a full implementation, 
-      // we might open a messaging modal or navigate to the conversation
-      toast.success("Conversation started with investor!");
-      
-      // Optionally, you could open a messaging interface here
-      // onViewChange?.('messages');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to contact investor");
-    }
+    // Navigate to messages view with selectedUserId
+    // Conversation will be created lazily when first message is sent
+    onViewChange?.('messages');
+    // Store the selectedUserId in a way that MessagingSystem can access it
+    // We'll pass it as a prop or use URL params
+    // For now, navigate to messages - the MessagingSystem will handle it via selectedUserId prop
   };
 
   const handleSharePitch = (investorId: string) => {
@@ -285,8 +247,32 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     toast.success("Meeting invitation sent!");
   };
 
-  const handleConnectMentor = (mentorId: string) => {
-    toast.success("Mentoring request sent successfully!");
+  const handleConnectMentor = async (mentorUserId: string) => {
+    // Security: Validate UUID format
+    if (!validateUuid(mentorUserId)) {
+      toast.error("Invalid mentor ID");
+      return;
+    }
+    
+    // Set the selected user ID and navigate to messages view
+    // Conversation will be created lazily when first message is sent
+    setSelectedMessagingUserId(mentorUserId);
+    onViewChange?.('messages');
+  };
+
+  const handleViewMentorProfile = async (mentor: MentorProfile) => {
+    setIsLoadingMentorProfile(true);
+    try {
+      // Fetch full mentor details
+      const mentorDetails = await mentorService.getMentorById(mentor.id);
+      setSelectedMentor(mentorDetails);
+      // Navigate to mentor profile view
+      onViewChange?.('mentor-profile');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load mentor profile");
+    } finally {
+      setIsLoadingMentorProfile(false);
+    }
   };
 
   const renderOverview = () => (
@@ -366,18 +352,24 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {fundraisingMetrics.map((metric, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{metric.label}</span>
-                    <span className="text-muted-foreground">{metric.value}/{metric.target}</span>
+              {fundraisingMetrics.length > 0 ? (
+                fundraisingMetrics.map((metric, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{metric.label}</span>
+                      <span className="text-muted-foreground">{metric.value}/{metric.target}</span>
+                    </div>
+                    <Progress 
+                      value={(metric.value / metric.target) * 100} 
+                      className="h-2"
+                    />
                   </div>
-                  <Progress 
-                    value={(metric.value / metric.target) * 100} 
-                    className="h-2"
-                  />
+                ))
+              ) : (
+                <div className="text-center py-4 text-muted-foreground text-sm">
+                  <p>Fundraising metrics will appear here once available.</p>
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
@@ -391,21 +383,29 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className={`p-2 rounded-lg ${activity.bgColor}`}>
-                    <activity.icon className={`w-4 h-4 ${activity.color}`} />
+              {recentActivity.length > 0 ? (
+                recentActivity.map((activity) => (
+                  <div key={activity.id} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className={`p-2 rounded-lg ${activity.bgColor}`}>
+                      <activity.icon className={`w-4 h-4 ${activity.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{activity.title}</p>
+                      <p className="text-sm text-muted-foreground">{activity.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
+                    </div>
+                    <Button variant="ghost" size="sm">
+                      <ArrowUpRight className="w-4 h-4" />
+                    </Button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{activity.title}</p>
-                    <p className="text-sm text-muted-foreground">{activity.description}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    <ArrowUpRight className="w-4 h-4" />
-                  </Button>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Bell className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-sm">No recent activity</p>
+                  <p className="text-xs mt-1">Activity will appear here as you engage with investors and mentors.</p>
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
@@ -425,35 +425,45 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {interestedInvestors.slice(0, 3).map((investor) => (
-                <div key={investor.id} className="flex items-center space-x-4 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={investor.avatar} />
-                    <AvatarFallback>{investor.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{investor.name}</p>
-                    <p className="text-sm text-muted-foreground">{investor.firm}</p>
-                    <p className="text-xs text-muted-foreground">{investor.checkSize}</p>
-                  </div>
-                  <div className="text-right">
-                    <Badge 
-                      variant={investor.status === 'interested' ? 'default' : 
-                              investor.status === 'meeting_scheduled' ? 'secondary' : 'outline'}
-                      className="text-xs"
-                    >
-                      {investor.status.replace('_', ' ')}
-                    </Badge>
-                    <p className="text-xs text-muted-foreground mt-1">{investor.lastContact}</p>
-                  </div>
+              {interestedInvestors.length > 0 ? (
+                <>
+                  {interestedInvestors.slice(0, 3).map((investor) => (
+                    <div key={investor.id} className="flex items-center space-x-4 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={investor.avatar} />
+                        <AvatarFallback>{investor.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{investor.name}</p>
+                        <p className="text-sm text-muted-foreground">{investor.firm}</p>
+                        <p className="text-xs text-muted-foreground">{investor.checkSize}</p>
+                      </div>
+                      <div className="text-right">
+                        <Badge 
+                          variant={investor.status === 'interested' ? 'default' : 
+                                  investor.status === 'meeting_scheduled' ? 'secondary' : 'outline'}
+                          className="text-xs"
+                        >
+                          {investor.status.replace('_', ' ')}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground mt-1">{investor.lastContact}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <button 
+                    className="btn-chrome-secondary w-full mt-4"
+                    onClick={() => onViewChange?.('investors')}
+                  >
+                    View All Investors
+                  </button>
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-sm">No interested investors yet</p>
+                  <p className="text-xs mt-1">Investors showing interest will appear here.</p>
                 </div>
-              ))}
-              <button 
-                className="btn-chrome-secondary w-full mt-4"
-                onClick={() => onViewChange?.('investors')}
-              >
-                View All Investors
-              </button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -470,39 +480,47 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {upcomingMeetings.map((meeting) => (
-                <div key={meeting.id} className="flex items-center space-x-4 p-3 border rounded-lg">
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                      {meeting.type === 'video' ? (
-                        <Video className="w-5 h-5 text-white" />
-                      ) : (
-                        <Phone className="w-5 h-5 text-white" />
-                      )}
+              {upcomingMeetings.length > 0 ? (
+                upcomingMeetings.map((meeting) => (
+                  <div key={meeting.id} className="flex items-center space-x-4 p-3 border rounded-lg">
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        {meeting.type === 'video' ? (
+                          <Video className="w-5 h-5 text-white" />
+                        ) : (
+                          <Phone className="w-5 h-5 text-white" />
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">
+                        {meeting.investor || meeting.mentor}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {meeting.firm || meeting.topic}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {meeting.topic} • {meeting.duration}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{meeting.time}</p>
+                      <Badge 
+                        variant={meeting.status === 'confirmed' ? 'default' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {meeting.status}
+                      </Badge>
                     </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">
-                      {meeting.investor || meeting.mentor}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {meeting.firm || meeting.topic}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {meeting.topic} • {meeting.duration}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{meeting.time}</p>
-                    <Badge 
-                      variant={meeting.status === 'confirmed' ? 'default' : 'secondary'}
-                      className="text-xs"
-                    >
-                      {meeting.status}
-                    </Badge>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-sm">No upcoming meetings</p>
+                  <p className="text-xs mt-1">Scheduled meetings will appear here.</p>
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
@@ -602,19 +620,23 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   );
 
   const renderInvestors = () => {
-    // Ensure mockInvestors is available and handle the mapping safely
-    const availableInvestors = mockInvestors || [];
-    
-    const filteredInvestors = availableInvestors.filter(investor => {
+    // Use real API data with null safety
+    const filteredInvestors = investors.filter(investor => {
+      if (!investor) return false;
+      
+      const searchLower = searchTerm.toLowerCase();
+      const investorName = (investor.full_name || investor.user_name || '').toLowerCase();
+      const orgName = (investor.organization_name || '').toLowerCase();
+      
       const matchesSearch = searchTerm === '' || 
-        investor.profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (investor.profile.organizationName && investor.profile.organizationName.toLowerCase().includes(searchTerm.toLowerCase()));
+        investorName.includes(searchLower) ||
+        orgName.includes(searchLower);
       
       const matchesSector = filterSector === 'all' || 
-        (investor.profile.industries && investor.profile.industries.includes(filterSector));
+        (Array.isArray(investor.industry_preferences) && investor.industry_preferences.includes(filterSector));
       
       const matchesStage = filterStage === 'all' || 
-        (investor.profile.investmentStages && investor.profile.investmentStages.includes(filterStage));
+        (Array.isArray(investor.stage_preferences) && investor.stage_preferences.includes(filterStage));
       
       return matchesSearch && matchesSector && matchesStage;
     });
@@ -669,104 +691,121 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         </Card>
 
         {/* Results */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredInvestors.map((investor) => (
-            <Card key={investor.id} className="hover:shadow-medium transition-shadow">
-              <CardContent className="p-6">
-                <div className="space-y-4">
-                  {/* Header */}
-                  <div className="flex items-start space-x-4">
-                    <Avatar className="w-12 h-12">
-                      <AvatarImage src={investor.profile.avatar} />
-                      <AvatarFallback>{investor.profile.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 space-y-1">
-                      <h3 className="font-semibold text-lg">{investor.profile.name}</h3>
-                      <p className="text-muted-foreground">{investor.profile.organizationName || 'Independent Investor'}</p>
-                      <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{investor.profile.address || 'Location not specified'}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Briefcase className="w-4 h-4" />
-                          <span>{investor.profile.portfolioCount || 0} investments</span>
+        {isLoadingInvestors ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-muted-foreground">Loading investors...</span>
+          </div>
+        ) : investors.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p className="text-lg font-medium mb-2">No investors available</p>
+            <p className="text-sm">
+              {searchTerm || filterSector !== 'all' || filterStage !== 'all'
+                ? 'Try adjusting your search or filters.'
+                : 'There are no approved investors visible to you at this time.'}
+            </p>
+          </div>
+        ) : filteredInvestors.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p className="text-lg font-medium mb-2">No investors match your filters</p>
+            <p className="text-sm">Try adjusting your search or filters.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {filteredInvestors.map((investor) => (
+              <Card key={investor.id} className="hover:shadow-medium transition-shadow">
+                <CardContent className="p-6">
+                  <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-start space-x-4">
+                      <Avatar className="w-12 h-12">
+                        <AvatarFallback>{(investor.full_name || investor.user_name || 'I')[0].toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 space-y-1">
+                        <h3 className="font-semibold text-lg">{investor.full_name || investor.user_name || 'Investor'}</h3>
+                        <p className="text-muted-foreground">{investor.organization_name || 'Independent Investor'}</p>
+                        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                          <div className="flex items-center space-x-1">
+                            <Briefcase className="w-4 h-4" />
+                            <span>{investor.deals_count || 0} deals</span>
+                          </div>
+                          {investor.investment_experience_years != null && (
+                            <div className="flex items-center space-x-1">
+                              <Award className="w-4 h-4" />
+                              <span>{investor.investment_experience_years} years experience</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <Badge variant="outline">
-                      {investor.profile.investmentStages?.[0] || 'Various'}
-                    </Badge>
-                  </div>
-
-                  {/* Investment Details */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Check Size</p>
-                      <p className="font-semibold">{investor.profile.ticketSize || 'Not specified'}</p>
-                    </div>
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Portfolio</p>
-                      <p className="font-semibold">{investor.profile.portfolioCount || 0}</p>
-                    </div>
-                  </div>
-
-                  {/* Sectors */}
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-muted-foreground">Investment Focus</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {(investor.profile.industries || []).map((sector, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {sector}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Match Score */}
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-green-900">Investment Match</p>
-                        <p className="text-sm text-green-700">Great fit for your sector and stage</p>
-                      </div>
-                      <Badge className="bg-green-100 text-green-800">
-                        87% Match
+                      <Badge variant="outline">
+                        {investor.stage_preferences?.[0] || 'Various'}
                       </Badge>
                     </div>
-                  </div>
 
-                  {/* Actions */}
-                  <div className="flex space-x-2">
-                    <button 
-                      className="btn-chrome-secondary flex-1 text-sm py-2"
-                      onClick={() => handleContactInvestor(investor.id)}
-                    >
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Contact
-                    </button>
-                    <button 
-                      className="btn-chrome-primary flex-1 text-sm py-2"
-                      onClick={() => handleSharePitch(investor.id)}
-                    >
-                      <Send className="w-4 h-4 mr-2" />
-                      Share Pitch
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    {/* Investment Details */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <p className="text-sm text-muted-foreground">Ticket Size</p>
+                        <p className="font-semibold">{investor.average_ticket_size || 'Not specified'}</p>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <p className="text-sm text-muted-foreground">Deals</p>
+                        <p className="font-semibold">{investor.deals_count || 0}</p>
+                      </div>
+                    </div>
 
-        {filteredInvestors.length === 0 && (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No investors found</h3>
-              <p className="text-muted-foreground">Try adjusting your search criteria or filters.</p>
-            </CardContent>
-          </Card>
+                    {/* Sectors */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-muted-foreground">Investment Focus</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {(investor.industry_preferences || []).slice(0, 5).map((sector, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {sector}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex space-x-2">
+                      <button 
+                        className="btn-chrome-secondary flex-1 text-sm py-2"
+                        onClick={() => {
+                          const userId = investor.user || investor.id;
+                          if (userId) {
+                            handleContactInvestor(userId, investor.name || investor.full_name);
+                          } else {
+                            toast.error('Invalid investor user ID');
+                          }
+                        }}
+                        disabled={!investor.user && !investor.id}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Contact
+                      </button>
+                      <button 
+                        className="btn-chrome-primary flex-1 text-sm py-2"
+                        onClick={() => {
+                          const userId = investor.user || investor.id;
+                          if (userId) {
+                            handleSharePitch(userId);
+                          } else {
+                            toast.error('Invalid investor user ID');
+                          }
+                        }}
+                        disabled={!investor.user && !investor.id}
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Share Pitch
+                      </button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
       </div>
     );
@@ -789,7 +828,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
       <Card>
         <CardHeader>
           <CardTitle>Current Pitch Deck</CardTitle>
-          <CardDescription>Version {pitchDeckMetrics.version} • Last updated {pitchDeckMetrics.lastUpdated}</CardDescription>
+          <CardDescription>Last updated {pitchDeckMetrics.lastUpdated}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
@@ -817,7 +856,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
 
           <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center">
             <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">{venture.profile.companyName} - Pitch Deck v{pitchDeckMetrics.version}</h3>
+            <h3 className="text-lg font-medium mb-2">Pitch Deck v{pitchDeckMetrics.version}</h3>
             <p className="text-muted-foreground mb-4">15 slides • 12.3 MB • PDF</p>
             <div className="flex justify-center space-x-3">
               <button className="btn-chrome-secondary">
@@ -988,24 +1027,31 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {fundraisingMetrics.map((metric, index) => (
-              <div key={index} className="p-4 border rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium">{metric.label}</h4>
-                  <span className="text-sm text-muted-foreground">
-                    {metric.value}/{metric.target}
-                  </span>
+            {fundraisingMetrics.length > 0 ? (
+              fundraisingMetrics.map((metric, index) => (
+                <div key={index} className="p-4 border rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-medium">{metric.label}</h4>
+                    <span className="text-sm text-muted-foreground">
+                      {metric.value}/{metric.target}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={(metric.value / metric.target) * 100} 
+                    className="h-3"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground mt-2">
+                    <span>{Math.round((metric.value / metric.target) * 100)}% Complete</span>
+                    <span>{metric.target - metric.value} remaining</span>
+                  </div>
                 </div>
-                <Progress 
-                  value={(metric.value / metric.target) * 100} 
-                  className="h-3"
-                />
-                <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                  <span>{Math.round((metric.value / metric.target) * 100)}% Complete</span>
-                  <span>{metric.target - metric.value} remaining</span>
-                </div>
+              ))
+            ) : (
+              <div className="col-span-2 text-center py-8 text-muted-foreground">
+                <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                <p className="text-sm">Fundraising metrics will appear here once available.</p>
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1046,7 +1092,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                 <div className="flex space-x-2">
                   <button 
                     className="btn-chrome-secondary text-sm px-3 py-1"
-                    onClick={() => handleContactInvestor(investor.id)}
+                    onClick={() => handleContactInvestor(investor.id, investor.name || investor.full_name)}
                   >
                     Contact
                   </button>
@@ -1104,13 +1150,11 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   );
 
   const renderMentors = () => {
-    // Ensure mockMentors is available and handle the mapping safely
-    const availableMentors = mockMentors || [];
-    
-    const filteredMentors = availableMentors.filter(mentor => {
+    // Use real API data
+    const filteredMentors = mentors.filter(mentor => {
       const matchesSearch = searchTerm === '' || 
-        mentor.profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (mentor.profile.expertise && mentor.profile.expertise.some(exp => exp.toLowerCase().includes(searchTerm.toLowerCase())));
+        mentor.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (mentor.expertise_fields && mentor.expertise_fields.some(exp => exp.toLowerCase().includes(searchTerm.toLowerCase())));
       
       return matchesSearch;
     });
@@ -1145,33 +1189,28 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
             <CardDescription>Active mentoring relationships</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {currentMentors.map((mentor) => (
-                <div key={mentor.id} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <Avatar className="w-12 h-12">
-                    <AvatarImage src={mentor.avatar} />
-                    <AvatarFallback>{mentor.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 space-y-1">
-                    <h4 className="font-medium">{mentor.name}</h4>
-                    <p className="text-sm text-muted-foreground">{mentor.expertise}</p>
-                    <p className="text-sm text-muted-foreground">{mentor.company}</p>
-                    <div className="flex items-center space-x-2">
-                      <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                      <span className="text-sm">{mentor.rating}</span>
-                      <span className="text-sm text-muted-foreground">•</span>
-                      <span className="text-sm text-muted-foreground">{mentor.sessions} sessions</span>
+            {currentMentors.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                <p className="text-sm">No active mentoring relationships yet.</p>
+                <p className="text-xs mt-1">Connect with mentors below to start building relationships.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {currentMentors.map((mentor) => (
+                  <div key={mentor.id} className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <Avatar className="w-12 h-12">
+                      <AvatarFallback>{mentor.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 space-y-1">
+                      <h4 className="font-medium">{mentor.name}</h4>
+                      <p className="text-sm text-muted-foreground">{mentor.expertise}</p>
+                      <p className="text-sm text-muted-foreground">{mentor.company}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">{mentor.nextSession}</p>
-                    <div className="mt-2">
-                      <Progress value={mentor.progress} className="h-1.5 w-20" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1182,238 +1221,261 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
             <CardDescription>Discover mentors that match your needs</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {filteredMentors.map((mentor) => (
-                <Card key={mentor.id} className="hover:shadow-medium transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="space-y-4">
-                      {/* Header */}
-                      <div className="flex items-start space-x-4">
-                        <Avatar className="w-12 h-12">
-                          <AvatarImage src={mentor.profile.avatar} />
-                          <AvatarFallback>{mentor.profile.name[0]}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 space-y-1">
-                          <h3 className="font-semibold text-lg">{mentor.profile.name}</h3>
-                          <p className="text-muted-foreground">{mentor.profile.jobTitle}</p>
-                          <p className="text-sm text-muted-foreground">{mentor.profile.company}</p>
-                          <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+            {isLoadingMentors ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">Loading mentors...</span>
+              </div>
+            ) : filteredMentors.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                <p>No mentors found. Try adjusting your search.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {filteredMentors.map((mentor) => (
+                  <Card key={mentor.id} className="hover:shadow-medium transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="space-y-4">
+                        {/* Header */}
+                        <div className="flex items-start space-x-4">
+                          <Avatar className="w-12 h-12">
+                            <AvatarFallback>{mentor.full_name[0]}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 space-y-1">
+                            <h3 className="font-semibold text-lg">{mentor.full_name}</h3>
+                            <p className="text-muted-foreground">{mentor.job_title}</p>
+                            <p className="text-sm text-muted-foreground">{mentor.company}</p>
+                          </div>
+                          <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-2">
                             <div className="flex items-center space-x-1">
-                              <MapPin className="w-4 h-4" />
-                              <span>{mentor.profile.location || 'Remote'}</span>
+                              <Globe className="w-4 h-4" />
+                              <span>{mentor.preferred_engagement}</span>
                             </div>
                             <div className="flex items-center space-x-1">
-                              <Users className="w-4 h-4" />
-                              <span>{mentor.profile.activeMentees || 0} mentees</span>
+                              <Briefcase className="w-4 h-4" />
+                              <span>{mentor.engagement_type}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="flex items-center space-x-1">
-                            <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                            <span className="font-medium">{mentor.profile.rating}</span>
+
+                        {/* Expertise */}
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium text-muted-foreground">Expertise</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {(mentor.expertise_fields || []).slice(0, 5).map((skill, index) => (
+                              <Badge key={index} variant="secondary" className="text-xs">
+                                {skill}
+                              </Badge>
+                            ))}
                           </div>
-                          <p className="text-xs text-muted-foreground">{mentor.profile.totalSessions} sessions</p>
                         </div>
-                      </div>
 
-                      {/* Expertise */}
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium text-muted-foreground">Expertise</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {(mentor.profile.expertise || []).map((skill, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
+                        {/* Bio */}
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium text-muted-foreground">About</h4>
+                          <p className="text-sm leading-relaxed line-clamp-3">{mentor.experience_overview}</p>
                         </div>
-                      </div>
 
-                      {/* Bio */}
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium text-muted-foreground">About</h4>
-                        <p className="text-sm leading-relaxed">{mentor.profile.bio}</p>
-                      </div>
-
-                      {/* Availability */}
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-green-900">Available for Mentoring</p>
-                            <p className="text-sm text-green-700">
-                              {mentor.profile.isProBono ? 'Pro Bono' : `${mentor.profile.hourlyRate || 'Rate available'}`}
-                            </p>
+                        {/* Availability */}
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-green-900">Available for Mentoring</p>
+                              <p className="text-sm text-green-700">
+                                {(() => {
+                                  if (mentor.engagement_type === 'PRO_BONO') {
+                                    return 'Pro Bono';
+                                  }
+                                  if (mentor.paid_rate_amount) {
+                                    const rate = `$${mentor.paid_rate_amount}`;
+                                    const period = mentor.paid_rate_type ? `/${mentor.paid_rate_type.toLowerCase()}` : '';
+                                    return `${rate}${period}`;
+                                  }
+                                  return 'Rate available';
+                                })()}
+                              </p>
+                            </div>
+                            <CheckCircle className="w-5 h-5 text-green-600" />
                           </div>
-                          <CheckCircle className="w-5 h-5 text-green-600" />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex space-x-2">
+                          <button 
+                            className="btn-chrome-secondary flex-1 text-sm py-2 flex items-center justify-center"
+                            onClick={() => handleViewMentorProfile(mentor)}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            View Profile
+                          </button>
+                          <button 
+                            className="btn-chrome-primary flex-1 text-sm py-2 flex items-center justify-center"
+                            onClick={() => {
+                              if (mentor.user) {
+                                handleConnectMentor(mentor.user, mentor.full_name);
+                              } else {
+                                toast.error('Invalid mentor user ID');
+                              }
+                            }}
+                            disabled={!mentor.user}
+                          >
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            Contact
+                          </button>
                         </div>
                       </div>
-
-                      {/* Actions */}
-                      <div className="flex space-x-2">
-                        <button className="btn-chrome-secondary flex-1 text-sm py-2">
-                          <Eye className="w-4 h-4 mr-2" />
-                          View Profile
-                        </button>
-                        <button 
-                          className="btn-chrome-primary flex-1 text-sm py-2"
-                          onClick={() => handleConnectMentor(mentor.id)}
-                        >
-                          <Send className="w-4 h-4 mr-2" />
-                          Request Mentoring
-                        </button>
-                      </div>
-                    </div>
                   </CardContent>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {filteredMentors.length === 0 && (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No mentors found</h3>
-              <p className="text-muted-foreground">Try adjusting your search criteria.</p>
-            </CardContent>
-          </Card>
-        )}
       </div>
     );
   };
 
-  const renderMessages = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Messages</h2>
-        <p className="text-muted-foreground">Your conversations with investors and mentors</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Conversation List */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-lg">Conversations</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="space-y-0">
-              {[...interestedInvestors.slice(0, 2), ...currentMentors].map((contact, index) => (
-                <div key={index} className="flex items-center space-x-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer border-b last:border-b-0">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={contact.avatar} />
-                    <AvatarFallback>{contact.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{contact.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {contact.firm || contact.company || contact.expertise}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Last message 1h ago</p>
-                  </div>
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Message View */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="border-b">
-            <div className="flex items-center space-x-3">
-              <Avatar className="w-10 h-10">
-                <AvatarImage src={interestedInvestors[0]?.avatar} />
-                <AvatarFallback>{interestedInvestors[0]?.name[0]}</AvatarFallback>
-              </Avatar>
-              <div>
-                <CardTitle className="text-lg">{interestedInvestors[0]?.name}</CardTitle>
-                <CardDescription>{interestedInvestors[0]?.firm}</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="h-96 overflow-y-auto p-4 space-y-4">
-              {/* Sample messages */}
-              <div className="flex items-start space-x-3">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={interestedInvestors[0]?.avatar} />
-                  <AvatarFallback>{interestedInvestors[0]?.name[0]}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="bg-muted p-3 rounded-lg">
-                    <p className="text-sm">Hi! I reviewed your pitch deck and I'm quite impressed with your AI technology and market traction. I'd like to schedule a call to discuss potential investment opportunities.</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">2 hours ago</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-3 justify-end">
-                <div className="flex-1 flex justify-end">
-                  <div className="bg-blue-500 text-white p-3 rounded-lg max-w-xs">
-                    <SafeText text="Thank you for your interest! I'd be happy to discuss our investment opportunity. Are you available for a call this week?" as="p" className="text-sm" />
-                  </div>
-                </div>
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={venture.profile.logo} />
-                  <AvatarFallback>{venture.profile.companyName[0]}</AvatarFallback>
-                </Avatar>
-              </div>
-
-              <div className="flex items-start space-x-3">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={interestedInvestors[0]?.avatar} />
-                  <AvatarFallback>{interestedInvestors[0]?.name[0]}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="bg-muted p-3 rounded-lg">
-                    <SafeText text="Absolutely! I'm free Thursday at 3 PM or Friday at 10 AM. I'd particularly like to discuss your go-to-market strategy and financial projections." as="p" className="text-sm" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">1 hour ago</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Message Input */}
-            <div className="border-t p-4">
-              <div className="flex space-x-3">
-                <Input 
-                  placeholder="Type your message..."
-                  maxLength={10000} 
-                  className="flex-1"
-                />
-                <button className="btn-chrome-primary px-4 py-2">
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+  const renderMessages = () => {
+    // Safety check: ensure user has required properties
+    if (!user || !user.id) {
+      return (
+        <div className="flex items-center justify-center h-[600px] text-muted-foreground">
+          <div className="text-center">
+            <MessageSquare className="w-12 h-12 mx-auto mb-4" />
+            <p>Unable to load messaging system. User information is missing.</p>
+          </div>
+        </div>
+      );
+    }
+    return <MessagingSystem
+      currentUser={user}
+      selectedUserId={selectedMessagingUserId}
+      selectedUserName={selectedMessagingUserName}
+      selectedUserRole={selectedMessagingUserRole}
+      onRefreshUnreadCount={onRefreshUnreadCount}
+    />;
+  };
 
   // Render different views based on activeView
-  switch (activeView) {
-    case 'products':
-      return <ProductManagement user={user} />;
-      
-    case 'investors':
-      return renderInvestors();
-      
-    case 'pitch':
-      return renderPitch();
-      
-    case 'fundraising':
-      return renderFundraising();
-      
-    case 'mentors':
-      return renderMentors();
-      
-    case 'messages':
-      return renderMessages();
-      
-    default:
-      return renderOverview();
-  }
+  const renderCurrentView = () => {
+    switch (activeView) {
+      case 'products':
+        return <ProductManagement user={user} />;
+        
+      case 'investors':
+        return renderInvestors();
+        
+      case 'pitch':
+        return renderPitch();
+        
+      case 'fundraising':
+        return renderFundraising();
+        
+      case 'mentors':
+        return renderMentors();
+        
+      case 'mentor-profile':
+        return renderMentorProfile();
+        
+      case 'messages':
+        return renderMessages();
+        
+      default:
+        return renderOverview();
+    }
+  };
+
+  const renderMentorProfile = () => {
+    if (isLoadingMentorProfile) {
+      return (
+        <div className="flex items-center justify-center h-[600px]">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading mentor profile...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!selectedMentor) {
+      return (
+        <div className="flex items-center justify-center h-[600px]">
+          <div className="text-center">
+            <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+            <p className="text-muted-foreground">No mentor selected</p>
+            <Button 
+              onClick={() => onViewChange?.('mentors')}
+              className="mt-4"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Mentors
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // Convert MentorProfile to FrontendUser format for UserProfile component
+    const mentorUser: FrontendUser = {
+      id: selectedMentor.user,
+      email: selectedMentor.user_email,
+      full_name: selectedMentor.full_name,
+      role: 'mentor',
+      profile: {
+        name: selectedMentor.full_name,
+        jobTitle: selectedMentor.job_title,
+        company: selectedMentor.company,
+        email: selectedMentor.contact_email,
+        phone: selectedMentor.phone,
+        linkedin: selectedMentor.linkedin_or_website,
+        linkedin_or_website: selectedMentor.linkedin_or_website, // UserProfile component checks for this field
+        linkedinUrl: selectedMentor.linkedin_or_website, // Alternative field name
+        expertise: selectedMentor.expertise_fields,
+        expertise_fields: selectedMentor.expertise_fields, // UserProfile component checks for this field
+        experience: selectedMentor.experience_overview,
+        experience_overview: selectedMentor.experience_overview, // UserProfile component checks for this field
+        industries: selectedMentor.industries_of_interest,
+        industries_of_interest: selectedMentor.industries_of_interest,
+        engagementType: selectedMentor.engagement_type,
+        rateType: selectedMentor.paid_rate_type,
+        rateAmount: selectedMentor.paid_rate_amount,
+        availability: selectedMentor.availability_types,
+        preferredEngagement: selectedMentor.preferred_engagement,
+        approvalStatus: selectedMentor.status.toLowerCase() as 'pending' | 'approved' | 'rejected',
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Back Button */}
+        <div className="flex items-center space-x-4">
+          <Button 
+            variant="ghost"
+            onClick={() => {
+              setSelectedMentor(null);
+              onViewChange?.('mentors');
+            }}
+            className="flex items-center"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Mentors
+          </Button>
+        </div>
+
+        {/* Mentor Profile */}
+        <UserProfile
+          user={mentorUser}
+          currentUser={user}
+          onMessage={(userId) => {
+            // Use selectedMentor's name if available
+            handleConnectMentor(userId, selectedMentor?.full_name);
+          }}
+        />
+      </div>
+    );
+  };
+
+  return renderCurrentView();
 }

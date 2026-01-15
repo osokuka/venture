@@ -38,10 +38,10 @@ import {
   Eye,
   EyeOff
 } from "lucide-react";
-import { type User as UserType } from './MockData';
+import { type FrontendUser } from '../types';
 
 interface SettingsProps {
-  user: UserType;
+  user: FrontendUser;
 }
 
 interface NotificationSettings {
@@ -78,6 +78,7 @@ export function Settings({ user }: SettingsProps) {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // TODO: VL-810 - Fetch notification settings from API on component mount
   // Notification settings
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     emailNewMatches: true,
@@ -90,6 +91,7 @@ export function Settings({ user }: SettingsProps) {
     smsImportantUpdates: false,
   });
 
+  // TODO: VL-810 - Fetch privacy settings from API on component mount
   // Privacy settings
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
     profileVisibility: 'network',
@@ -100,6 +102,7 @@ export function Settings({ user }: SettingsProps) {
     allowProfileSearch: true,
   });
 
+  // TODO: VL-810 - Fetch account settings from API on component mount
   // Account settings
   const [accountSettings, setAccountSettings] = useState<AccountSettings>({
     theme: 'system',
@@ -134,6 +137,7 @@ export function Settings({ user }: SettingsProps) {
   const saveSettings = async () => {
     setIsLoading(true);
     try {
+      // TODO: VL-810 - Replace with real API call to save notification, privacy, and account settings
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
       toast.success("Settings saved successfully!");
@@ -185,6 +189,7 @@ export function Settings({ user }: SettingsProps) {
   const exportData = async () => {
     setIsLoading(true);
     try {
+      // TODO: VL-810 - Replace with real API call to POST /api/settings/export-data
       // Simulate data export
       await new Promise(resolve => setTimeout(resolve, 2000));
       toast.success("Data export will be sent to your email within 24 hours");
@@ -196,6 +201,7 @@ export function Settings({ user }: SettingsProps) {
   };
 
   const deleteAccount = async () => {
+    // TODO: VL-810 - Replace with real API call to POST /api/settings/delete-account
     // This would handle account deletion
     toast.success("Account deletion request has been submitted");
   };
@@ -689,6 +695,7 @@ export function Settings({ user }: SettingsProps) {
                 Require a verification code when signing in
               </p>
             </div>
+            {/* TODO: VL-810 - Implement two-factor authentication functionality */}
             <Badge variant="outline" className="text-orange-600 border-orange-200">
               Coming Soon
             </Badge>
@@ -704,6 +711,7 @@ export function Settings({ user }: SettingsProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* TODO: VL-810 - Replace hardcoded session data with API call to GET /api/settings/sessions */}
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div className="space-y-1">

@@ -38,9 +38,9 @@ else:
     print(f"Superuser {admin_email} already exists.")
 EOF
 
-# Create demo accounts if they don't exist
-echo "Creating demo accounts..."
-python manage.py create_demo_accounts --noinput || true
+# Seed comprehensive demo data (users, products, profiles, conversations, messages)
+echo "Seeding demo data..."
+python manage.py seed_demo_data --noinput || true
 
 echo "Starting server..."
 exec "$@"

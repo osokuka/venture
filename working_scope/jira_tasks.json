@@ -1448,6 +1448,423 @@
         }
       ],
       "status": "In Progress"
+    },
+    {
+      "key": "VL-810",
+      "summary": "Settings Component - Replace Hardcoded Data with API Integration",
+      "description": "Replace all hardcoded/mock data in Settings component with real API calls. Currently, notification settings, privacy settings, account settings, active sessions, data export, and account deletion are using mock data or hardcoded values.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "Notification settings fetched from and saved to API",
+        "Privacy settings fetched from and saved to API",
+        "Account settings (theme, language, timezone, currency) fetched from and saved to API",
+        "Active sessions displayed from real session data API",
+        "Data export functionality connected to backend export API",
+        "Account deletion connected to backend deletion API",
+        "Two-factor authentication implemented (currently shows 'Coming Soon')",
+        "All settings persist across sessions",
+        "Loading states and error handling for all API calls"
+      ],
+      "tasks": [
+        {
+          "summary": "Create backend API endpoints for user settings",
+          "description": "Create GET/PATCH /api/settings/notifications, /api/settings/privacy, /api/settings/account endpoints",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API endpoint for active sessions",
+          "description": "Create GET /api/settings/sessions endpoint to return user's active login sessions with device info, IP, last activity",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API endpoint for session management",
+          "description": "Create DELETE /api/settings/sessions/{session_id} endpoint to allow users to revoke sessions",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API endpoint for data export",
+          "description": "Create POST /api/settings/export-data endpoint that generates and emails user data export",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API endpoint for account deletion",
+          "description": "Create POST /api/settings/delete-account endpoint with proper confirmation and data deletion",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded notification settings with API calls",
+          "description": "Update Settings component to fetch notification settings from API on mount and save changes via API",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded privacy settings with API calls",
+          "description": "Update Settings component to fetch privacy settings from API on mount and save changes via API",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded account settings with API calls",
+          "description": "Update Settings component to fetch account settings (theme, language, timezone, currency) from API and save changes",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded active sessions with API calls",
+          "description": "Update Settings component to fetch active sessions from API and display real session data (device, IP, location, last activity). Remove hardcoded 'Chrome on macOS • Active now' and 'IP: 192.168.1.100'",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace mock data export with real API call",
+          "description": "Update exportData function to call real API endpoint instead of setTimeout simulation",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace mock account deletion with real API call",
+          "description": "Update deleteAccount function to call real API endpoint with proper confirmation flow",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement two-factor authentication",
+          "description": "Replace 'Coming Soon' badge with actual 2FA setup and management functionality",
+          "type": "Task",
+          "estimate": "8h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create settingsService for frontend",
+          "description": "Create settingsService.ts with methods for fetching and updating all settings types",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-811",
+      "summary": "Dashboard Components - Replace Hardcoded Data with API Integration",
+      "description": "Replace all hardcoded/mock data in dashboard components (AdminDashboard, InvestorDashboard, MentorDashboard, VentureDashboard) with real API calls. Currently, percentage changes, activity feeds, portfolio data, metrics, and calculations are using hardcoded values.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 13,
+      "acceptanceCriteria": [
+        "AdminDashboard percentage changes calculated from historical data API",
+        "AdminDashboard active users count from real user activity API",
+        "AdminDashboard charts display real analytics data",
+        "InvestorDashboard recent activity from activity feed API",
+        "InvestorDashboard portfolio companies from investment tracking API",
+        "InvestorDashboard investment opportunities from matching/opportunities API",
+        "MentorDashboard recent activity from activity feed API",
+        "MentorDashboard active mentees from mentoring relationships API",
+        "MentorDashboard monthly hours from session tracking API",
+        "VentureDashboard funding metrics from funding tracking API",
+        "VentureDashboard pitch deck analytics from analytics API",
+        "VentureDashboard activity feed from activity feed API",
+        "DocumentViewer displays real document content instead of mock page content"
+      ],
+      "tasks": [
+        {
+          "summary": "Create backend API for activity feed",
+          "description": "Create GET /api/activity/feed endpoint that returns user activity (messages, matches, sessions, investments, etc.)",
+          "type": "Task",
+          "estimate": "5h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for historical statistics",
+          "description": "Create GET /api/admin/stats/historical endpoint that returns percentage changes and trends over time periods",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for active users calculation",
+          "description": "Create GET /api/admin/stats/active-users endpoint that returns count of users active in last 30 days",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for analytics/charts data",
+          "description": "Create GET /api/admin/analytics endpoint that returns chart-ready data (role distribution over time, approval trends, etc.)",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for investor portfolio tracking",
+          "description": "Create GET /api/investors/portfolio endpoint that returns investor's portfolio companies with investment details, returns, and metrics",
+          "type": "Task",
+          "estimate": "5h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for investment opportunities",
+          "description": "Create GET /api/investors/opportunities endpoint that returns matched investment opportunities for investor",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for mentoring relationships",
+          "description": "Create GET /api/mentors/mentees endpoint that returns active mentees with session history, progress, and goals",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for session tracking",
+          "description": "Create GET /api/mentors/sessions endpoint that returns session history, monthly hours, and statistics",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for funding tracking",
+          "description": "Create GET /api/ventures/funding endpoint that returns funding goal, raised amount, progress, and valuation",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend API for pitch deck analytics",
+          "description": "Create GET /api/ventures/products/{id}/analytics endpoint that returns views, downloads, average view time, last updated",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded percentage changes in AdminDashboard",
+          "description": "Update AdminDashboard statCards to fetch percentage changes from historical stats API instead of hardcoded '+12%', '+3', '+8%', '+15%'",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded active users calculation in AdminDashboard",
+          "description": "Update AdminDashboard to fetch active users count from API instead of calculating Math.floor(stats.totalUsers * 0.65)",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace placeholder charts in AdminDashboard",
+          "description": "Update AdminDashboard analytics tab to display real charts using charting library (e.g., Recharts) with data from analytics API",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded recentActivity in InvestorDashboard",
+          "description": "Update InvestorDashboard to fetch recentActivity from activity feed API instead of hardcoded array",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded portfolioCompanies in InvestorDashboard",
+          "description": "Update InvestorDashboard to fetch portfolioCompanies from portfolio tracking API instead of hardcoded array",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded investmentOpportunities in InvestorDashboard",
+          "description": "Update InvestorDashboard to fetch investmentOpportunities from opportunities API instead of hardcoded array",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded stats in InvestorDashboard",
+          "description": "Update InvestorDashboard stats (pipeline: 23, etc.) to fetch from real API endpoints",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded recentActivity in MentorDashboard",
+          "description": "Update MentorDashboard to fetch recentActivity from activity feed API instead of hardcoded array",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded activeMentees in MentorDashboard",
+          "description": "Update MentorDashboard to fetch activeMentees from mentoring relationships API instead of empty array and remove mockActiveMentees",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace hardcoded monthlyHours in MentorDashboard",
+          "description": "Update MentorDashboard stats to fetch monthlyHours from session tracking API instead of hardcoded value (12)",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Replace mock page content in DocumentViewer",
+          "description": "Update DocumentViewer to display real document content from API instead of mockPageContent array",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create activityService for frontend",
+          "description": "Create activityService.ts with methods for fetching activity feeds for all user roles",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create analyticsService for frontend",
+          "description": "Create analyticsService.ts with methods for fetching analytics and chart data",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-812",
+      "summary": "Messaging System - Improve UI with Bubble Chat Design",
+      "description": "Enhance the messaging system UI to display messages as modern bubble chats with proper alignment (user's messages on right, other party on left), chronological ordering, and improved inbox layout showing all conversations.",
+      "type": "Story",
+      "epic": "VL-5",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Messages displayed as bubble chats (rounded corners, proper spacing)",
+        "User's own messages aligned to the right with distinct styling",
+        "Other party's messages aligned to the left with distinct styling",
+        "Messages displayed in chronological order (oldest to newest)",
+        "Inbox sidebar shows all conversations with other users",
+        "Conversation list shows participant names, last message preview, and unread badges",
+        "Smooth scrolling to latest message when conversation opens",
+        "Proper visual distinction between sent and received messages",
+        "Responsive design works on mobile and desktop"
+      ],
+      "tasks": [
+        {
+          "summary": "Update message bubble styling for sent messages",
+          "description": "Style user's own messages with right alignment, primary color background, and proper padding/spacing",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Update message bubble styling for received messages",
+          "description": "Style other party's messages with left alignment, muted background, and proper padding/spacing",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Ensure messages are sorted chronologically",
+          "description": "Verify messages are displayed in chronological order (oldest first, newest last) and auto-scroll to bottom",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Improve inbox sidebar layout and styling",
+          "description": "Enhance conversation list in sidebar with better spacing, hover states, and visual hierarchy",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Add avatar display for messages",
+          "description": "Show user avatars next to messages (optional, for better visual context)",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add smooth scroll to latest message",
+          "description": "Automatically scroll to the latest message when conversation is opened or new message is sent",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        }
+      ],
+      "status": "In Progress"
+    },
+    {
+      "key": "VL-813",
+      "summary": "Backend Messaging Architecture - Fix Message Persistence and Formatting",
+      "description": "Fix the backend messaging system to ensure messages persist correctly in conversations (threads), are returned in chronological order, and have consistent formatting for the frontend bubble chat UI. Messages should be stored as transactions within conversations, not as standalone messages.",
+      "type": "Story",
+      "epic": "VL-5",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Messages persist correctly in conversations (threads)",
+        "Messages are returned in chronological order (oldest to newest)",
+        "MessageSerializer returns sender as string (UUID) consistently",
+        "ConversationDetailSerializer includes unread_count field",
+        "Messages are properly associated with conversations",
+        "Conversation last_message_at is updated when new messages are sent",
+        "Unread count is calculated correctly per conversation",
+        "Message read_at status is tracked correctly"
+      ],
+      "tasks": [
+        {
+          "summary": "Fix MessageSerializer to return sender as string UUID",
+          "description": "Ensure MessageSerializer always returns sender as a string UUID (not User object) for consistent frontend consumption",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Ensure messages are sorted chronologically in ConversationDetailSerializer",
+          "description": "Update ConversationDetailSerializer to return messages sorted by created_at ascending (oldest first)",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Add unread_count to ConversationDetailSerializer",
+          "description": "Include unread_count field in ConversationDetailSerializer so frontend can display unread badges in chat view",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Verify message persistence in conversations",
+          "description": "Test and verify that messages are correctly stored and retrieved from conversations, ensuring they persist as chat history",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "In Progress"
     }
   ],
   "bugs": [],
@@ -1455,8 +1872,8 @@
     "created": "2025-01-27",
     "updated": "2025-01-14",
     "version": "1.1",
-    "totalStories": 32,
-    "totalTasks": 130,
-    "estimatedStoryPoints": 166
+    "totalStories": 36,
+    "totalTasks": 175,
+    "estimatedStoryPoints": 197
   }
 }

@@ -30,6 +30,7 @@ export function DocumentViewer({
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
 
+  // TODO: VL-811 - Replace mock data with real document content from API
   // Mock data for demonstration - in a real app, this would come from the document
   const totalPages = 12;
   const mockPageContent = [

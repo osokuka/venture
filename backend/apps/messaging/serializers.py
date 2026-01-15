@@ -8,6 +8,7 @@ from apps.accounts.serializers import UserSerializer
 
 class MessageSerializer(serializers.ModelSerializer):
     """Serializer for Message model."""
+    sender = serializers.UUIDField(source='sender.id', read_only=True)  # Return sender as UUID string
     sender_email = serializers.EmailField(source='sender.email', read_only=True)
     sender_name = serializers.CharField(source='sender.full_name', read_only=True)
     
@@ -76,13 +77,19 @@ class ConversationSerializer(serializers.ModelSerializer):
 class ConversationDetailSerializer(serializers.ModelSerializer):
     """Serializer for Conversation model (detail view with messages)."""
     participants = UserSerializer(many=True, read_only=True)
-    messages = MessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()  # Use SerializerMethodField to control ordering
     other_participant = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Conversation
-        fields = ('id', 'participants', 'other_participant', 'created_at', 'last_message_at', 'messages')
+        fields = ('id', 'participants', 'other_participant', 'created_at', 'last_message_at', 'messages', 'unread_count')
         read_only_fields = ('id', 'created_at', 'last_message_at')
+    
+    def get_messages(self, obj):
+        """Get messages sorted chronologically (oldest first) for chat display."""
+        messages = obj.messages.all().order_by('created_at')  # Oldest first for chronological chat
+        return MessageSerializer(messages, many=True, context=self.context).data
     
     def get_other_participant(self, obj):
         """Get the other participant (not the current user)."""
@@ -100,3 +107,17 @@ class ConversationDetailSerializer(serializers.ModelSerializer):
                 'role': other.role
             }
         return None
+    
+    def get_unread_count(self, obj):
+        """Get unread message count for current user."""
+        request = self.context.get('request')
+        if not request or not request.user:
+            return 0
+        
+        return Message.objects.filter(
+            conversation=obj
+        ).exclude(
+            sender=request.user
+        ).filter(
+            read_at__isnull=True
+        ).count()

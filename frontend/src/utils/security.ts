@@ -180,7 +180,28 @@ export function sanitizeFilename(filename: string): string {
 export function validateMessage(message: string | null | undefined, maxLength: number = 10000): string | null {
   if (!message) return null;
   
-  const sanitized = sanitizeInput(message, maxLength);
+  let sanitized = sanitizeInput(message, maxLength);
+  
+  // Security: Remove dangerous patterns
+  // Prevent file path patterns (e.g., C:\file.txt, /etc/passwd)
+  sanitized = sanitized.replace(/[a-zA-Z]:[\\\/]/g, '');
+  sanitized = sanitized.replace(/\.\./g, ''); // Remove path traversal attempts
+  
+  // Security: Remove data URIs and javascript: protocols
+  sanitized = sanitized.replace(/data:/gi, '');
+  sanitized = sanitized.replace(/javascript:/gi, '');
+  sanitized = sanitized.replace(/vbscript:/gi, '');
+  
+  // Security: Remove event handlers (onclick, onload, etc.)
+  sanitized = sanitized.replace(/on\w+\s*=/gi, '');
+  
+  // Security: Remove script tags and iframe tags
+  sanitized = sanitized.replace(/<script[^>]*>.*?<\/script>/gi, '');
+  sanitized = sanitized.replace(/<iframe[^>]*>.*?<\/iframe>/gi, '');
+  sanitized = sanitized.replace(/<object[^>]*>.*?<\/object>/gi, '');
+  sanitized = sanitized.replace(/<embed[^>]*>/gi, '');
+  
+  sanitized = sanitized.trim();
   
   if (sanitized.length === 0) {
     return null;

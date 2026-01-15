@@ -11,7 +11,7 @@ import {
   Clock, 
   TrendingUp,
   FileText,
-  Settings,
+  Settings as SettingsIcon,
   Shield,
   BarChart3,
   UserCheck,
@@ -25,6 +25,9 @@ import { adminService, type AdminStats, type UserListItem, type ApprovalItem } f
 import { ApprovalsManagementTab } from './ApprovalsManagementTab';
 import { UsersManagementTab } from './UsersManagementTab';
 import { AdminProductsTab } from './AdminProductsTab';
+import { UserProfile } from './UserProfile';
+import { EditProfile } from './EditProfile';
+import { Settings } from './Settings';
 
 interface AdminDashboardProps {
   user: any;
@@ -33,7 +36,7 @@ interface AdminDashboardProps {
   onProfileUpdate?: (updates: any) => void;
 }
 
-export function AdminDashboard({ user }: AdminDashboardProps) {
+export function AdminDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate }: AdminDashboardProps) {
   const { logout } = useAuth();
   const [stats, setStats] = useState<AdminStats>({
     totalUsers: 0,
@@ -47,6 +50,24 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'products' | 'approvals' | 'analytics'>('overview');
+
+  // Helper function to get Django admin URL from API base URL
+  // Extracts the base URL (protocol + host + port) and appends /admin
+  const getAdminUrl = (): string => {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api';
+    try {
+      // Parse the API URL and extract base URL (remove /api if present)
+      const url = new URL(apiBaseUrl);
+      // Remove /api from pathname if it exists
+      let pathname = url.pathname.replace(/\/api\/?$/, '');
+      // Construct admin URL
+      return `${url.protocol}//${url.host}${pathname}/admin`;
+    } catch (error) {
+      // Fallback: if URL parsing fails, try simple string replacement
+      const baseUrl = apiBaseUrl.replace(/\/api\/?$/, '');
+      return `${baseUrl}/admin`;
+    }
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -75,6 +96,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     fetchStats();
   }, []);
 
+  // TODO: VL-811 - Replace hardcoded percentage changes with API call to historical stats
   const statCards = [
     {
       title: 'Total Users',
@@ -82,7 +104,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       icon: Users,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
-      change: '+12%',
+      change: '+12%', // TODO: VL-811 - Fetch from historical stats API
       changeType: 'positive' as const,
     },
     {
@@ -91,7 +113,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       icon: Clock,
       color: 'text-yellow-600',
       bgColor: 'bg-yellow-50',
-      change: '+3',
+      change: '+3', // TODO: VL-811 - Fetch from historical stats API
       changeType: 'neutral' as const,
     },
     {
@@ -100,7 +122,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       icon: CheckCircle,
       color: 'text-green-600',
       bgColor: 'bg-green-50',
-      change: '+8%',
+      change: '+8%', // TODO: VL-811 - Fetch from historical stats API
       changeType: 'positive' as const,
     },
     {
@@ -109,7 +131,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       icon: MessageSquare,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
-      change: '+15%',
+      change: '+15%', // TODO: VL-811 - Fetch from historical stats API
       changeType: 'positive' as const,
     },
   ];
@@ -138,6 +160,19 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     },
   ];
 
+  // Handle profile views (view and edit)
+  if (activeView === 'profile') {
+    return <UserProfile user={user} onEdit={() => onViewChange?.('edit-profile')} isOwnProfile={true} />;
+  }
+
+  if (activeView === 'edit-profile') {
+    return <EditProfile user={user} onProfileUpdate={onProfileUpdate} />;
+  }
+
+  if (activeView === 'settings') {
+    return <Settings user={user} />;
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -160,7 +195,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
             Administrator
           </Badge>
           <a
-            href="http://localhost:8001/admin"
+            href={getAdminUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-chrome-primary text-sm px-4 py-2"
@@ -283,7 +318,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                 <Button 
                   variant="outline" 
                   className="h-auto flex-col items-start p-4 hover:bg-gray-50 hover:border-gray-200 transition-colors"
-                  onClick={() => window.open('http://localhost:8001/admin', '_blank')}
+                  onClick={() => window.open(getAdminUrl(), '_blank')}
                 >
                   <FileText className="w-5 h-5 mb-2 text-gray-600" />
                   <span className="font-medium">Django Admin</span>
@@ -440,6 +475,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                             <Users className="w-5 h-5 text-blue-600" />
                             <span className="text-sm text-gray-700">Active Users</span>
                           </div>
+                          {/* TODO: VL-811 - Replace hardcoded calculation with API call to GET /api/admin/stats/active-users */}
                           <span className="font-semibold">
                             {Math.floor(stats.totalUsers * 0.65)}
                           </span>
@@ -469,6 +505,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
                     <CardTitle className="text-lg">Approval Status</CardTitle>
                   </CardHeader>
                   <CardContent>
+                    {/* TODO: VL-811 - Replace placeholder with real charts using charting library (e.g., Recharts) and data from GET /api/admin/analytics */}
                     <div className="h-48 flex items-center justify-center text-gray-400">
                       <div className="text-center">
                         <BarChart3 className="w-12 h-12 mx-auto mb-2" />

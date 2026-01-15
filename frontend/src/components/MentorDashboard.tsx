@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -37,24 +37,66 @@ import {
   Check,
   X
 } from "lucide-react";
-import { type User, type Mentor, mockVentures, mockMentors, getUnreadMessagesForUser } from './MockData';
+import { type FrontendUser } from '../types';
+import { ventureService } from '../services/ventureService';
+import { messagingService } from '../services/messagingService';
+import { type VentureProduct } from '../types';
 import { EditProfile } from './EditProfile';
 import { Settings } from './Settings';
 import { UserProfile } from './UserProfile';
 import { SchedulingModal } from './SchedulingModal';
 
 interface MentorDashboardProps {
-  user: User;
+  user: FrontendUser;
   activeView?: string;
   onViewChange?: (view: string) => void;
-  onProfileUpdate?: (updatedUser: User) => void;
+  onProfileUpdate?: (updatedUser: FrontendUser) => void;
+  onRefreshUnreadCount?: () => void; // Callback to refresh global unread count
 }
 
-export function MentorDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate }: MentorDashboardProps) {
-  const mentor = user as Mentor;
-  const unreadMessages = getUnreadMessagesForUser(user.id);
+export function MentorDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate, onRefreshUnreadCount }: MentorDashboardProps) {
+  const [ventures, setVentures] = useState<VentureProduct[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoadingVentures, setIsLoadingVentures] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSector, setFilterSector] = useState('all');
+
+  // Fetch unread message count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await messagingService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch ventures when discover view is active
+  useEffect(() => {
+    if (activeView === 'discover') {
+      fetchVentures();
+    }
+  }, [activeView]);
+
+  const fetchVentures = async () => {
+    setIsLoadingVentures(true);
+    try {
+      const data = await ventureService.getPublicVentures({
+        search: searchTerm || undefined,
+        sector: filterSector !== 'all' ? filterSector : undefined,
+      });
+      setVentures(data);
+    } catch (error) {
+      console.error('Failed to fetch ventures:', error);
+    } finally {
+      setIsLoadingVentures(false);
+    }
+  };
   const [filterStage, setFilterStage] = useState('all');
   const [schedulingModal, setSchedulingModal] = useState<{
     isOpen: boolean;
@@ -77,15 +119,16 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
     return <UserProfile user={user} onEdit={() => onViewChange?.('edit-profile')} isOwnProfile={true} />;
   }
 
-  // Mock data for the dashboard
+  // TODO: VL-811 - Replace hardcoded stats with API calls
   const stats = {
-    activeMentees: mentor.profile.activeMentees || 4,
-    totalSessions: mentor.profile.totalSessions || 87,
-    rating: mentor.profile.rating || 4.9,
-    totalMessages: unreadMessages.length + 23,
-    monthlyHours: 12,
+    activeMentees: 0, // TODO: VL-811 - Get from GET /api/mentors/mentees
+    totalSessions: 0, // TODO: VL-811 - Get from GET /api/mentors/sessions
+    rating: 0, // TODO: VL-811 - Get from mentor profile API
+    totalMessages: unreadCount,
+    monthlyHours: 12, // TODO: VL-811 - Get from GET /api/mentors/sessions (monthly hours)
   };
 
+  // TODO: VL-811 - Replace hardcoded recentActivity with API call to GET /api/activity/feed
   const recentActivity = [
     {
       id: 1,
@@ -129,7 +172,11 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
     }
   ];
 
-  const activeMentees = [
+  // TODO: VL-811 - Replace empty array with API call to GET /api/mentors/mentees
+  const activeMentees: any[] = [];
+  
+  // TODO: VL-811 - Remove mockActiveMentees when API is implemented
+  const mockActiveMentees = [
     {
       id: 'v1',
       name: 'Sarah Chen',
@@ -529,8 +576,8 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
         onClose={() => setSchedulingModal({ isOpen: false, mentee: null })}
         mentee={schedulingModal.mentee}
         mentor={{
-          name: mentor.profile.name,
-          avatar: mentor.profile.avatar
+          name: user.full_name,
+          avatar: undefined
         }}
       />
     </div>
@@ -765,21 +812,22 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
         onClose={() => setSchedulingModal({ isOpen: false, mentee: null })}
         mentee={schedulingModal.mentee}
         mentor={{
-          name: mentor.profile.name,
-          avatar: mentor.profile.avatar
+          name: user.full_name,
+          avatar: undefined
         }}
       />
     </div>
   );
 
   const renderDiscover = () => {
-    const filteredVentures = mockVentures.filter(venture => {
+    const filteredVentures = ventures.filter(venture => {
       const matchesSearch = searchTerm === '' || 
-        venture.profile.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        venture.profile.shortDescription.toLowerCase().includes(searchTerm.toLowerCase());
+        venture.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        venture.short_description.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesSector = filterSector === 'all' || venture.profile.sector === filterSector;
-      const matchesStage = filterStage === 'all' || venture.profile.fundingNeeds === filterStage;
+      const matchesSector = filterSector === 'all' || venture.industry_sector === filterSector;
+      // Note: stage filtering would need to be implemented based on actual data structure
+      const matchesStage = filterStage === 'all' || true; // TODO: Implement stage filtering
       
       return matchesSearch && matchesSector && matchesStage;
     });
@@ -840,44 +888,49 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
                   {/* Header */}
                   <div className="flex items-start space-x-4">
                     <Avatar className="w-12 h-12">
-                      <AvatarImage src={venture.profile.logo} />
-                      <AvatarFallback>{venture.profile.companyName[0]}</AvatarFallback>
+                      <AvatarFallback>{venture.name[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 space-y-1">
-                      <h3 className="font-semibold text-lg">{venture.profile.companyName}</h3>
-                      <p className="text-muted-foreground">{venture.profile.shortDescription}</p>
+                      <h3 className="font-semibold text-lg">{venture.name}</h3>
+                      <p className="text-muted-foreground">{venture.short_description}</p>
                       <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                         <div className="flex items-center space-x-1">
                           <Building className="w-4 h-4" />
-                          <span>{venture.profile.sector}</span>
+                          <span>{venture.industry_sector}</span>
                         </div>
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{venture.profile.address}</span>
-                        </div>
+                        {venture.address && (
+                          <div className="flex items-center space-x-1">
+                            <MapPin className="w-4 h-4" />
+                            <span>{venture.address}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <Badge variant="outline">
-                      {venture.profile.fundingNeeds}
+                      {venture.status}
                     </Badge>
                   </div>
 
                   {/* Details */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Funding Goal</p>
-                      <p className="font-semibold">{venture.profile.fundingAmount}</p>
-                    </div>
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Team Size</p>
-                      <p className="font-semibold">{venture.profile.employeeCount}</p>
-                    </div>
+                    {venture.year_founded && (
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <p className="text-sm text-muted-foreground">Founded</p>
+                        <p className="font-semibold">{venture.year_founded}</p>
+                      </div>
+                    )}
+                    {venture.employees_count && (
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <p className="text-sm text-muted-foreground">Team Size</p>
+                        <p className="font-semibold">{venture.employees_count}</p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Traction */}
+                  {/* Description */}
                   <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-muted-foreground">Current Traction</h4>
-                    <p className="text-sm">{venture.profile.traction}</p>
+                    <h4 className="text-sm font-medium text-muted-foreground">Description</h4>
+                    <p className="text-sm">{venture.short_description}</p>
                   </div>
 
                   {/* Match Score */}
@@ -923,112 +976,69 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
     );
   };
 
-  const renderMessages = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Messages</h2>
-        <p className="text-muted-foreground">Your conversations with mentees and other users</p>
+  const renderMessages = () => {
+    // TODO: Fetch conversations from messagingService when available
+    const conversations: any[] = [];
+    
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold">Messages</h2>
+          <p className="text-muted-foreground">Your conversations with mentees and other users</p>
+        </div>
+
+        {conversations.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No conversations yet</h3>
+              <p className="text-muted-foreground mb-4">Start a conversation with a venture to begin mentoring.</p>
+              <Button onClick={() => onViewChange?.('discover')}>
+                Discover Startups
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Conversation List */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="text-lg">Conversations</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="space-y-0">
+                  {conversations.map((conversation) => (
+                    <div key={conversation.id} className="flex items-center space-x-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer border-b last:border-b-0">
+                      <Avatar className="w-10 h-10">
+                        <AvatarFallback>{(conversation.name && conversation.name[0]) || 'U'}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{conversation.name || 'User'}</p>
+                        <p className="text-sm text-muted-foreground truncate">{conversation.company || ''}</p>
+                        <p className="text-xs text-muted-foreground">Last message {conversation.lastMessageTime || 'recently'}</p>
+                      </div>
+                      {conversation.unread && (
+                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Message View */}
+            <Card className="lg:col-span-2">
+              <CardContent className="p-12 text-center">
+                <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium mb-2">Select a conversation</h3>
+                <p className="text-muted-foreground">Choose a conversation from the list to view messages.</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Conversation List */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-lg">Conversations</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="space-y-0">
-              {activeMentees.map((mentee) => (
-                <div key={mentee.id} className="flex items-center space-x-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer border-b last:border-b-0">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={mentee.avatar} />
-                    <AvatarFallback>{mentee.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{mentee.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">{mentee.company}</p>
-                    <p className="text-xs text-muted-foreground">Last message 2h ago</p>
-                  </div>
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Message View */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="border-b">
-            <div className="flex items-center space-x-3">
-              <Avatar className="w-10 h-10">
-                <AvatarImage src={activeMentees[0]?.avatar} />
-                <AvatarFallback>{activeMentees[0]?.name[0]}</AvatarFallback>
-              </Avatar>
-              <div>
-                <CardTitle className="text-lg">{activeMentees[0]?.name}</CardTitle>
-                <CardDescription>{activeMentees[0]?.company}</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="h-96 overflow-y-auto p-4 space-y-4">
-              {/* Sample messages */}
-              <div className="flex items-start space-x-3">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={activeMentees[0]?.avatar} />
-                  <AvatarFallback>{activeMentees[0]?.name[0]}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="bg-muted p-3 rounded-lg">
-                    <p className="text-sm">Hi! I wanted to follow up on our last session about go-to-market strategy. I've been working on the sales playbook we discussed.</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">2 hours ago</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-3 justify-end">
-                <div className="flex-1 flex justify-end">
-                  <div className="bg-blue-500 text-white p-3 rounded-lg max-w-xs">
-                    <p className="text-sm">That's great to hear! How did the first client calls go using the new approach?</p>
-                  </div>
-                </div>
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={mentor.profile.avatar} />
-                  <AvatarFallback>{mentor.profile.name[0]}</AvatarFallback>
-                </Avatar>
-              </div>
-
-              <div className="flex items-start space-x-3">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={activeMentees[0]?.avatar} />
-                  <AvatarFallback>{activeMentees[0]?.name[0]}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="bg-muted p-3 rounded-lg">
-                    <p className="text-sm">Much better! We closed 2 deals this week using the new framework. The discovery questions you suggested really helped uncover pain points.</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">1 hour ago</p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Message Input */}
-            <div className="border-t p-4">
-              <div className="flex space-x-3">
-                <Input 
-                  placeholder="Type your message..." 
-                  className="flex-1"
-                />
-                <button className="btn-chrome-primary px-4 py-2">
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Render different views based on activeView
   switch (activeView) {

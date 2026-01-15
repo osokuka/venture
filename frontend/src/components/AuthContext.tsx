@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { authService, type UserResponse } from '../services/authService';
-import { type Venture, type Investor, type Mentor } from './MockData';
+import { type FrontendUser } from '../types';
 
 export type UserRole = 'venture' | 'investor' | 'mentor' | 'admin';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
-export type User = Venture | Investor | Mentor;
+export type User = FrontendUser;
 
 interface AuthContextType {
   user: User | null;
@@ -111,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       setUser(userObject as User);
       setCurrentView('dashboard');
+      // Navigate will be handled by React Router in AppWithRouter
       return true;
     } catch (error) {
       console.error('Login error:', error);

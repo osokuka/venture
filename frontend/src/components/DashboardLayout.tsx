@@ -49,18 +49,13 @@ import {
   Star,
   Award
 } from "lucide-react";
-import { 
-  type User,
-  type Investor,
-  type Mentor,
-  type Venture,
-  getUnreadMessagesForUser 
-} from './MockData';
+import { type FrontendUser } from '../types';
+import { messagingService } from '../services/messagingService';
 import { useAuth } from './AuthContext';
 
 interface DashboardLayoutProps {
   children: React.ReactElement;
-  user: User;
+  user: FrontendUser;
 }
 
 interface SidebarItem {
@@ -73,19 +68,24 @@ interface SidebarItem {
 export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const { logout } = useAuth();
   const [activeItem, setActiveItem] = useState('overview');
-  const unreadMessages = getUnreadMessagesForUser(user.id);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+  
+  React.useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await messagingService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getUserDisplayName = () => {
-    switch (user.role) {
-      case 'venture':
-        return (user as Venture).profile.companyName;
-      case 'investor':
-        return (user as Investor).profile.name;
-      case 'mentor':
-        return (user as Mentor).profile.name;
-      default:
-        return 'User';
-    }
+    return user.full_name || user.email || 'User';
   };
 
   const getUserAvatar = () => {
@@ -112,7 +112,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const getSidebarItems = (): SidebarItem[] => {
     const baseItems = [
       { id: 'overview', icon: Home, label: 'Overview' },
-      { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadMessages.length > 0 ? unreadMessages.length : undefined }
+      { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadCount > 0 ? unreadCount : undefined }
     ];
 
     switch (user.role) {

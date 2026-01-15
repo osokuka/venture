@@ -46,7 +46,12 @@ export const messagingService = {
   async getConversations(): Promise<Conversation[]> {
     try {
       const response = await apiClient.get('/messages/conversations');
-      return response.data;
+      // Handle both array and paginated response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // If paginated, return results array
+      return response.data.results || response.data.data || [];
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }
@@ -80,12 +85,17 @@ export const messagingService = {
 
   /**
    * Send a message in a conversation
+   * If conversationId is 'new', creates a new conversation with participantId
    */
-  async sendMessage(conversationId: string, body: string): Promise<Message> {
+  async sendMessage(conversationId: string, body: string, participantId?: string): Promise<Message> {
     try {
-      const response = await apiClient.post(`/messages/conversations/${conversationId}/messages`, {
-        body,
-      });
+      const payload: any = { body };
+      // If creating a new conversation, include participant_id
+      if (conversationId === 'new' && participantId) {
+        payload.participant_id = participantId;
+      }
+      
+      const response = await apiClient.post(`/messages/conversations/${conversationId}/messages`, payload);
       return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error));
@@ -104,12 +114,48 @@ export const messagingService = {
   },
 
   /**
+   * Update/edit a message
+   * Users can only edit their own messages within 15 minutes of sending
+   */
+  async updateMessage(messageId: string, body: string): Promise<Message> {
+    try {
+      // Backend URL pattern: /api/messages/message/<uuid:message_id>
+      const response = await apiClient.patch(`/messages/message/${messageId}`, {
+        body,
+      });
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
    * Get unread message count
+   * Note: This endpoint only requires IsAuthenticated (not IsApprovedUser),
+   * so unapproved users can still see their unread count.
    */
   async getUnreadCount(): Promise<number> {
     try {
       const response = await apiClient.get('/messages/conversations/unread-count');
-      return response.data.unread_count || 0;
+      // Handle both direct number and object response
+      if (typeof response.data === 'number') {
+        return response.data;
+      }
+      return response.data?.unread_count || 0;
+    } catch (error) {
+      console.error('Failed to get unread count:', error);
+      return 0; // Return 0 on error instead of throwing
+    }
+  },
+
+  /**
+   * Delete a conversation (remove from user's inbox)
+   * This only removes the conversation from the current user's inbox,
+   * other participants are not affected.
+   */
+  async deleteConversation(conversationId: string): Promise<void> {
+    try {
+      await apiClient.delete(`/messages/conversations/${conversationId}/delete`);
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }

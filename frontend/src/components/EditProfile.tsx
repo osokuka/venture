@@ -32,12 +32,12 @@ import {
   Star
 } from "lucide-react";
 import { useAuth } from './AuthContext';
-import { type User as UserType, type Venture, type Investor, type Mentor } from './MockData';
+import { type FrontendUser } from '../types';
 import { sanitizeInput, validateEmail, validateAndSanitizeUrl, sanitizeFormData } from '../utils/security';
 
 interface EditProfileProps {
-  user: UserType;
-  onProfileUpdate?: (updatedUser: UserType) => void;
+  user: FrontendUser;
+  onProfileUpdate?: (updatedUser: FrontendUser) => void;
 }
 
 export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {

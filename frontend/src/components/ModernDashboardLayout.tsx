@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -28,18 +29,13 @@ import {
   X
 } from "lucide-react";
 import { VentureUPLinkIcon } from "./VentureUPLinkIcon";
-import { 
-  type User,
-  type Investor,
-  type Mentor,
-  type Venture,
-  getUnreadMessagesForUser 
-} from './MockData';
+import { type FrontendUser } from '../types';
+import { messagingService } from '../services/messagingService';
 import { useAuth } from './AuthContext';
 
 interface ModernDashboardLayoutProps {
   children: React.ReactElement;
-  user: User;
+  user: FrontendUser;
 }
 
 interface NavItem {
@@ -51,47 +47,74 @@ interface NavItem {
 
 export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutProps) {
   const { logout } = useAuth();
-  const [activeItem, setActiveItem] = useState('overview');
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Extract active view from URL
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const urlView = pathParts[pathParts.length - 1] || 'overview';
+  const [activeItem, setActiveItem] = useState(urlView);
+  const [unreadCount, setUnreadCount] = useState(0);
+  
+  // Update activeItem when URL changes
+  useEffect(() => {
+    setActiveItem(urlView);
+  }, [urlView]);
+
+  // Fetch unread message count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await messagingService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+    fetchUnreadCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const unreadMessages = getUnreadMessagesForUser(user.id);
 
   const getUserDisplayName = () => {
     switch (user.role) {
       case 'venture':
-        return (user as Venture).profile?.companyName || user.email;
+        return (user.profile as any)?.companyName || user.full_name || user.email;
       case 'investor':
-        return (user as Investor).profile?.name || user.email;
+        return (user.profile as any)?.name || user.full_name || user.email;
       case 'mentor':
-        return (user as Mentor).profile?.name || user.email;
+        return (user.profile as any)?.name || user.full_name || user.email;
       case 'admin':
-        // For admin, try to get full_name from user object, fallback to email
-        return (user as any).full_name || (user as any).email || 'Admin';
+        return user.full_name || user.email || 'Admin';
       default:
-        return user.email || 'User';
+        return user.full_name || user.email || 'User';
     }
   };
 
   const getUserAvatar = () => {
     if (user.role === 'venture') {
-      return (user as Venture).profile?.logo || undefined;
+      return (user.profile as any)?.logo || undefined;
     }
     if (user.role === 'admin') {
       // Admin users don't have profile pictures, return undefined to show initials
       return undefined;
     }
-    return (user as Investor | Mentor).profile?.avatar || undefined;
+    return (user.profile as any)?.avatar || undefined;
   };
 
   const getUserSubtitle = () => {
     switch (user.role) {
       case 'venture':
-        return (user as Venture).profile?.shortDescription || 'Venture';
+        return (user.profile as any)?.shortDescription || 'Venture';
       case 'investor':
-        return (user as Investor).profile?.organizationName || 'Investor';
+        return (user.profile as any)?.organizationName || 'Investor';
       case 'mentor':
-        const mentor = user as Mentor;
-        if (mentor.profile?.jobTitle && mentor.profile?.company) {
-          return `${mentor.profile.jobTitle} at ${mentor.profile.company}`;
+        const mentorProfile = user.profile as any;
+        if (mentorProfile?.jobTitle && mentorProfile?.company) {
+          return `${mentorProfile.jobTitle} at ${mentorProfile.company}`;
         }
         return 'Mentor';
       case 'admin':
@@ -113,14 +136,14 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
           { id: 'investors', icon: TrendingUp, label: 'Find Investors' },
           { id: 'mentors', icon: Users, label: 'Find Mentors' },
           { id: 'ventures', icon: Building, label: 'Network' },
-          { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadMessages.length > 0 ? unreadMessages.length : undefined }
+          { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadCount > 0 ? unreadCount : undefined }
         ];
       case 'investor':
         return [
           ...baseItems,
           { id: 'discover', icon: Search, label: 'Discover Startups' },
           { id: 'portfolio', icon: Briefcase, label: 'Portfolio' },
-          { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadMessages.length > 0 ? unreadMessages.length : undefined }
+          { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadCount > 0 ? unreadCount : undefined }
         ];
       case 'mentor':
         return [
@@ -128,7 +151,7 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
           { id: 'requests', icon: Bell, label: 'Requests' },
           { id: 'mentees', icon: Users, label: 'My Mentees' },
           { id: 'discover', icon: Search, label: 'Discover Startups' },
-          { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadMessages.length > 0 ? unreadMessages.length : undefined }
+          { id: 'messages', icon: MessageSquare, label: 'Messages', badge: unreadCount > 0 ? unreadCount : undefined }
         ];
       case 'admin':
         // Admin users don't need navigation items as they use tabs in AdminDashboard
@@ -157,14 +180,27 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
 
   const handleProfileView = () => {
     setActiveItem('profile');
+    navigate(`/dashboard/${user.role}/profile`);
   };
 
   const handleEditProfile = () => {
     setActiveItem('edit-profile');
+    navigate(`/dashboard/${user.role}/edit-profile`);
   };
 
   const handleSettings = () => {
     setActiveItem('settings');
+    navigate(`/dashboard/${user.role}/settings`);
+  };
+
+  // Function to refresh unread count (can be called from child components)
+  const refreshUnreadCount = async () => {
+    try {
+      const count = await messagingService.getUnreadCount();
+      setUnreadCount(count);
+    } catch (error) {
+      console.error('Failed to fetch unread count:', error);
+    }
   };
 
   // Clone the children element and pass the activeView prop
@@ -172,10 +208,11 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
     activeView: activeItem,
     onViewChange: setActiveItem,
     user: user,
-    onProfileUpdate: (updatedUser: User) => {
+    onProfileUpdate: (updatedUser: FrontendUser) => {
       // In a real app, this would update the user context
       console.log('Profile updated:', updatedUser);
-    }
+    },
+    onRefreshUnreadCount: refreshUnreadCount
   });
 
   return (
@@ -203,7 +240,10 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
                     key={item.id}
                     variant={activeItem === item.id ? "default" : "ghost"}
                     size="sm"
-                    onClick={() => setActiveItem(item.id)}
+                    onClick={() => {
+                      setActiveItem(item.id);
+                      navigate(`/dashboard/${user.role}/${item.id}`);
+                    }}
                     className="relative h-9 px-3"
                   >
                     <item.icon className="w-4 h-4 mr-2" />
@@ -223,7 +263,7 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
               {/* Notifications */}
               <Button variant="ghost" size="sm" className="relative">
                 <Bell className="w-4 h-4" />
-                {unreadMessages.length > 0 && (
+                {unreadCount > 0 && (
                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
                 )}
               </Button>
@@ -263,7 +303,10 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600">
+                  <DropdownMenuItem onClick={() => {
+                    logout();
+                    navigate('/');
+                  }} className="text-red-600 focus:text-red-600">
                     <LogOut className="w-4 h-4 mr-2" />
                     Sign Out
                   </DropdownMenuItem>
@@ -292,6 +335,7 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
                   size="sm"
                   onClick={() => {
                     setActiveItem(item.id);
+                    navigate(`/dashboard/${user.role}/${item.id}`);
                     setMobileMenuOpen(false);
                   }}
                   className="w-full justify-start h-9"

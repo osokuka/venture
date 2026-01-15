@@ -56,7 +56,7 @@ const backendRole = registrationRole?.toUpperCase() as 'VENTURE' | 'INVESTOR' | 
 
 **Total: 9 demo accounts**
 
-**Note:** Demo accounts are automatically created on first Docker startup via `create_demo_accounts` management command.
+**Note:** Demo accounts are automatically created on first Docker startup via `seed_demo_data` management command.
 
 ---
 
@@ -119,7 +119,7 @@ const backendRole = registrationRole?.toUpperCase() as 'VENTURE' | 'INVESTOR' | 
 - ✅ `backend/apps/accounts/models.py` - Role definitions
 - ✅ `backend/apps/accounts/serializers.py` - Role validation
 - ✅ `backend/shared/permissions.py` - Permission classes
-- ✅ `backend/apps/accounts/management/commands/create_demo_accounts.py` - Demo account creation
+- ✅ `backend/apps/accounts/management/commands/seed_demo_data.py` - Comprehensive demo data seeding (users, products, profiles, conversations, messages)
 - ✅ `backend/entrypoint.sh` - Auto-creates superuser and demo accounts
 
 ### Frontend

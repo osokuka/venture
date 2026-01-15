@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -54,19 +54,25 @@ import {
   MessageCircle,
   FileBarChart,
   Info,
-  LogOut
+  LogOut,
+  Loader2
 } from "lucide-react";
-import { type User, type Investor, type Venture, mockVentures, getUnreadMessagesForUser } from './MockData';
+import { type FrontendUser, type User } from '../types';
+import { ventureService } from '../services/ventureService';
+import { messagingService } from '../services/messagingService';
+import { type VentureProduct } from '../types';
 import { EditProfile } from './EditProfile';
 import { Settings } from './Settings';
 import { UserProfile } from './UserProfile';
 import { SchedulingModal } from './SchedulingModal';
+import { MessagingSystem } from './MessagingSystem';
 
 interface InvestorDashboardProps {
   user: User;
   activeView?: string;
   onViewChange?: (view: string) => void;
   onProfileUpdate?: (updatedUser: User) => void;
+  onRefreshUnreadCount?: () => void; // Callback to refresh global unread count
 }
 
 interface CompanyDetailsModalProps {
@@ -661,12 +667,50 @@ function MessageModal({ isOpen, onClose, company }: MessageModalProps) {
 }
 
 export function InvestorDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate }: InvestorDashboardProps) {
-  const investor = user as Investor;
-  const unreadMessages = getUnreadMessagesForUser(user.id);
+  const [ventures, setVentures] = useState<VentureProduct[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoadingVentures, setIsLoadingVentures] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSector, setFilterSector] = useState('all');
   const [filterStage, setFilterStage] = useState('all');
   const [filterFunding, setFilterFunding] = useState('all');
+
+  // Fetch unread message count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await messagingService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch ventures when discover view is active
+  useEffect(() => {
+    if (activeView === 'discover') {
+      fetchVentures();
+    }
+  }, [activeView, searchTerm, filterSector, filterStage]);
+
+  const fetchVentures = async () => {
+    setIsLoadingVentures(true);
+    try {
+      const data = await ventureService.getPublicVentures({
+        search: searchTerm || undefined,
+        sector: filterSector !== 'all' ? filterSector : undefined,
+      });
+      setVentures(data);
+    } catch (error) {
+      console.error('Failed to fetch ventures:', error);
+    } finally {
+      setIsLoadingVentures(false);
+    }
+  };
   
   // Scheduling Modal State
   const [isSchedulingModalOpen, setIsSchedulingModalOpen] = useState(false);
@@ -698,17 +742,18 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     return <UserProfile user={user} onEdit={() => onViewChange?.('edit-profile')} isOwnProfile={true} />;
   }
 
-  // Mock data for the dashboard
+  // TODO: VL-811 - Replace hardcoded stats with API calls
   const stats = {
-    totalInvestments: investor.profile.portfolioCount || 15,
-    totalInvested: investor.profile.totalInvested || '$2.5M',
-    activeDeals: 8,
-    avgReturn: '24%',
-    portfolioValue: '$3.2M',
-    pipeline: 23,
-    totalMessages: unreadMessages.length + 12
+    totalInvestments: 0, // TODO: VL-811 - Get from investor profile API
+    totalInvested: '$0', // TODO: VL-811 - Get from investor profile API
+    activeDeals: 8, // TODO: VL-811 - Get from GET /api/investors/portfolio (count active investments)
+    avgReturn: '24%', // TODO: VL-811 - Calculate from portfolio API data
+    portfolioValue: '$3.2M', // TODO: VL-811 - Calculate from portfolio API data
+    pipeline: 23, // TODO: VL-811 - Get from GET /api/investors/opportunities (count)
+    totalMessages: unreadCount
   };
 
+  // TODO: VL-811 - Replace hardcoded recentActivity with API call to GET /api/activity/feed
   const recentActivity = [
     {
       id: 1,
@@ -752,6 +797,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     }
   ];
 
+  // TODO: VL-811 - Replace hardcoded portfolioCompanies with API call to GET /api/investors/portfolio
   const portfolioCompanies = [
     {
       id: 'p1',
@@ -819,6 +865,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     }
   ];
 
+  // TODO: VL-811 - Replace hardcoded investmentOpportunities with API call to GET /api/investors/opportunities
   const investmentOpportunities = [
     {
       id: 'o1',
@@ -1334,16 +1381,14 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   );
 
   const renderDiscover = () => {
-    // Ensure mockVentures is available and handle the mapping safely
-    const availableStartups = mockVentures || [];
-    
-    const filteredStartups = availableStartups.filter(venture => {
+    // Use real API data
+    const filteredStartups = ventures.filter(venture => {
       const matchesSearch = searchTerm === '' || 
-        venture.profile.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        venture.profile.shortDescription.toLowerCase().includes(searchTerm.toLowerCase());
+        venture.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        venture.short_description.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesSector = filterSector === 'all' || venture.profile.sector === filterSector;
-      const matchesStage = filterStage === 'all' || venture.profile.fundingNeeds === filterStage;
+      const matchesSector = filterSector === 'all' || venture.industry_sector === filterSector;
+      const matchesStage = filterStage === 'all'; // TODO: Add stage filtering when available in API
       
       return matchesSearch && matchesSector && matchesStage;
     });
@@ -1476,31 +1521,34 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                 <div className="space-y-4">
                   {/* Header */}
                   <div className="flex items-start space-x-4">
-                    <Avatar className="w-12 h-12">
-                      <AvatarImage src={venture.profile.logo} />
-                      <AvatarFallback>{venture.profile.companyName[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 space-y-1">
-                      <h3 className="font-semibold text-lg">{venture.profile.companyName}</h3>
-                      <p className="text-muted-foreground">{venture.profile.shortDescription}</p>
-                      <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                        <div className="flex items-center space-x-1">
-                          <Building className="w-4 h-4" />
-                          <span>{venture.profile.sector}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{venture.profile.address}</span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Users className="w-4 h-4" />
-                          <span>{venture.profile.employeeCount}</span>
+                      <Avatar className="w-12 h-12">
+                        <AvatarFallback>{venture.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 space-y-1">
+                        <h3 className="font-semibold text-lg">{venture.name}</h3>
+                        <p className="text-muted-foreground">{venture.short_description}</p>
+                        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                          <div className="flex items-center space-x-1">
+                            <Building className="w-4 h-4" />
+                            <span>{venture.industry_sector}</span>
+                          </div>
+                          {venture.address && (
+                            <div className="flex items-center space-x-1">
+                              <MapPin className="w-4 h-4" />
+                              <span>{venture.address}</span>
+                            </div>
+                          )}
+                          {venture.employees_count && (
+                            <div className="flex items-center space-x-1">
+                              <Users className="w-4 h-4" />
+                              <span>{venture.employees_count}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <Badge variant="outline">
-                      {venture.profile.fundingNeeds}
-                    </Badge>
+                      <Badge variant="outline">
+                        {venture.status}
+                      </Badge>
                   </div>
 
                   {/* Funding Details */}
@@ -1547,28 +1595,27 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     );
   };
 
-  const renderMessages = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Messages</h2>
-        <p className="text-muted-foreground">Communicate with your portfolio companies and potential investments</p>
-      </div>
-      <Card>
-        <CardContent className="p-6">
-          <div className="text-center py-12">
-            <MessageSquare className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-semibold mb-2">Messaging System</h3>
-            <p className="text-muted-foreground mb-4">
-              Connect with startups and manage your investment communications.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              You have {unreadMessages.length} unread messages.
-            </p>
+  const renderMessages = () => {
+    // Safety check: ensure user has required properties
+    if (!user || !user.id) {
+      return (
+        <div className="flex items-center justify-center h-[600px] text-muted-foreground">
+          <div className="text-center">
+            <MessageSquare className="w-12 h-12 mx-auto mb-4" />
+            <p>Unable to load messaging system. User information is missing.</p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+        </div>
+      );
+    }
+    // Convert User type to FrontendUser format (role needs to be lowercase)
+    const frontendUser: FrontendUser = {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role.toLowerCase() as 'venture' | 'investor' | 'mentor' | 'admin',
+    };
+    return <MessagingSystem currentUser={frontendUser} onRefreshUnreadCount={onRefreshUnreadCount} />;
+  };
 
   // Main render logic
   switch (activeView) {
@@ -1585,8 +1632,8 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             }}
             mentee={selectedMentee}
             mentor={{
-              name: investor.profile.name,
-              avatar: investor.profile.avatar
+              name: user.full_name,
+              avatar: undefined
             }}
           />
         </div>
@@ -1606,8 +1653,8 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             }}
             mentee={selectedMentee}
             mentor={{
-              name: investor.profile.name,
-              avatar: investor.profile.avatar
+              name: user.full_name,
+              avatar: undefined
             }}
           />
           <CompanyDetailsModal
