@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from shared.permissions import IsAdminOrReviewer
 from apps.approvals.models import ReviewRequest
 from apps.approvals.serializers import ApprovalItemSerializer, ApprovalRejectSerializer
+from apps.accounts.tasks import send_approval_notification
 
 
 @api_view(['GET'])
@@ -149,6 +150,9 @@ def approve_review(request, review_id):
     obj.reviewed_at = timezone.now()
     obj.rejection_reason = None
     obj.save(update_fields=['status', 'reviewer', 'reviewed_at', 'rejection_reason'])
+    
+    # Send approval notification email via Celery
+    send_approval_notification.delay(str(obj.submitted_by.id), approved=True)
 
     return Response({'detail': 'Approved.'}, status=status.HTTP_200_OK)
 
@@ -172,11 +176,15 @@ def reject_review(request, review_id):
     payload = ApprovalRejectSerializer(data=request.data)
     payload.is_valid(raise_exception=True)
 
+    rejection_reason = payload.validated_data.get('reason') or ''
     obj.status = 'REJECTED'
     obj.reviewer = request.user
     obj.reviewed_at = timezone.now()
-    obj.rejection_reason = payload.validated_data.get('reason') or ''
+    obj.rejection_reason = rejection_reason
     obj.save(update_fields=['status', 'reviewer', 'reviewed_at', 'rejection_reason'])
+    
+    # Send rejection notification email via Celery
+    send_approval_notification.delay(str(obj.submitted_by.id), approved=False, rejection_reason=rejection_reason)
 
     return Response({'detail': 'Rejected.'}, status=status.HTTP_200_OK)
 

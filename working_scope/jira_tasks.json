@@ -192,9 +192,10 @@
         },
         {
           "summary": "Create verification email template",
-          "description": "Design and create email template with verification link",
+          "description": "Design and create HTML-styled email template with verification link (responsive, branded)",
           "type": "Task",
-          "estimate": "2h"
+          "estimate": "2h",
+          "status": "Done"
         },
         {
           "summary": "Implement verification endpoints",
@@ -204,11 +205,13 @@
         },
         {
           "summary": "Set up Celery task for sending emails",
-          "description": "Create async task for sending verification emails",
+          "description": "Create async task for sending verification emails with HTML templates",
           "type": "Task",
-          "estimate": "2h"
+          "estimate": "2h",
+          "status": "Done"
         }
-      ]
+      ],
+      "status": "Done"
     },
     {
       "key": "VL-105",
@@ -829,9 +832,39 @@
           "summary": "Add permission and visibility checks",
           "description": "Enforce messaging rules",
           "type": "Task",
-          "estimate": "4h"
+          "estimate": "4h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement message editing endpoint",
+          "description": "PATCH /api/messages/message/{id} for editing messages within 15 minutes",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement conversation deletion endpoint",
+          "description": "DELETE /api/messages/conversations/{id}/delete to remove from user inbox",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement lazy conversation creation",
+          "description": "Support conversation_id='new' for creating conversations on first message",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement unread count endpoint",
+          "description": "GET /api/messages/conversations/unread-count for global badge",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
         }
-      ]
+      ],
+      "status": "Done"
     },
     {
       "key": "VL-601",
@@ -1062,42 +1095,57 @@
       "acceptanceCriteria": [
         "docker-compose.prod.yml created",
         "Gunicorn configured for Django",
-        "Nginx configured as reverse proxy",
-        "Static and media files served by Nginx",
-        "Environment variables for secrets"
+        "Nginx Proxy Manager integration (external)",
+        "Static and media files served properly",
+        "Environment variables for secrets",
+        "Domain configuration for ventureuplink.com",
+        "CORS and ALLOWED_HOSTS configured for production"
       ],
       "tasks": [
         {
           "summary": "Create production Dockerfile",
           "description": "Multi-stage Dockerfile optimized for production",
           "type": "Task",
-          "estimate": "3h"
+          "estimate": "3h",
+          "status": "Done"
         },
         {
           "summary": "Create docker-compose.prod.yml",
-          "description": "Production compose file with all services",
+          "description": "Production compose file with all services (nginx service removed, using external Nginx Proxy Manager)",
           "type": "Task",
-          "estimate": "3h"
+          "estimate": "3h",
+          "status": "Done"
         },
         {
           "summary": "Configure Gunicorn",
           "description": "Gunicorn configuration file",
           "type": "Task",
-          "estimate": "2h"
+          "estimate": "2h",
+          "status": "Done"
         },
         {
-          "summary": "Create Nginx configuration",
-          "description": "Nginx config for reverse proxy and static files",
+          "summary": "Configure for Nginx Proxy Manager",
+          "description": "Remove internal nginx service, configure for external Nginx Proxy Manager with domain setup",
           "type": "Task",
-          "estimate": "4h"
+          "estimate": "2h",
+          "status": "Done"
         },
         {
           "summary": "Update entrypoint script",
           "description": "Script to run migrations and collectstatic",
           "type": "Task",
-          "estimate": "2h"
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Configure production domains",
+          "description": "Set up ventureuplink.com, backend.ventureuplink.com, api.ventureuplink.com in ALLOWED_HOSTS and CORS",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
         }
-      ]
+      ],
+      "status": "In Progress"
     },
     {
       "key": "VL-802",
@@ -1773,48 +1821,69 @@
       "tasks": [
         {
           "summary": "Update message bubble styling for sent messages",
-          "description": "Style user's own messages with right alignment, primary color background, and proper padding/spacing",
+          "description": "Style user's own messages with right alignment, gray background, and proper padding/spacing",
           "type": "Task",
           "estimate": "2h",
-          "status": "In Progress"
+          "status": "Done"
         },
         {
           "summary": "Update message bubble styling for received messages",
           "description": "Style other party's messages with left alignment, muted background, and proper padding/spacing",
           "type": "Task",
           "estimate": "2h",
-          "status": "In Progress"
+          "status": "Done"
         },
         {
           "summary": "Ensure messages are sorted chronologically",
           "description": "Verify messages are displayed in chronological order (oldest first, newest last) and auto-scroll to bottom",
           "type": "Task",
           "estimate": "1h",
-          "status": "In Progress"
+          "status": "Done"
         },
         {
           "summary": "Improve inbox sidebar layout and styling",
           "description": "Enhance conversation list in sidebar with better spacing, hover states, and visual hierarchy",
           "type": "Task",
           "estimate": "2h",
-          "status": "In Progress"
+          "status": "Done"
         },
         {
           "summary": "Add avatar display for messages",
-          "description": "Show user avatars next to messages (optional, for better visual context)",
+          "description": "Show user avatars next to messages for better visual context",
           "type": "Task",
           "estimate": "1h",
-          "status": "Pending"
+          "status": "Done"
         },
         {
           "summary": "Add smooth scroll to latest message",
           "description": "Automatically scroll to the latest message when conversation is opened or new message is sent",
           "type": "Task",
           "estimate": "1h",
-          "status": "Pending"
+          "status": "Done"
+        },
+        {
+          "summary": "Fix unread message badge refresh",
+          "description": "Implement callback mechanism for immediate badge update when conversations marked as read",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement message editing UI",
+          "description": "Add edit functionality for user's own messages within 15-minute time limit",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Implement conversation deletion UI",
+          "description": "Add delete conversation option with confirmation dialog",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
         }
       ],
-      "status": "In Progress"
+      "status": "Done"
     },
     {
       "key": "VL-813",
@@ -1870,10 +1939,10 @@
   "bugs": [],
   "metadata": {
     "created": "2025-01-27",
-    "updated": "2025-01-14",
-    "version": "1.1",
+    "updated": "2025-01-15",
+    "version": "1.2",
     "totalStories": 36,
-    "totalTasks": 175,
+    "totalTasks": 190,
     "estimatedStoryPoints": 197
   }
 }
