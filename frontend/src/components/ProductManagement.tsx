@@ -57,8 +57,13 @@ import {
   validateAndSanitizeUrl, 
   validateFileType, 
   validateFileSize,
-  sanitizeFormData 
+  sanitizeFormData,
+  validateUuid,
+  sanitizeForDisplay
 } from '../utils/security';
+import { validatePitchDeckFile } from '../utils/fileValidation';
+import { Download, Share2, BarChart3, Eye, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ProductManagementProps {
   user: any;
@@ -97,6 +102,17 @@ export function ProductManagement({ user }: ProductManagementProps) {
   });
   const [editingTeamMember, setEditingTeamMember] = useState<TeamMember | null>(null);
   const [editingFounder, setEditingFounder] = useState<Founder | null>(null);
+  
+  // Pitch deck analytics, access, sharing state
+  const [pitchDeckAnalytics, setPitchDeckAnalytics] = useState<any>(null);
+  const [pitchDeckAccess, setPitchDeckAccess] = useState<any[]>([]);
+  const [pitchDeckShares, setPitchDeckShares] = useState<any[]>([]);
+  const [pitchDeckRequests, setPitchDeckRequests] = useState<any[]>([]);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareInvestorId, setShareInvestorId] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
 
   // Form state for create/edit
   // Note: problem_statement, solution_description, target_market, traction_metrics,
@@ -135,7 +151,7 @@ export function ProductManagement({ user }: ProductManagementProps) {
 
   const handleCreate = async () => {
     if (!formData.name || !formData.industry_sector || !formData.website || !formData.linkedin_url) {
-      alert('Please fill in all required fields (name, industry, website, LinkedIn).');
+      toast.error('Please fill in all required fields (name, industry, website, LinkedIn).');
       return;
     }
 
@@ -146,7 +162,7 @@ export function ProductManagement({ user }: ProductManagementProps) {
       website: 2048,
       linkedin_url: 2048,
       address: 500,
-      short_description: 1000,
+      short_description: 10000, // Increased to match backend limit
     });
 
     // Validate URLs
@@ -172,9 +188,9 @@ export function ProductManagement({ user }: ProductManagementProps) {
       console.error('Failed to create product:', err);
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to create product.';
       if (errorMsg.includes('maximum limit')) {
-        alert('You have reached the maximum limit of 3 products.');
+        toast.error('You have reached the maximum limit of 3 products.');
       } else {
-        alert(errorMsg);
+        toast.error(errorMsg);
       }
     } finally {
       setIsMutating(false);
@@ -232,10 +248,11 @@ export function ProductManagement({ user }: ProductManagementProps) {
       setIsMutating(true);
       await productService.activateProduct(product.id, !product.is_active);
       await fetchProducts();
+      toast.success(`Product ${!product.is_active ? 'activated' : 'deactivated'} successfully!`);
     } catch (err: any) {
       console.error('Failed to toggle product:', err);
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to update product status.';
-      alert(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsMutating(false);
     }
@@ -247,14 +264,20 @@ export function ProductManagement({ user }: ProductManagementProps) {
     }
 
     try {
+      // Security: Validate UUID
+      if (!validateUuid(product.id)) {
+        toast.error('Invalid product ID');
+        return;
+      }
+
       setIsMutating(true);
       await productService.submitProduct(product.id);
       await fetchProducts();
-      alert('Product submitted for approval!');
+      toast.success('Product submitted for approval!');
     } catch (err: any) {
       console.error('Failed to submit product:', err);
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to submit product.';
-      alert(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setIsMutating(false);
     }
@@ -338,14 +361,39 @@ export function ProductManagement({ user }: ProductManagementProps) {
   const handleCreateTeamMember = async () => {
     if (!selectedProduct) return;
     
+    // Security: Validate UUID
+    if (!validateUuid(selectedProduct.id)) {
+      toast.error('Invalid product ID');
+      return;
+    }
+
+    // Security: Sanitize form data
+    const sanitizedForm = sanitizeFormData(teamMemberForm, {
+      name: 255,
+      role_title: 100,
+      description: 5000,
+      linkedin_url: 2048,
+    });
+
+    // Security: Validate LinkedIn URL if provided
+    if (sanitizedForm.linkedin_url) {
+      const validatedUrl = validateAndSanitizeUrl(sanitizedForm.linkedin_url);
+      if (!validatedUrl) {
+        toast.error('Invalid LinkedIn URL');
+        return;
+      }
+      sanitizedForm.linkedin_url = validatedUrl;
+    }
+    
     try {
       setIsMutating(true);
-      await productService.createTeamMember(selectedProduct.id, teamMemberForm);
+      await productService.createTeamMember(selectedProduct.id, sanitizedForm);
       setTeamMemberForm({ name: '', role_title: '', description: '', linkedin_url: '' });
       await loadProductDetails(selectedProduct.id);
+      toast.success('Team member created successfully!');
     } catch (err: any) {
       console.error('Failed to create team member:', err);
-      alert(err.response?.data?.detail || err.message || 'Failed to create team member.');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to create team member.');
     } finally {
       setIsMutating(false);
     }
@@ -371,13 +419,20 @@ export function ProductManagement({ user }: ProductManagementProps) {
   const handleDeleteTeamMember = async (memberId: string) => {
     if (!selectedProduct || !confirm('Delete this team member?')) return;
     
+    // Security: Validate UUIDs
+    if (!validateUuid(selectedProduct.id) || !validateUuid(memberId)) {
+      toast.error('Invalid product or team member ID');
+      return;
+    }
+    
     try {
       setIsMutating(true);
       await productService.deleteTeamMember(selectedProduct.id, memberId);
       await loadProductDetails(selectedProduct.id);
+      toast.success('Team member deleted successfully!');
     } catch (err: any) {
       console.error('Failed to delete team member:', err);
-      alert(err.response?.data?.detail || err.message || 'Failed to delete team member.');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to delete team member.');
     } finally {
       setIsMutating(false);
     }
@@ -397,14 +452,45 @@ export function ProductManagement({ user }: ProductManagementProps) {
   const handleCreateFounder = async () => {
     if (!selectedProduct) return;
     
+    // Security: Validate UUID
+    if (!validateUuid(selectedProduct.id)) {
+      toast.error('Invalid product ID');
+      return;
+    }
+
+    // Security: Sanitize and validate form data
+    const sanitizedForm = sanitizeFormData(founderForm, {
+      full_name: 255,
+      linkedin_url: 2048,
+      email: 254,
+      phone: 20,
+      role_title: 100,
+    });
+
+    // Security: Validate URLs and email
+    const validatedLinkedInUrl = validateAndSanitizeUrl(sanitizedForm.linkedin_url);
+    if (!validatedLinkedInUrl) {
+      toast.error('Invalid LinkedIn URL');
+      return;
+    }
+    sanitizedForm.linkedin_url = validatedLinkedInUrl;
+
+    // Security: Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(sanitizedForm.email)) {
+      toast.error('Invalid email format');
+      return;
+    }
+    
     try {
       setIsMutating(true);
-      await productService.createFounder(selectedProduct.id, founderForm);
+      await productService.createFounder(selectedProduct.id, sanitizedForm);
       setFounderForm({ full_name: '', linkedin_url: '', email: '', phone: '', role_title: '' });
       await loadProductDetails(selectedProduct.id);
+      toast.success('Founder created successfully!');
     } catch (err: any) {
       console.error('Failed to create founder:', err);
-      alert(err.response?.data?.detail || err.message || 'Failed to create founder.');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to create founder.');
     } finally {
       setIsMutating(false);
     }
@@ -413,15 +499,46 @@ export function ProductManagement({ user }: ProductManagementProps) {
   const handleUpdateFounder = async () => {
     if (!selectedProduct || !editingFounder) return;
     
+    // Security: Validate UUIDs
+    if (!validateUuid(selectedProduct.id) || !validateUuid(editingFounder.id)) {
+      toast.error('Invalid product or founder ID');
+      return;
+    }
+
+    // Security: Sanitize and validate form data
+    const sanitizedForm = sanitizeFormData(founderForm, {
+      full_name: 255,
+      linkedin_url: 2048,
+      email: 254,
+      phone: 20,
+      role_title: 100,
+    });
+
+    // Security: Validate URLs and email
+    const validatedLinkedInUrl = validateAndSanitizeUrl(sanitizedForm.linkedin_url);
+    if (!validatedLinkedInUrl) {
+      toast.error('Invalid LinkedIn URL');
+      return;
+    }
+    sanitizedForm.linkedin_url = validatedLinkedInUrl;
+
+    // Security: Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(sanitizedForm.email)) {
+      toast.error('Invalid email format');
+      return;
+    }
+    
     try {
       setIsMutating(true);
-      await productService.updateFounder(selectedProduct.id, editingFounder.id, founderForm);
+      await productService.updateFounder(selectedProduct.id, editingFounder.id, sanitizedForm);
       setEditingFounder(null);
       setFounderForm({ full_name: '', linkedin_url: '', email: '', phone: '', role_title: '' });
       await loadProductDetails(selectedProduct.id);
+      toast.success('Founder updated successfully!');
     } catch (err: any) {
       console.error('Failed to update founder:', err);
-      alert(err.response?.data?.detail || err.message || 'Failed to update founder.');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to update founder.');
     } finally {
       setIsMutating(false);
     }
@@ -1198,14 +1315,29 @@ export function ProductManagement({ user }: ProductManagementProps) {
                           const file = e.target.files?.[0];
                           if (!file || !selectedProduct) return;
                           
+                          // Security: Validate UUID
+                          if (!validateUuid(selectedProduct.id)) {
+                            toast.error('Invalid product ID');
+                            e.target.value = '';
+                            return;
+                          }
+
+                          // Security: Validate file before upload
+                          const validation = validatePitchDeckFile(file);
+                          if (!validation.isValid) {
+                            toast.error(validation.error || 'Invalid file');
+                            e.target.value = '';
+                            return;
+                          }
+                          
                           try {
                             setIsMutating(true);
                             await productService.uploadPitchDeck(selectedProduct.id, file);
                             await loadProductDetails(selectedProduct.id);
-                            alert('Pitch deck uploaded successfully!');
+                            toast.success('Pitch deck uploaded successfully!');
                           } catch (err: any) {
                             console.error('Failed to upload pitch deck:', err);
-                            alert(err.response?.data?.detail || err.message || 'Failed to upload pitch deck.');
+                            toast.error(err.response?.data?.detail || err.message || 'Failed to upload pitch deck.');
                           } finally {
                             setIsMutating(false);
                             e.target.value = ''; // Reset input
@@ -1246,37 +1378,142 @@ export function ProductManagement({ user }: ProductManagementProps) {
                                 {(doc.file_size / 1024 / 1024).toFixed(2)} MB • Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
                               </p>
                             </div>
-                            {selectedProduct && canEdit(selectedProduct) && (
+                            {selectedProduct && (
                               <div className="flex gap-2">
-                                {doc.file && (
+                                {/* View/Download buttons - available to product owner */}
+                                {doc.document_type === 'PITCH_DECK' && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={async () => {
+                                        // Security: Validate IDs
+                                        if (!validateUuid(selectedProduct.id) || !validateUuid(doc.id)) {
+                                          toast.error('Invalid product or document ID');
+                                          return;
+                                        }
+                                        try {
+                                          // Fetch pitch deck using authenticated API client and create blob URL
+                                          // This ensures the new tab has proper authentication via the blob URL
+                                          const blobUrl = await productService.viewPitchDeck(selectedProduct.id, doc.id);
+                                          const newWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+                                          
+                                          // Clean up blob URL after window is closed or after 1 hour (fallback)
+                                          if (newWindow) {
+                                            // Clean up blob URL when window is closed
+                                            const cleanup = () => {
+                                              URL.revokeObjectURL(blobUrl);
+                                            };
+                                            // Try to detect when window closes (not always reliable, so also use timeout)
+                                            const checkClosed = setInterval(() => {
+                                              if (newWindow.closed) {
+                                                cleanup();
+                                                clearInterval(checkClosed);
+                                              }
+                                            }, 1000);
+                                            // Fallback: cleanup after 1 hour
+                                            setTimeout(() => {
+                                              cleanup();
+                                              clearInterval(checkClosed);
+                                            }, 3600000);
+                                          } else {
+                                            // If popup was blocked, cleanup immediately
+                                            URL.revokeObjectURL(blobUrl);
+                                          }
+                                        } catch (err: any) {
+                                          console.error('Failed to view pitch deck:', err);
+                                          toast.error(err.message || 'Failed to view pitch deck');
+                                        }
+                                      }}
+                                    >
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      View
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={async () => {
+                                        // Security: Validate IDs
+                                        if (!validateUuid(selectedProduct.id) || !validateUuid(doc.id)) {
+                                          toast.error('Invalid product or document ID');
+                                          return;
+                                        }
+                                        try {
+                                          const blob = await productService.downloadPitchDeck(selectedProduct.id, doc.id);
+                                          const url = window.URL.createObjectURL(blob);
+                                          const a = document.createElement('a');
+                                          a.href = url;
+                                          a.download = `pitch-deck-${doc.id}.pdf`;
+                                          document.body.appendChild(a);
+                                          a.click();
+                                          window.URL.revokeObjectURL(url);
+                                          document.body.removeChild(a);
+                                          toast.success('Pitch deck downloaded');
+                                        } catch (err: any) {
+                                          console.error('Failed to download pitch deck:', err);
+                                          toast.error(err.message || 'Failed to download pitch deck');
+                                        }
+                                      }}
+                                    >
+                                      <Download className="w-4 h-4 mr-2" />
+                                      Download
+                                    </Button>
+                                    {canEdit(selectedProduct) && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setSelectedDocumentId(doc.id);
+                                            loadPitchDeckData(selectedProduct.id, doc.id);
+                                          }}
+                                        >
+                                          <BarChart3 className="w-4 h-4 mr-2" />
+                                          Analytics
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setSelectedDocumentId(doc.id);
+                                            setShowShareDialog(true);
+                                          }}
+                                        >
+                                          <Share2 className="w-4 h-4 mr-2" />
+                                          Share
+                                        </Button>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                                {canEdit(selectedProduct) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(doc.file, '_blank')}
+                                    onClick={async () => {
+                                      if (!selectedProduct || !confirm('Delete this pitch deck?')) return;
+                                      // Security: Validate IDs
+                                      if (!validateUuid(selectedProduct.id) || !validateUuid(doc.id)) {
+                                        toast.error('Invalid product or document ID');
+                                        return;
+                                      }
+                                      try {
+                                        setIsMutating(true);
+                                        await productService.deleteProductDocument(selectedProduct.id, doc.id);
+                                        await loadProductDetails(selectedProduct.id);
+                                        toast.success('Pitch deck deleted');
+                                      } catch (err: any) {
+                                        console.error('Failed to delete document:', err);
+                                        toast.error(err.response?.data?.detail || err.message || 'Failed to delete document.');
+                                      } finally {
+                                        setIsMutating(false);
+                                      }
+                                    }}
+                                    disabled={isMutating}
                                   >
-                                    View
+                                    <Trash2 className="w-4 h-4" />
                                   </Button>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={async () => {
-                                    if (!selectedProduct || !confirm('Delete this pitch deck?')) return;
-                                    try {
-                                      setIsMutating(true);
-                                      await productService.deleteProductDocument(selectedProduct.id, doc.id);
-                                      await loadProductDetails(selectedProduct.id);
-                                    } catch (err: any) {
-                                      console.error('Failed to delete document:', err);
-                                      alert(err.response?.data?.detail || err.message || 'Failed to delete document.');
-                                    } finally {
-                                      setIsMutating(false);
-                                    }
-                                  }}
-                                  disabled={isMutating}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
                               </div>
                             )}
                           </div>
@@ -1292,6 +1529,265 @@ export function ProductManagement({ user }: ProductManagementProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setManageDialogOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pitch Deck Analytics Dialog */}
+      {selectedDocumentId && selectedProduct && (
+        <Dialog open={!!selectedDocumentId && !showShareDialog} onOpenChange={(open) => {
+          if (!open) {
+            setSelectedDocumentId(null);
+            setPitchDeckAnalytics(null);
+          }
+        }}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Pitch Deck Analytics</DialogTitle>
+              <DialogDescription>
+                View analytics, access control, shares, and requests for this pitch deck
+              </DialogDescription>
+            </DialogHeader>
+            
+            {isLoadingAnalytics ? (
+              <div className="text-center py-8">Loading analytics...</div>
+            ) : pitchDeckAnalytics ? (
+              <div className="space-y-6">
+                {/* Analytics Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-muted/50 rounded-lg text-center">
+                    <p className="text-2xl font-bold">{pitchDeckAnalytics.total_views || 0}</p>
+                    <p className="text-sm text-muted-foreground">Total Views</p>
+                  </div>
+                  <div className="p-4 bg-muted/50 rounded-lg text-center">
+                    <p className="text-2xl font-bold">{pitchDeckAnalytics.total_downloads || 0}</p>
+                    <p className="text-sm text-muted-foreground">Total Downloads</p>
+                  </div>
+                  <div className="p-4 bg-muted/50 rounded-lg text-center">
+                    <p className="text-2xl font-bold">{pitchDeckAnalytics.unique_viewers || 0}</p>
+                    <p className="text-sm text-muted-foreground">Unique Viewers</p>
+                  </div>
+                  <div className="p-4 bg-muted/50 rounded-lg text-center">
+                    <p className="text-2xl font-bold">{pitchDeckAnalytics.total_access_granted || 0}</p>
+                    <p className="text-sm text-muted-foreground">Access Granted</p>
+                  </div>
+                </div>
+
+                {/* Recent Events */}
+                {pitchDeckAnalytics.recent_events && pitchDeckAnalytics.recent_events.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3">Recent Access Events</h3>
+                    <div className="space-y-2">
+                      {pitchDeckAnalytics.recent_events.map((event: any) => (
+                        <div key={event.id} className="p-3 bg-muted/30 rounded-lg flex justify-between items-center">
+                          <div>
+                            <p className="font-medium">{sanitizeForDisplay(event.user_name)} ({sanitizeForDisplay(event.user_email)})</p>
+                            <p className="text-sm text-muted-foreground">
+                              {event.event_type} • {new Date(event.accessed_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <Badge>{event.event_type}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Access Control */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Access Permissions</h3>
+                  {pitchDeckAccess.length > 0 ? (
+                    <div className="space-y-2">
+                      {pitchDeckAccess.map((access: any) => (
+                        <div key={access.id} className="p-3 bg-muted/30 rounded-lg flex justify-between items-center">
+                          <div>
+                            <p className="font-medium">{sanitizeForDisplay(access.investor_name)}</p>
+                            <p className="text-sm text-muted-foreground">{sanitizeForDisplay(access.investor_email)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Granted {new Date(access.granted_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              if (!selectedProduct || !selectedDocumentId || !confirm('Revoke access?')) return;
+                              // Security: Validate UUIDs
+                              if (!validateUuid(selectedProduct.id) || !validateUuid(selectedDocumentId) || !validateUuid(access.investor)) {
+                                toast.error('Invalid IDs');
+                                return;
+                              }
+                              try {
+                                await productService.revokePitchDeckAccess(selectedProduct.id, selectedDocumentId, access.investor);
+                                toast.success('Access revoked');
+                                await loadPitchDeckData(selectedProduct.id, selectedDocumentId);
+                              } catch (err: any) {
+                                toast.error(err.message || 'Failed to revoke access');
+                              }
+                            }}
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No specific access permissions set</p>
+                  )}
+                </div>
+
+                {/* Shares */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Shares</h3>
+                  {pitchDeckShares.length > 0 ? (
+                    <div className="space-y-2">
+                      {pitchDeckShares.map((share: any) => (
+                        <div key={share.id} className="p-3 bg-muted/30 rounded-lg">
+                          <p className="font-medium">{sanitizeForDisplay(share.investor_name)}</p>
+                          <p className="text-sm text-muted-foreground">{sanitizeForDisplay(share.investor_email)}</p>
+                          {share.message && <p className="text-sm mt-1">{sanitizeForDisplay(share.message)}</p>}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Shared {new Date(share.shared_at).toLocaleDateString()}
+                            {share.viewed_at && ` • Viewed ${new Date(share.viewed_at).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No shares yet</p>
+                  )}
+                </div>
+
+                {/* Requests */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Requests</h3>
+                  {pitchDeckRequests.length > 0 ? (
+                    <div className="space-y-2">
+                      {pitchDeckRequests.map((request: any) => (
+                        <div key={request.id} className="p-3 bg-muted/30 rounded-lg">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-medium">{sanitizeForDisplay(request.investor_name)}</p>
+                              <p className="text-sm text-muted-foreground">{sanitizeForDisplay(request.investor_email)}</p>
+                              {request.message && <p className="text-sm mt-1">{sanitizeForDisplay(request.message)}</p>}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Requested {new Date(request.requested_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Badge variant={request.status === 'APPROVED' ? 'default' : request.status === 'DENIED' ? 'destructive' : 'secondary'}>
+                              {request.status}
+                            </Badge>
+                          </div>
+                          {request.status === 'PENDING' && (
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  if (!selectedProduct || !selectedDocumentId) return;
+                                  // Security: Validate UUIDs
+                                  if (!validateUuid(selectedProduct.id) || !validateUuid(selectedDocumentId) || !validateUuid(request.id)) {
+                                    toast.error('Invalid IDs');
+                                    return;
+                                  }
+                                  try {
+                                    await productService.respondToPitchDeckRequest(selectedProduct.id, selectedDocumentId, request.id, 'APPROVED');
+                                    toast.success('Request approved');
+                                    await loadPitchDeckData(selectedProduct.id, selectedDocumentId);
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Failed to approve request');
+                                  }
+                                }}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  if (!selectedProduct || !selectedDocumentId) return;
+                                  // Security: Validate UUIDs
+                                  if (!validateUuid(selectedProduct.id) || !validateUuid(selectedDocumentId) || !validateUuid(request.id)) {
+                                    toast.error('Invalid IDs');
+                                    return;
+                                  }
+                                  try {
+                                    await productService.respondToPitchDeckRequest(selectedProduct.id, selectedDocumentId, request.id, 'DENIED');
+                                    toast.success('Request denied');
+                                    await loadPitchDeckData(selectedProduct.id, selectedDocumentId);
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Failed to deny request');
+                                  }
+                                }}
+                              >
+                                Deny
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No requests yet</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Share Pitch Deck Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Pitch Deck</DialogTitle>
+            <DialogDescription>
+              Share this pitch deck with an investor
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="investor-id">Investor ID</Label>
+              <Input
+                id="investor-id"
+                value={shareInvestorId}
+                onChange={(e) => {
+                  const value = sanitizeInput(e.target.value, 36);
+                  if (validateUuid(value) || value === '') {
+                    setShareInvestorId(value);
+                  }
+                }}
+                placeholder="Enter investor UUID"
+              />
+            </div>
+            <div>
+              <Label htmlFor="share-message">Message (Optional)</Label>
+              <Textarea
+                id="share-message"
+                value={shareMessage}
+                onChange={(e) => {
+                  const value = sanitizeInput(e.target.value, 2000);
+                  setShareMessage(value);
+                }}
+                placeholder="Optional message to investor"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {shareMessage.length}/2000 characters
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowShareDialog(false);
+              setShareInvestorId('');
+              setShareMessage('');
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleSharePitchDeck} disabled={!shareInvestorId || !validateUuid(shareInvestorId) || isMutating}>
+              Share
             </Button>
           </DialogFooter>
         </DialogContent>

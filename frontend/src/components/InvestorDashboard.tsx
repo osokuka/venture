@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -10,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Separator } from "./ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { toast } from "sonner@2.0.3";
+import { productService } from '../services/productService';
+import { validateUuid, sanitizeInput, safeDisplayText } from '../utils/security';
 import { 
   TrendingUp, 
   Users, 
@@ -64,7 +67,7 @@ import { type VentureProduct } from '../types';
 import { EditProfile } from './EditProfile';
 import { Settings } from './Settings';
 import { UserProfile } from './UserProfile';
-import { SchedulingModal } from './SchedulingModal';
+// Note: SchedulingModal import removed - using new tabs instead per NO_MODALS_RULE.md
 import { MessagingSystem } from './MessagingSystem';
 
 interface InvestorDashboardProps {
@@ -75,598 +78,12 @@ interface InvestorDashboardProps {
   onRefreshUnreadCount?: () => void; // Callback to refresh global unread count
 }
 
-interface CompanyDetailsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  company: any;
-}
+// Note: All modal components have been removed per NO_MODALS_RULE.md
+// Portfolio actions navigate on the same page (per user request)
 
-interface ReportsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  company: any;
-}
-
-interface ExitPlanModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  company: any;
-}
-
-interface MessageModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  company: any;
-}
-
-// Company Details Modal
-function CompanyDetailsModal({ isOpen, onClose, company }: CompanyDetailsModalProps) {
-  if (!company) return null;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center space-x-3">
-            <Avatar className="w-10 h-10">
-              <AvatarImage src={company.logo} />
-              <AvatarFallback>{company.company[0]}</AvatarFallback>
-            </Avatar>
-            <span>{company.company} - Company Details</span>
-          </DialogTitle>
-          <DialogDescription>
-            Comprehensive overview of your portfolio investment
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Investment Value</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{company.currentValue}</p>
-                <p className={`text-sm ${company.return.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-                  {company.return} return
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Revenue (ARR)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{company.metrics.revenue}</p>
-                <p className="text-sm text-muted-foreground">{company.metrics.growth}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm">Status</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Badge 
-                  variant={company.status === 'Thriving' ? 'default' : 
-                          company.status === 'Growing' ? 'secondary' : 'outline'}
-                  className="text-sm"
-                >
-                  {company.status}
-                </Badge>
-                <p className="text-sm text-muted-foreground mt-1">Last update: {company.lastUpdate}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Company Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Company Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground">Sector</h4>
-                  <p>{company.sector}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground">Stage</h4>
-                  <p>{company.stage}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground">Initial Investment</h4>
-                  <p>{company.invested}</p>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground">Current Valuation</h4>
-                  <p>{company.currentValue}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Founder Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Leadership Team</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg">
-                <Avatar className="w-16 h-16">
-                  <AvatarImage src={company.founderAvatar} />
-                  <AvatarFallback>{company.founderName[0]}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="font-semibold text-lg">{company.founderName}</h3>
-                  <p className="text-muted-foreground">Founder & CEO</p>
-                  <p className="text-sm text-muted-foreground">{company.expertise}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3 p-3 bg-muted/20 rounded-lg">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm">Q4 financial report submitted</p>
-                    <p className="text-xs text-muted-foreground">2 days ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3 p-3 bg-muted/20 rounded-lg">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm">New product feature launched</p>
-                    <p className="text-xs text-muted-foreground">1 week ago</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3 p-3 bg-muted/20 rounded-lg">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm">Board meeting scheduled</p>
-                    <p className="text-xs text-muted-foreground">2 weeks ago</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Reports Modal
-function ReportsModal({ isOpen, onClose, company }: ReportsModalProps) {
-  if (!company) return null;
-
-  const reports = [
-    {
-      name: 'Q4 2024 Financial Report',
-      type: 'Financial',
-      date: '2024-12-31',
-      status: 'Available',
-      size: '2.3 MB'
-    },
-    {
-      name: 'Monthly Metrics Dashboard',
-      type: 'Performance',
-      date: '2024-12-01',
-      status: 'Available',
-      size: '1.8 MB'
-    },
-    {
-      name: 'Market Analysis Report',
-      type: 'Strategic',
-      date: '2024-11-15',
-      status: 'Available',
-      size: '3.1 MB'
-    },
-    {
-      name: 'Product Roadmap 2025',
-      type: 'Product',
-      date: '2024-11-01',
-      status: 'Available',
-      size: '1.5 MB'
-    }
-  ];
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center space-x-3">
-            <FileBarChart className="w-5 h-5" />
-            <span>{company.company} - Reports & Documents</span>
-          </DialogTitle>
-          <DialogDescription>
-            Access financial reports, performance metrics, and strategic documents
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Reports</p>
-                    <p className="font-semibold">{reports.length}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <Calendar className="w-4 h-4 text-green-600" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Last Updated</p>
-                    <p className="font-semibold">Dec 31, 2024</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="w-4 h-4 text-purple-600" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Performance</p>
-                    <p className="font-semibold">{company.return}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Reports List */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Available Reports</CardTitle>
-              <CardDescription>Download and view company reports and documents</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {reports.map((report, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{report.name}</p>
-                        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                          <span>{report.type}</span>
-                          <span>•</span>
-                          <span>{report.date}</span>
-                          <span>•</span>
-                          <span>{report.size}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {report.status}
-                      </Badge>
-                      <button 
-                        className="btn-chrome-secondary text-xs py-1 px-3"
-                        onClick={() => toast.success(`Downloading ${report.name}...`)}
-                      >
-                        <Download className="w-3 h-3 mr-1" />
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Request Custom Report */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Request Custom Report</CardTitle>
-              <CardDescription>Need specific data or analysis? Request a custom report from the company</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <Textarea 
-                  placeholder="Describe the type of report or specific data you need..."
-                  rows={3}
-                />
-                <button 
-                  className="btn-chrome-primary"
-                  onClick={() => toast.success('Custom report request sent to company!')}
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Request Report
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Exit Plan Modal
-function ExitPlanModal({ isOpen, onClose, company }: ExitPlanModalProps) {
-  if (!company) return null;
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center space-x-3">
-            <LogOut className="w-5 h-5" />
-            <span>{company.company} - Exit Strategy Planning</span>
-          </DialogTitle>
-          <DialogDescription>
-            Plan and manage your exit strategy for this investment
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          {/* Current Investment Overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Investment Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Initial Investment</p>
-                  <p className="font-semibold text-lg">{company.invested}</p>
-                </div>
-                <div className="text-center p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Current Value</p>
-                  <p className="font-semibold text-lg">{company.currentValue}</p>
-                </div>
-                <div className="text-center p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Total Return</p>
-                  <p className={`font-semibold text-lg ${company.return.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-                    {company.return}
-                  </p>
-                </div>
-                <div className="text-center p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Hold Period</p>
-                  <p className="font-semibold text-lg">2.3 years</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Exit Options */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Exit Strategy Options</CardTitle>
-              <CardDescription>Evaluate different exit strategies for your investment</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold">Strategic Acquisition</h4>
-                    <Badge variant="secondary">High Potential</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Sell to a strategic buyer in the same industry. Potential for premium valuation due to synergies.
-                  </p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Estimated Timeline: 12-18 months</span>
-                    <span className="font-medium">Potential Multiple: 3-5x</span>
-                  </div>
-                </div>
-
-                <div className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold">IPO (Public Offering)</h4>
-                    <Badge variant="outline">Medium Potential</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Take the company public through an initial public offering. Requires strong financials and growth.
-                  </p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Estimated Timeline: 18-24 months</span>
-                    <span className="font-medium">Potential Multiple: 4-8x</span>
-                  </div>
-                </div>
-
-                <div className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold">Secondary Sale</h4>
-                    <Badge variant="outline">Available Now</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Sell shares to another investor or fund. Quick exit but potentially lower valuation.
-                  </p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Estimated Timeline: 3-6 months</span>
-                    <span className="font-medium">Potential Multiple: 1.5-2.5x</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Action Plan */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recommended Action Plan</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3 p-3 bg-primary/5 rounded-lg">
-                  <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-semibold">1</div>
-                  <div>
-                    <p className="font-medium">Monitor Performance</p>
-                    <p className="text-sm text-muted-foreground">Continue tracking key metrics and company milestones</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg">
-                  <div className="w-6 h-6 bg-muted-foreground text-background rounded-full flex items-center justify-center text-xs font-semibold">2</div>
-                  <div>
-                    <p className="font-medium">Market Analysis</p>
-                    <p className="text-sm text-muted-foreground">Analyze market conditions and potential buyer interest</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg">
-                  <div className="w-6 h-6 bg-muted-foreground text-background rounded-full flex items-center justify-center text-xs font-semibold">3</div>
-                  <div>
-                    <p className="font-medium">Strategic Planning</p>
-                    <p className="text-sm text-muted-foreground">Work with management team on exit preparation</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
-          <div className="flex space-x-3">
-            <button 
-              className="btn-chrome-primary flex-1"
-              onClick={() => toast.success('Exit strategy consultation scheduled!')}
-            >
-              <Calendar className="w-4 h-4 mr-2" />
-              Schedule Consultation
-            </button>
-            <button 
-              className="btn-chrome-secondary flex-1"
-              onClick={() => toast.success('Exit planning documents will be sent to your email.')}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Exit Plan
-            </button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Message Modal
-function MessageModal({ isOpen, onClose, company }: MessageModalProps) {
-  const [message, setMessage] = useState('');
-
-  if (!company) return null;
-
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      toast.success(`Message sent to ${company.founderName} at ${company.company}!`);
-      setMessage('');
-      onClose();
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center space-x-3">
-            <MessageCircle className="w-5 h-5" />
-            <span>Message {company.founderName}</span>
-          </DialogTitle>
-          <DialogDescription>
-            Send a direct message to the founder of {company.company}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          {/* Recipient Info */}
-          <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg">
-            <Avatar className="w-12 h-12">
-              <AvatarImage src={company.founderAvatar} />
-              <AvatarFallback>{company.founderName[0]}</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium">{company.founderName}</p>
-              <p className="text-sm text-muted-foreground">Founder & CEO at {company.company}</p>
-            </div>
-          </div>
-
-          {/* Message Templates */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Quick Templates</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-2">
-                <button 
-                  className="p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors text-sm"
-                  onClick={() => setMessage("Hi! I'd like to schedule a quarterly review meeting to discuss the company's progress and upcoming milestones.")}
-                >
-                  📅 Schedule quarterly review meeting
-                </button>
-                <button 
-                  className="p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors text-sm"
-                  onClick={() => setMessage("Could you please provide an update on the latest financial metrics and key performance indicators?")}
-                >
-                  📊 Request financial update
-                </button>
-                <button 
-                  className="p-3 text-left border rounded-lg hover:bg-muted/50 transition-colors text-sm"
-                  onClick={() => setMessage("I'd like to discuss potential strategic opportunities and partnerships that could benefit the company.")}
-                >
-                  🤝 Discuss strategic opportunities
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Message Compose */}
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="message" className="block text-sm font-medium mb-2">Your Message</label>
-              <Textarea 
-                id="message"
-                placeholder="Type your message here..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={6}
-                className="resize-none"
-              />
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                {message.length}/1000 characters
-              </p>
-              <div className="flex space-x-3">
-                <button 
-                  className="btn-chrome-secondary"
-                  onClick={onClose}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="btn-chrome-primary"
-                  onClick={handleSendMessage}
-                  disabled={!message.trim()}
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  Send Message
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function InvestorDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate }: InvestorDashboardProps) {
+export function InvestorDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate, onRefreshUnreadCount }: InvestorDashboardProps) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [ventures, setVentures] = useState<VentureProduct[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingVentures, setIsLoadingVentures] = useState(false);
@@ -674,6 +91,11 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const [filterSector, setFilterSector] = useState('all');
   const [filterStage, setFilterStage] = useState('all');
   const [filterFunding, setFilterFunding] = useState('all');
+  
+  // Get selected user info from URL params (for messaging)
+  const selectedUserId = searchParams.get('userId');
+  const selectedUserName = searchParams.get('userName');
+  const selectedUserRole = searchParams.get('userRole');
 
   // Fetch unread message count
   useEffect(() => {
@@ -700,34 +122,29 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const fetchVentures = async () => {
     setIsLoadingVentures(true);
     try {
+      // Security: Sanitize search term
+      const sanitizedSearch = searchTerm ? sanitizeInput(searchTerm, 100) : undefined;
+      const sanitizedSector = filterSector !== 'all' ? sanitizeInput(filterSector, 100) : undefined;
+      
       const data = await ventureService.getPublicVentures({
-        search: searchTerm || undefined,
-        sector: filterSector !== 'all' ? filterSector : undefined,
+        search: sanitizedSearch,
+        sector: sanitizedSector,
       });
-      setVentures(data);
+      // Ensure data is always an array (handle paginated responses or errors)
+      const venturesArray = Array.isArray(data) ? data : (data?.results || data?.data || []);
+      setVentures(venturesArray);
     } catch (error) {
       console.error('Failed to fetch ventures:', error);
+      toast.error('Failed to load ventures');
+      // Ensure ventures is always an array even on error
+      setVentures([]);
     } finally {
       setIsLoadingVentures(false);
     }
   };
   
-  // Scheduling Modal State
-  const [isSchedulingModalOpen, setIsSchedulingModalOpen] = useState(false);
-  const [selectedMentee, setSelectedMentee] = useState<{
-    id: string;
-    name: string;
-    company: string;
-    avatar: string;
-    expertise?: string;
-  } | null>(null);
-
-  // New Modal States
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
-  const [isExitPlanModalOpen, setIsExitPlanModalOpen] = useState(false);
-  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-  const [selectedCompany, setSelectedCompany] = useState<any>(null);
+  // Note: All modals have been removed. Actions now open new tabs instead.
+  // This follows the platform rule: "No modals - use new tabs for detailed views"
 
   // Handle profile and settings views
   if (activeView === 'edit-profile') {
@@ -865,52 +282,6 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     }
   ];
 
-  // TODO: VL-811 - Replace hardcoded investmentOpportunities with API call to GET /api/investors/opportunities
-  const investmentOpportunities = [
-    {
-      id: 'o1',
-      company: 'AI Analytics',
-      sector: 'AI/ML',
-      stage: 'Series B',
-      asking: '$10M',
-      valuation: '$40M',
-      traction: '1M+ users, $2M ARR',
-      matched: 95,
-      logo: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=60&h=60&fit=crop&crop=center',
-      description: 'Advanced AI analytics platform for enterprise data insights',
-      teamSize: '25-50',
-      location: 'San Francisco, CA'
-    },
-    {
-      id: 'o2',
-      company: 'EcoEnergy',
-      sector: 'CleanTech',
-      stage: 'Series A',
-      asking: '$5M',
-      valuation: '$20M',
-      traction: '50+ enterprise clients, $1M ARR',
-      matched: 87,
-      logo: 'https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?w=60&h=60&fit=crop&crop=center',
-      description: 'Renewable energy management for commercial buildings',
-      teamSize: '11-25',
-      location: 'Austin, TX'
-    },
-    {
-      id: 'o3',
-      company: 'MedTech Pro',
-      sector: 'HealthTech',
-      stage: 'Seed',
-      asking: '$3M',
-      valuation: '$12M',
-      traction: '5 hospital partnerships, clinical trials started',
-      matched: 78,
-      logo: 'https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=60&h=60&fit=crop&crop=center',
-      description: 'AI-powered medical diagnostics platform',
-      teamSize: '6-10',
-      location: 'Boston, MA'
-    }
-  ];
-
   const pipelineDeals = [
     {
       id: 1,
@@ -952,44 +323,215 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     toast.success("Message sent to startup successfully!");
   };
 
-  const handleRequestPitch = (startupId: string) => {
-    toast.success("Pitch deck request sent!");
+  const handleRequestPitch = async (productId: string) => {
+    // Security: Validate UUID
+    if (!validateUuid(productId)) {
+      toast.error("Invalid product ID");
+      return;
+    }
+
+    try {
+      // Ensure ventures is an array before using find
+      const venturesArray = Array.isArray(ventures) ? ventures : [];
+      
+      // Find the product and its first pitch deck
+      const product = venturesArray.find(v => v.id === productId);
+      if (!product || !product.documents || product.documents.length === 0) {
+        toast.error("No pitch deck available for this product");
+        return;
+      }
+
+      const pitchDeck = product.documents.find((doc: any) => doc.document_type === 'PITCH_DECK');
+      if (!pitchDeck) {
+        toast.error("No pitch deck found");
+        return;
+      }
+
+      // Security: Validate document ID
+      if (!validateUuid(pitchDeck.id)) {
+        toast.error("Invalid document ID");
+        return;
+      }
+
+      // Request pitch deck access
+      await productService.requestPitchDeck(productId, pitchDeck.id);
+      toast.success("Pitch deck request sent!");
+    } catch (err: any) {
+      console.error('Failed to request pitch deck:', err);
+      toast.error(err.message || 'Failed to request pitch deck');
+    }
   };
 
   const handleScheduleMeeting = (startupId: string) => {
     toast.success("Meeting request sent!");
   };
 
-  const handleScheduleWithFounder = (company: any) => {
-    setSelectedMentee({
-      id: company.id,
-      name: company.founderName,
+  const handleScheduleWithFounder = async (company: any) => {
+    // For portfolio companies, we need to get the actual user ID from the product
+    // Check if company.id is a valid UUID (product ID)
+    const isValidUuid = company.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(company.id);
+    
+    let userId = company.founderId || company.userId;
+    let userName = company.founderName || company.company;
+    
+    // If company.id is a valid UUID, fetch the product to get the user ID
+    if (isValidUuid && !userId) {
+      try {
+        const product = await ventureService.getVentureById(company.id);
+        if (product && product.user) {
+          userId = product.user;
+          userName = product.user_name || product.name || company.company;
+        }
+      } catch (error) {
+        console.error('Failed to fetch product user ID:', error);
+        // Fallback to using company.id if it's a UUID
+        if (isValidUuid) {
+          userId = company.id;
+        }
+      }
+    } else if (!isValidUuid) {
+      // Demo data - try to find matching product by company name
+      try {
+        const publicVentures = await ventureService.getPublicVentures({});
+        const venturesArray = Array.isArray(publicVentures) 
+          ? publicVentures 
+          : (publicVentures?.results || publicVentures?.data || []);
+        
+        // Try to find a matching product by name
+        const matchingProduct = venturesArray.find((v: VentureProduct) => 
+          v.name.toLowerCase().includes(company.company.toLowerCase()) ||
+          company.company.toLowerCase().includes(v.name.toLowerCase())
+        );
+        
+        if (matchingProduct && matchingProduct.user) {
+          userId = matchingProduct.user;
+          userName = matchingProduct.user_name || matchingProduct.name;
+        } else {
+          // No matching product found - show helpful message
+          toast.info('This portfolio company is using demo data. To schedule meetings, please link it to an actual product or use a company from the Discover page.');
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to search for matching product:', error);
+        toast.info('This portfolio company is using demo data. To schedule meetings, please link it to an actual product.');
+        return;
+      }
+    }
+    
+    if (!userId) {
+      toast.error('Unable to determine user ID for scheduling');
+      return;
+    }
+    
+    // Navigate to meeting scheduler on same page
+    const params = new URLSearchParams({
+      userId: userId,
+      userName: userName,
       company: company.company,
-      avatar: company.founderAvatar,
-      expertise: company.expertise
+      userRole: 'venture',
     });
-    setIsSchedulingModalOpen(true);
+    navigate(`/dashboard/investor/schedule?${params.toString()}`);
   };
 
-  // New action handlers
+  // Action handlers - Navigate on same page (per user request)
+  // Portfolio actions navigate to dedicated routes on the same page
   const handleShowDetails = (company: any) => {
-    setSelectedCompany(company);
-    setIsDetailsModalOpen(true);
+    // Navigate to company details page on same page
+    // Details page will show the complete PitchDeckDetails component
+    const params = new URLSearchParams({
+      companyId: company.id,
+      company: company.company,
+    });
+    navigate(`/dashboard/investor/portfolio/details?${params.toString()}`);
   };
 
   const handleShowReports = (company: any) => {
-    setSelectedCompany(company);
-    setIsReportsModalOpen(true);
+    // Navigate to reports page on same page
+    const params = new URLSearchParams({
+      companyId: company.id,
+      company: company.company,
+    });
+    navigate(`/dashboard/investor/portfolio/reports?${params.toString()}`);
   };
 
   const handleShowExitPlan = (company: any) => {
-    setSelectedCompany(company);
-    setIsExitPlanModalOpen(true);
+    // Navigate to exit plan page on same page
+    const params = new URLSearchParams({
+      companyId: company.id,
+      company: company.company,
+      invested: company.invested,
+      currentValue: company.currentValue,
+      return: company.return,
+    });
+    navigate(`/dashboard/investor/portfolio/exit-plan?${params.toString()}`);
   };
 
-  const handleSendMessage = (company: any) => {
-    setSelectedCompany(company);
-    setIsMessageModalOpen(true);
+  const handleSendMessage = async (company: any) => {
+    // For portfolio companies, we need to get the actual user ID from the product
+    // Check if company.id is a valid UUID (product ID)
+    const isValidUuid = company.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(company.id);
+    
+    let userId = company.founderId || company.userId;
+    let userName = company.founderName || company.company;
+    
+    // If company.id is a valid UUID, fetch the product to get the user ID
+    if (isValidUuid && !userId) {
+      try {
+        const product = await ventureService.getVentureById(company.id);
+        if (product && product.user) {
+          userId = product.user;
+          userName = product.user_name || product.name || company.company;
+        }
+      } catch (error) {
+        console.error('Failed to fetch product user ID:', error);
+        // Fallback to using company.id if it's a UUID
+        if (isValidUuid) {
+          userId = company.id;
+        }
+      }
+    } else if (!isValidUuid) {
+      // Demo data - try to find matching product by company name
+      try {
+        const publicVentures = await ventureService.getPublicVentures({});
+        const venturesArray = Array.isArray(publicVentures) 
+          ? publicVentures 
+          : (publicVentures?.results || publicVentures?.data || []);
+        
+        // Try to find a matching product by name
+        const matchingProduct = venturesArray.find((v: VentureProduct) => 
+          v.name.toLowerCase().includes(company.company.toLowerCase()) ||
+          company.company.toLowerCase().includes(v.name.toLowerCase())
+        );
+        
+        if (matchingProduct && matchingProduct.user) {
+          userId = matchingProduct.user;
+          userName = matchingProduct.user_name || matchingProduct.name;
+        } else {
+          // No matching product found - show helpful message
+          toast.info('This portfolio company is using demo data. To send messages, please link it to an actual product or use a company from the Discover page.');
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to search for matching product:', error);
+        toast.info('This portfolio company is using demo data. To send messages, please link it to an actual product.');
+        return;
+      }
+    }
+    
+    if (!userId) {
+      toast.error('Unable to determine user ID for messaging');
+      return;
+    }
+    
+    // Navigate to messaging system on same page with company founder
+    const params = new URLSearchParams({
+      userId: userId,
+      userName: userName,
+      userRole: 'venture',
+    });
+    // Navigate to messages view and pass params
+    // Use navigate with replace: false to preserve history
+    navigate(`/dashboard/investor/messages?${params.toString()}`, { replace: false });
   };
 
   const renderOverview = () => (
@@ -1381,8 +923,11 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   );
 
   const renderDiscover = () => {
+    // Ensure ventures is an array before filtering
+    const venturesArray = Array.isArray(ventures) ? ventures : [];
+    
     // Use real API data
-    const filteredStartups = ventures.filter(venture => {
+    const filteredStartups = venturesArray.filter(venture => {
       const matchesSearch = searchTerm === '' || 
         venture.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         venture.short_description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1453,66 +998,6 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
           </CardContent>
         </Card>
 
-        {/* Featured Opportunities */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Featured Opportunities</CardTitle>
-            <CardDescription>Handpicked startups matching your investment thesis</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {investmentOpportunities.map((opportunity) => (
-                <div key={opportunity.id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-start space-x-3 mb-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={opportunity.logo} />
-                      <AvatarFallback>{opportunity.company[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-sm">{opportunity.company}</h4>
-                      <p className="text-xs text-muted-foreground">{opportunity.sector} • {opportunity.stage}</p>
-                    </div>
-                    <Badge className="bg-green-100 text-green-800 text-xs">
-                      {opportunity.matched}% Match
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">{opportunity.description}</p>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Seeking:</span>
-                      <span className="font-medium">{opportunity.asking}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Valuation:</span>
-                      <span className="font-medium">{opportunity.valuation}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Traction:</span>
-                      <span className="font-medium text-xs">{opportunity.traction}</span>
-                    </div>
-                  </div>
-                  <div className="flex space-x-2 mt-4">
-                    <button 
-                      className="btn-chrome-secondary flex-1 text-xs py-1"
-                      onClick={() => handleRequestPitch(opportunity.id)}
-                    >
-                      <FileText className="w-3 h-3 mr-1" />
-                      Request Pitch
-                    </button>
-                    <button 
-                      className="btn-chrome-primary flex-1 text-xs py-1"
-                      onClick={() => handleContactStartup(opportunity.id)}
-                    >
-                      <MessageSquare className="w-3 h-3 mr-1" />
-                      Contact
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* All Startups */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredStartups.map((venture) => (
@@ -1522,65 +1007,153 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                   {/* Header */}
                   <div className="flex items-start space-x-4">
                       <Avatar className="w-12 h-12">
-                        <AvatarFallback>{venture.name[0]}</AvatarFallback>
+                        <AvatarFallback>{safeDisplayText(venture.name)?.[0] || '?'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 space-y-1">
-                        <h3 className="font-semibold text-lg">{venture.name}</h3>
-                        <p className="text-muted-foreground">{venture.short_description}</p>
+                        <h3 className="font-semibold text-lg">{safeDisplayText(venture.name)}</h3>
+                        <p className="text-muted-foreground">{safeDisplayText(venture.short_description)}</p>
                         <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                           <div className="flex items-center space-x-1">
                             <Building className="w-4 h-4" />
-                            <span>{venture.industry_sector}</span>
+                            <span>{safeDisplayText(venture.industry_sector)}</span>
                           </div>
                           {venture.address && (
                             <div className="flex items-center space-x-1">
                               <MapPin className="w-4 h-4" />
-                              <span>{venture.address}</span>
+                              <span>{safeDisplayText(venture.address)}</span>
                             </div>
                           )}
                           {venture.employees_count && (
                             <div className="flex items-center space-x-1">
                               <Users className="w-4 h-4" />
-                              <span>{venture.employees_count}</span>
+                              <span>{safeDisplayText(String(venture.employees_count))}</span>
                             </div>
                           )}
                         </div>
                       </div>
                       <Badge variant="outline">
-                        {venture.status}
+                        {safeDisplayText(venture.status)}
                       </Badge>
                   </div>
 
-                  {/* Funding Details */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Seeking</p>
-                      <p className="font-semibold">{venture.profile.fundingAmount}</p>
-                    </div>
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-sm text-muted-foreground">Stage</p>
-                      <p className="font-semibold">{venture.profile.fundingNeeds}</p>
-                    </div>
-                  </div>
-
-                  {/* Traction */}
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium text-muted-foreground">Traction</h4>
-                    <p className="text-sm">{venture.profile.traction}</p>
-                  </div>
+                  {/* Funding Details - Get from pitch deck metadata if available */}
+                  {venture.documents && venture.documents.length > 0 && (
+                    <>
+                      {venture.documents.find((doc: any) => doc.document_type === 'PITCH_DECK' && doc.funding_amount) && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="text-center p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Seeking</p>
+                            <p className="font-semibold">
+                              {safeDisplayText(venture.documents.find((doc: any) => doc.document_type === 'PITCH_DECK')?.funding_amount || 'N/A')}
+                            </p>
+                          </div>
+                          <div className="text-center p-3 bg-muted/50 rounded-lg">
+                            <p className="text-sm text-muted-foreground">Stage</p>
+                            <p className="font-semibold">
+                              {safeDisplayText(venture.documents.find((doc: any) => doc.document_type === 'PITCH_DECK')?.funding_stage || 'N/A')}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {venture.documents.find((doc: any) => doc.document_type === 'PITCH_DECK' && doc.traction_metrics) && (
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium text-muted-foreground">Traction</h4>
+                          <div className="text-sm space-y-1.5">
+                            {(() => {
+                              const pitchDeck = venture.documents.find((doc: any) => doc.document_type === 'PITCH_DECK');
+                              const metrics = pitchDeck?.traction_metrics;
+                              if (!metrics) return null;
+                              
+                              // Handle string metrics (if it's already a string)
+                              let parsedMetrics = metrics;
+                              if (typeof metrics === 'string') {
+                                try {
+                                  parsedMetrics = JSON.parse(metrics);
+                                } catch {
+                                  // If not valid JSON, display as-is (decode HTML entities)
+                                  return <p className="text-xs text-muted-foreground">{safeDisplayText(metrics)}</p>;
+                                }
+                              }
+                              
+                              // Format as key-value pairs
+                              if (typeof parsedMetrics === 'object' && parsedMetrics !== null) {
+                                return Object.entries(parsedMetrics).map(([key, value], index) => {
+                                  // Format key: convert snake_case to Title Case
+                                  const formattedKey = key
+                                    .split('_')
+                                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                    .join(' ');
+                                  
+                                  // Safely display the value (decode HTML entities, sanitize)
+                                  const displayValue = safeDisplayText(String(value));
+                                  
+                                  return (
+                                    <div key={index} className="flex justify-between items-center text-xs py-0.5">
+                                      <span className="text-muted-foreground font-medium">{formattedKey}:</span>
+                                      <span className="font-semibold text-foreground ml-2 text-right">{displayValue}</span>
+                                    </div>
+                                  );
+                                });
+                              }
+                              
+                              return <p className="text-xs text-muted-foreground">{safeDisplayText(String(metrics))}</p>;
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="flex space-x-2">
                     <button 
                       className="btn-chrome-secondary flex-1"
-                      onClick={() => handleRequestPitch(venture.id)}
+                      onClick={async () => {
+                        // Security: Validate UUID
+                        if (!validateUuid(venture.id)) {
+                          toast.error("Invalid venture ID");
+                          return;
+                        }
+
+                        try {
+                          // Find pitch deck document
+                          const pitchDeck = venture.documents?.find((doc: any) => doc.document_type === 'PITCH_DECK');
+                          if (!pitchDeck) {
+                            // If no pitch deck in the venture data, try to request access anyway
+                            // The backend will handle the case where no pitch deck exists
+                            await productService.requestPitchDeck(venture.id, '00000000-0000-0000-0000-000000000000');
+                            toast.success("Pitch deck access requested. The venture will be notified.");
+                            return;
+                          }
+
+                          // Security: Validate document ID
+                          if (!validateUuid(pitchDeck.id)) {
+                            toast.error("Invalid document ID");
+                            return;
+                          }
+
+                          // Navigate to pitch deck details page on same page
+                          // This shows all pitch deck information and document links
+                          navigate(`/dashboard/investor/pitch-deck/${venture.id}/${pitchDeck.id}`);
+                        } catch (err: any) {
+                          console.error('Failed to access pitch deck:', err);
+                          toast.error(err.message || 'Failed to access pitch deck');
+                        }
+                      }}
                     >
                       <FileText className="w-4 h-4 mr-2" />
                       View Pitch
                     </button>
                     <button 
                       className="btn-chrome-primary flex-1"
-                      onClick={() => handleContactStartup(venture.id)}
+                      onClick={() => {
+                        // Security: Validate UUID
+                        if (!validateUuid(venture.id)) {
+                          toast.error("Invalid venture ID");
+                          return;
+                        }
+                        handleContactStartup(venture.id);
+                      }}
                     >
                       <MessageSquare className="w-4 h-4 mr-2" />
                       Contact
@@ -1614,83 +1187,28 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       full_name: user.full_name,
       role: user.role.toLowerCase() as 'venture' | 'investor' | 'mentor' | 'admin',
     };
-    return <MessagingSystem currentUser={frontendUser} onRefreshUnreadCount={onRefreshUnreadCount} />;
+    // Pass selected user info from URL params to initiate conversation
+    // Use key prop to force re-render when selectedUserId changes
+    return (
+      <MessagingSystem
+        key={`messages-${selectedUserId || 'none'}`}
+        currentUser={frontendUser}
+        selectedUserId={selectedUserId || undefined}
+        selectedUserName={selectedUserName || undefined}
+        selectedUserRole={selectedUserRole || undefined}
+        onRefreshUnreadCount={onRefreshUnreadCount}
+      />
+    );
   };
 
   // Main render logic
   switch (activeView) {
     case 'overview':
-      return (
-        <div>
-          {renderOverview()}
-          {/* All Modals */}
-          <SchedulingModal
-            isOpen={isSchedulingModalOpen}
-            onClose={() => {
-              setIsSchedulingModalOpen(false);
-              setSelectedMentee(null);
-            }}
-            mentee={selectedMentee}
-            mentor={{
-              name: user.full_name,
-              avatar: undefined
-            }}
-          />
-        </div>
-      );
+      return renderOverview();
     case 'discover':
       return renderDiscover();
     case 'portfolio':
-      return (
-        <div>
-          {renderPortfolio()}
-          {/* All Modals */}
-          <SchedulingModal
-            isOpen={isSchedulingModalOpen}
-            onClose={() => {
-              setIsSchedulingModalOpen(false);
-              setSelectedMentee(null);
-            }}
-            mentee={selectedMentee}
-            mentor={{
-              name: user.full_name,
-              avatar: undefined
-            }}
-          />
-          <CompanyDetailsModal
-            isOpen={isDetailsModalOpen}
-            onClose={() => {
-              setIsDetailsModalOpen(false);
-              setSelectedCompany(null);
-            }}
-            company={selectedCompany}
-          />
-          <ReportsModal
-            isOpen={isReportsModalOpen}
-            onClose={() => {
-              setIsReportsModalOpen(false);
-              setSelectedCompany(null);
-            }}
-            company={selectedCompany}
-          />
-          <ExitPlanModal
-            isOpen={isExitPlanModalOpen}
-            onClose={() => {
-              setIsExitPlanModalOpen(false);
-              setSelectedCompany(null);
-            }}
-            company={selectedCompany}
-          />
-          <MessageModal
-            isOpen={isMessageModalOpen}
-            onClose={() => {
-              setIsMessageModalOpen(false);
-              setSelectedCompany(null);
-            }}
-            company={selectedCompany}
-          />
-        </div>
-      );
+      return renderPortfolio();
     case 'messages':
       return renderMessages();
     default:

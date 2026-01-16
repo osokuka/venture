@@ -1933,16 +1933,364 @@
           "status": "Pending"
         }
       ],
-      "status": "In Progress"
+      "status": "Done"
+    },
+    {
+      "key": "VL-823",
+      "summary": "Implement Pitch Deck Download/View Endpoints",
+      "description": "Investors can see pitch deck metadata but cannot download or view the actual PDF files. Need endpoints for secure pitch deck access with proper access control and tracking.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "GET /api/ventures/products/{id}/documents/{doc_id}/download returns PDF file",
+        "GET /api/ventures/products/{id}/documents/{doc_id}/view returns PDF for browser viewing",
+        "Only approved investors can access pitch decks",
+        "Access is tracked (who viewed, when)",
+        "Proper file serving with security headers",
+        "404 if document doesn't exist or user doesn't have access"
+      ],
+      "tasks": [
+        {
+          "summary": "Create pitch deck download endpoint",
+          "description": "GET endpoint that serves PDF file with access control",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create pitch deck view endpoint",
+          "description": "GET endpoint that serves PDF for browser viewing with proper headers",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add access tracking model",
+          "description": "Model to track who accessed which pitch deck and when",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add permission checks to download/view endpoints",
+          "description": "Verify user is approved investor and has access to pitch deck",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-824",
+      "summary": "Implement Pitch Deck Access Control System",
+      "description": "No system to track who can access which pitch decks. Need model and endpoints to manage pitch deck access permissions, allowing ventures to control who can view their pitch decks.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 13,
+      "acceptanceCriteria": [
+        "Model to track pitch deck access permissions",
+        "Endpoint to grant access to specific investors",
+        "Endpoint to revoke access",
+        "Endpoint to list who has access to a pitch deck",
+        "Permission checks enforce access control",
+        "Default: All approved investors can access (or configurable)"
+      ],
+      "tasks": [
+        {
+          "summary": "Design pitch deck access control model",
+          "description": "Model to track which investors have access to which pitch decks",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create grant access endpoint",
+          "description": "POST endpoint for ventures to grant pitch deck access to investors",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create revoke access endpoint",
+          "description": "DELETE endpoint for ventures to revoke pitch deck access",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create list access endpoint",
+          "description": "GET endpoint to list who has access to a pitch deck",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Update download/view endpoints to check access control",
+          "description": "Integrate access control checks into pitch deck download/view endpoints",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-825",
+      "summary": "Implement Pitch Deck Sharing Workflow",
+      "description": "Ventures cannot proactively share pitch decks with specific investors. Need system for ventures to share pitch decks, with notifications to investors.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "POST /api/ventures/products/{id}/documents/{doc_id}/share endpoint",
+        "Venture can share pitch deck with specific investor",
+        "Investor receives notification (email/in-app)",
+        "Shared pitch deck appears in investor's accessible pitch decks",
+        "Venture can see sharing history"
+      ],
+      "tasks": [
+        {
+          "summary": "Create pitch deck sharing endpoint",
+          "description": "POST endpoint for ventures to share pitch deck with investor",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create sharing notification system",
+          "description": "Email/in-app notification when pitch deck is shared",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update frontend to support sharing",
+          "description": "Add UI for ventures to share pitch decks with investors",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-826",
+      "summary": "Implement Pitch Deck Request System",
+      "description": "Investors cannot request access to pitch decks from ventures. Need system for investors to request pitch decks, with notification to venture and approval workflow.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 13,
+      "acceptanceCriteria": [
+        "POST /api/ventures/products/{id}/documents/{doc_id}/request endpoint",
+        "Investor can request pitch deck access",
+        "Venture receives notification of request",
+        "Venture can approve or deny request",
+        "Investor receives notification of approval/denial",
+        "Request history tracking"
+      ],
+      "tasks": [
+        {
+          "summary": "Design pitch deck request model",
+          "description": "Model to track pitch deck requests from investors",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create request endpoint",
+          "description": "POST endpoint for investors to request pitch deck access",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create approval/denial endpoints",
+          "description": "POST endpoints for ventures to approve or deny requests",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create notification system",
+          "description": "Email/in-app notifications for requests and approvals",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update frontend to support requests",
+          "description": "Add UI for investors to request pitch decks and ventures to manage requests",
+          "type": "Task",
+          "estimate": "5h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-828",
+      "summary": "Implement Pitch Deck Analytics",
+      "description": "Ventures cannot see pitch deck performance metrics (views, downloads, access). Need system to track and display pitch deck analytics.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "Model to track pitch deck access events",
+        "GET /api/ventures/products/{id}/documents/{doc_id}/analytics endpoint",
+        "Track views, downloads, unique viewers",
+        "Track access timestamps and user information",
+        "Frontend displays analytics in dashboard"
+      ],
+      "tasks": [
+        {
+          "summary": "Design pitch deck analytics model",
+          "description": "Model to track pitch deck access events (views, downloads)",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create analytics endpoint",
+          "description": "GET endpoint to retrieve pitch deck analytics",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Integrate analytics tracking",
+          "description": "Track access events in download/view endpoints",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Update frontend to display analytics",
+          "description": "Add analytics UI to VentureDashboard and ProductManagement",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Done"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-829",
+      "summary": "Enhance Pitch Deck Metadata Validation",
+      "description": "Additional validation for pitch deck metadata fields, including traction metrics structure and funding amount format validation.",
+      "type": "Story",
+      "epic": "VL-3",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Traction metrics structure validation (ensure proper JSON structure)",
+        "Funding amount format validation (currency, ranges)",
+        "All metadata fields have comprehensive validation"
+      ],
+      "tasks": [
+        {
+          "summary": "Add traction metrics structure validation",
+          "description": "Validate traction metrics JSON structure and data types",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add funding amount format validation",
+          "description": "Validate funding amount format (currency symbols, ranges, etc.)",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-830",
+      "summary": "Implement Pitch Deck Versioning System",
+      "description": "No versioning system for pitch decks. Ventures cannot track pitch deck history or manage multiple versions. Need version tracking and management UI.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "Model to track pitch deck versions",
+        "Version number assignment (auto-increment)",
+        "UI to view version history",
+        "UI to compare versions",
+        "Ability to restore previous versions"
+      ],
+      "tasks": [
+        {
+          "summary": "Design pitch deck versioning model",
+          "description": "Model to track pitch deck versions and history",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement version tracking",
+          "description": "Auto-increment version numbers and track changes",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create version history UI",
+          "description": "Frontend UI to view and compare pitch deck versions",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-832",
+      "summary": "Fix Venture Users Unread Message Badge Issue",
+      "description": "Venture users still show badge of unread messages when there are no unread messages. This causes confusing UX where users see notification badge but no actual unread messages in inbox. Need to investigate why venture users see incorrect unread count and fix badge display to match actual unread messages.",
+      "type": "Story",
+      "epic": "VL-5",
+      "priority": "Medium",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Unread message badge accurately reflects actual unread messages for venture users",
+        "Badge count matches messages visible in inbox",
+        "Unread count calculation is consistent across all user roles",
+        "No false positive badge displays"
+      ],
+      "tasks": [
+        {
+          "summary": "Investigate unread count calculation for venture users",
+          "description": "Debug why venture users see incorrect unread count in badge",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Fix badge display logic",
+          "description": "Ensure badge only shows when there are actual unread messages",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
     }
   ],
   "bugs": [],
   "metadata": {
     "created": "2025-01-27",
     "updated": "2025-01-15",
-    "version": "1.3",
-    "totalStories": 44,
-    "totalTasks": 220,
-    "estimatedStoryPoints": 250
+    "version": "1.6",
+    "totalStories": 52,
+    "totalTasks": 252,
+    "estimatedStoryPoints": 293
   }
 }

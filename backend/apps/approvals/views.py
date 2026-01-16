@@ -136,6 +136,7 @@ def approve_review(request, review_id):
     """
     Approve a review request.
     POST /api/reviews/<id>/approve
+    Updates both ReviewRequest status and the actual product/profile status.
     """
     try:
         obj = ReviewRequest.objects.get(id=review_id)
@@ -145,11 +146,39 @@ def approve_review(request, review_id):
     if obj.status != 'SUBMITTED':
         return Response({'detail': 'Only submitted reviews can be approved.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Update ReviewRequest status
     obj.status = 'APPROVED'
     obj.reviewer = request.user
     obj.reviewed_at = timezone.now()
     obj.rejection_reason = None
     obj.save(update_fields=['status', 'reviewer', 'reviewed_at', 'rejection_reason'])
+    
+    # Update the actual product/profile status
+    content_obj = obj.content_object
+    if content_obj:
+        # Import models here to avoid circular imports
+        from apps.ventures.models import VentureProduct
+        from apps.investors.models import InvestorProfile
+        from apps.mentors.models import MentorProfile
+        
+        if isinstance(content_obj, VentureProduct):
+            content_obj.status = 'APPROVED'
+            content_obj.approved_at = timezone.now()
+            content_obj.save(update_fields=['status', 'approved_at'])
+        elif isinstance(content_obj, InvestorProfile):
+            content_obj.status = 'APPROVED'
+            if hasattr(content_obj, 'approved_at'):
+                content_obj.approved_at = timezone.now()
+                content_obj.save(update_fields=['status', 'approved_at'])
+            else:
+                content_obj.save(update_fields=['status'])
+        elif isinstance(content_obj, MentorProfile):
+            content_obj.status = 'APPROVED'
+            if hasattr(content_obj, 'approved_at'):
+                content_obj.approved_at = timezone.now()
+                content_obj.save(update_fields=['status', 'approved_at'])
+            else:
+                content_obj.save(update_fields=['status'])
     
     # Send approval notification email via Celery
     send_approval_notification.delay(str(obj.submitted_by.id), approved=True)
@@ -164,6 +193,7 @@ def reject_review(request, review_id):
     Reject a review request.
     POST /api/reviews/<id>/reject
     Body: { "reason": "..." }
+    Updates both ReviewRequest status and the actual product/profile status.
     """
     try:
         obj = ReviewRequest.objects.get(id=review_id)
@@ -177,11 +207,31 @@ def reject_review(request, review_id):
     payload.is_valid(raise_exception=True)
 
     rejection_reason = payload.validated_data.get('reason') or ''
+    
+    # Update ReviewRequest status
     obj.status = 'REJECTED'
     obj.reviewer = request.user
     obj.reviewed_at = timezone.now()
     obj.rejection_reason = rejection_reason
     obj.save(update_fields=['status', 'reviewer', 'reviewed_at', 'rejection_reason'])
+    
+    # Update the actual product/profile status
+    content_obj = obj.content_object
+    if content_obj:
+        # Import models here to avoid circular imports
+        from apps.ventures.models import VentureProduct
+        from apps.investors.models import InvestorProfile
+        from apps.mentors.models import MentorProfile
+        
+        if isinstance(content_obj, VentureProduct):
+            content_obj.status = 'REJECTED'
+            content_obj.save(update_fields=['status'])
+        elif isinstance(content_obj, InvestorProfile):
+            content_obj.status = 'REJECTED'
+            content_obj.save(update_fields=['status'])
+        elif isinstance(content_obj, MentorProfile):
+            content_obj.status = 'REJECTED'
+            content_obj.save(update_fields=['status'])
     
     # Send rejection notification email via Celery
     send_approval_notification.delay(str(obj.submitted_by.id), approved=False, rejection_reason=rejection_reason)

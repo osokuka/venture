@@ -14,7 +14,8 @@ import random
 
 from apps.accounts.models import User
 from apps.ventures.models import (
-    VentureProduct, Founder, TeamMember, VentureNeed, VentureDocument
+    VentureProduct, Founder, TeamMember, VentureNeed, VentureDocument,
+    PitchDeckAccess, PitchDeckAccessEvent, PitchDeckRequest, PitchDeckShare
 )
 from apps.investors.models import InvestorProfile, InvestorVisibleToVenture
 from apps.mentors.models import MentorProfile
@@ -73,6 +74,9 @@ class Command(BaseCommand):
 
         # Create conversations and messages
         self.create_conversations_and_messages(ventures, investors, mentors, products, investor_profiles)
+
+        # Create pitch deck access, shares, and requests for testing
+        self.create_pitch_deck_interactions(products, investors, ventures)
 
         self.stdout.write(self.style.SUCCESS('\n✅ Demo data seeding complete!'))
         self.stdout.write(self.style.SUCCESS(f'Created: {len(ventures)} ventures, {len(investors)} investors, {len(mentors)} mentors'))
@@ -942,3 +946,130 @@ class Command(BaseCommand):
         conv5.save()
 
         self.stdout.write(self.style.SUCCESS(f'  ✓ Created 5 conversations with {sum([len(m) for m in [messages1, messages2, messages3, messages4, messages5]])} messages'))
+
+    def create_pitch_deck_interactions(self, products, investors, ventures):
+        """Create pitch deck access, shares, requests, and events for testing."""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Get pitch deck documents for approved products
+        pitch_decks = []
+        for product in products:
+            if product.status == 'APPROVED':
+                docs = VentureDocument.objects.filter(
+                    product=product,
+                    document_type='PITCH_DECK'
+                )
+                if docs.exists():
+                    pitch_decks.append(docs.first())
+        
+        if not pitch_decks:
+            self.stdout.write(self.style.WARNING('  ⚠ No pitch decks found to create interactions'))
+            return
+        
+        # Create pitch deck shares (ventures sharing with investors)
+        # TechFlow AI (products[0]) shares with first investor
+        if len(pitch_decks) > 0 and len(investors) > 0:
+            share1 = PitchDeckShare.objects.create(
+                document=pitch_decks[0],
+                investor=investors[0],
+                shared_by=ventures[0],
+                message='Hi! I thought you might be interested in our latest traction metrics. We\'ve hit 25% MoM growth!',
+                shared_at=timezone.now() - timedelta(days=3),
+            )
+            # Automatically grant access when sharing
+            PitchDeckAccess.objects.get_or_create(
+                document=pitch_decks[0],
+                investor=investors[0],
+                defaults={
+                    'granted_by': ventures[0],
+                    'granted_at': share1.shared_at,
+                    'is_active': True,
+                }
+            )
+            self.stdout.write(self.style.SUCCESS(f'  ✓ Created pitch deck share: TechFlow AI → {investors[0].email}'))
+        
+        # Create pitch deck requests (investors requesting access)
+        # Second investor requests access to GreenSpace pitch deck
+        if len(pitch_decks) > 1 and len(investors) > 1:
+            request1 = PitchDeckRequest.objects.create(
+                document=pitch_decks[1],
+                investor=investors[1],
+                status='APPROVED',
+                message='I\'m very interested in CleanTech solutions. Would love to review your pitch deck!',
+                requested_at=timezone.now() - timedelta(days=4),
+                responded_at=timezone.now() - timedelta(days=3),
+                responded_by=ventures[1],
+                response_message='Happy to share! Looking forward to your feedback.',
+            )
+            # Grant access when approved
+            PitchDeckAccess.objects.get_or_create(
+                document=pitch_decks[1],
+                investor=investors[1],
+                defaults={
+                    'granted_by': ventures[1],
+                    'granted_at': request1.responded_at,
+                    'is_active': True,
+                }
+            )
+            self.stdout.write(self.style.SUCCESS(f'  ✓ Created approved pitch deck request: {investors[1].email} → GreenSpace'))
+        
+        # Create a pending request
+        if len(pitch_decks) > 2 and len(investors) > 2:
+            PitchDeckRequest.objects.create(
+                document=pitch_decks[2],
+                investor=investors[2],
+                status='PENDING',
+                message='HealthBridge aligns perfectly with our healthcare investment focus. Would appreciate access to your pitch deck.',
+                requested_at=timezone.now() - timedelta(days=2),
+            )
+            self.stdout.write(self.style.SUCCESS(f'  ✓ Created pending pitch deck request: {investors[2].email} → HealthBridge'))
+        
+        # Create access events (views and downloads) for analytics
+        if len(pitch_decks) > 0 and len(investors) > 0:
+            # Create some view events
+            for i in range(3):
+                PitchDeckAccessEvent.objects.create(
+                    document=pitch_decks[0],
+                    user=investors[0],
+                    event_type='VIEW',
+                    accessed_at=timezone.now() - timedelta(days=3-i, hours=2),
+                    ip_address='192.168.1.100',
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                )
+            
+            # Create download events
+            PitchDeckAccessEvent.objects.create(
+                document=pitch_decks[0],
+                user=investors[0],
+                event_type='DOWNLOAD',
+                accessed_at=timezone.now() - timedelta(days=2),
+                ip_address='192.168.1.100',
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            )
+            self.stdout.write(self.style.SUCCESS(f'  ✓ Created pitch deck access events for analytics'))
+        
+        # Create another share with different investor
+        if len(pitch_decks) > 0 and len(investors) > 3:
+            share2 = PitchDeckShare.objects.create(
+                document=pitch_decks[0],
+                investor=investors[3],
+                shared_by=ventures[0],
+                message='Excited to share our progress! We\'ve just closed a major enterprise deal.',
+                shared_at=timezone.now() - timedelta(days=1),
+            )
+            PitchDeckAccess.objects.get_or_create(
+                document=pitch_decks[0],
+                investor=investors[3],
+                defaults={
+                    'granted_by': ventures[0],
+                    'granted_at': share2.shared_at,
+                    'is_active': True,
+                }
+            )
+            # Mark as viewed
+            share2.viewed_at = timezone.now() - timedelta(hours=12)
+            share2.save()
+            self.stdout.write(self.style.SUCCESS(f'  ✓ Created pitch deck share (viewed): TechFlow AI → {investors[3].email}'))
+        
+        self.stdout.write(self.style.SUCCESS(f'  ✓ Created pitch deck interactions: shares, requests, access, and events'))

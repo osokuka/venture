@@ -49,13 +49,68 @@ export function sanitizeInput(input: string | null | undefined, maxLength: numbe
 }
 
 /**
+ * Decode HTML entities (for displaying already-escaped content)
+ * @param text - Text that may contain HTML entities
+ * @returns Decoded text
+ */
+export function decodeHtmlEntities(text: string | null | undefined): string {
+  if (!text) return '';
+  
+  const entityMap: Record<string, string> = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#x27;': "'",
+    '&#x2F;': '/',
+    '&#39;': "'",
+    '&apos;': "'",
+  };
+  
+  // Decode numeric entities (&#x2F; and &#47;)
+  let decoded = String(text).replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16));
+  });
+  
+  decoded = decoded.replace(/&#(\d+);/g, (match, dec) => {
+    return String.fromCharCode(parseInt(dec, 10));
+  });
+  
+  // Decode named entities
+  for (const [entity, char] of Object.entries(entityMap)) {
+    decoded = decoded.replace(new RegExp(entity, 'g'), char);
+  }
+  
+  return decoded;
+}
+
+/**
  * Sanitize text for display (escapes HTML)
+ * Note: In React, we typically don't need to escape HTML as React does it automatically.
+ * This function is useful for non-React contexts or when you need to ensure double-escaping.
  * @param text - Text to sanitize
  * @param maxLength - Maximum length
  * @returns Sanitized text safe for display
  */
 export function sanitizeForDisplay(text: string | null | undefined, maxLength: number = 10000): string {
   return escapeHtml(sanitizeInput(text, maxLength));
+}
+
+/**
+ * Safe display text for React (sanitizes input but doesn't double-escape)
+ * React automatically escapes HTML, so we only need to sanitize input, not escape HTML
+ * @param text - Text to prepare for display
+ * @param maxLength - Maximum length
+ * @returns Safe text for React display
+ */
+export function safeDisplayText(text: string | null | undefined, maxLength: number = 10000): string {
+  if (!text) return '';
+  
+  // First decode any HTML entities that might be in the data
+  let decoded = decodeHtmlEntities(text);
+  
+  // Then sanitize input (remove dangerous characters, truncate)
+  return sanitizeInput(decoded, maxLength);
 }
 
 /**

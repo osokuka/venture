@@ -15,6 +15,11 @@ import { VentureDashboard } from "./components/VentureDashboard";
 import { InvestorDashboard } from "./components/InvestorDashboard";
 import { MentorDashboard } from "./components/MentorDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
+import { PitchDeckDetails } from "./components/PitchDeckDetails";
+import { PortfolioDetails } from "./components/PortfolioDetails";
+import { PortfolioReports } from "./components/PortfolioReports";
+import { PortfolioExitPlan } from "./components/PortfolioExitPlan";
+import { MeetingScheduler } from "./components/MeetingScheduler";
 import { LoginForm } from "./components/LoginForm";
 import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
@@ -22,7 +27,7 @@ import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
 import { VentureUPLinkIcon } from "./components/VentureUPLinkIcon";
 
 // Dashboard wrapper component
-function DashboardContent({ user }: { user: any }) {
+function DashboardContent({ user, onRefreshUnreadCount }: { user: any; onRefreshUnreadCount?: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -47,6 +52,7 @@ function DashboardContent({ user }: { user: any }) {
           activeView={activeView}
           onViewChange={handleViewChange}
           onProfileUpdate={handleProfileUpdate}
+          onRefreshUnreadCount={onRefreshUnreadCount}
         />
       );
     case 'investor':
@@ -56,6 +62,7 @@ function DashboardContent({ user }: { user: any }) {
           activeView={activeView}
           onViewChange={handleViewChange}
           onProfileUpdate={handleProfileUpdate}
+          onRefreshUnreadCount={onRefreshUnreadCount}
         />
       );
     case 'mentor':
@@ -65,6 +72,7 @@ function DashboardContent({ user }: { user: any }) {
           activeView={activeView}
           onViewChange={handleViewChange}
           onProfileUpdate={handleProfileUpdate}
+          onRefreshUnreadCount={onRefreshUnreadCount}
         />
       );
     case 'admin':
@@ -276,6 +284,73 @@ function AppRoutes() {
           )
         }
       />
+      {/* Portfolio Routes - Must come before generic :role/:view route */}
+      <Route
+        path="/dashboard/investor/portfolio/details"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <PortfolioDetails />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/dashboard/investor/portfolio/reports"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <PortfolioReports />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/dashboard/investor/portfolio/exit-plan"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <PortfolioExitPlan />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Pitch Deck Details Route */}
+      <Route
+        path="/dashboard/investor/pitch-deck/:productId/:docId?"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <PitchDeckDetails />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Meeting Scheduler Route */}
+      <Route
+        path="/dashboard/investor/schedule"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <MeetingScheduler />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Generic Dashboard Route - Must come after specific routes */}
       <Route
         path="/dashboard/:role/:view"
         element={

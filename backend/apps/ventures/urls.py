@@ -17,7 +17,18 @@ from .views import (
     TeamMemberListCreateView,
     TeamMemberDetailView,
     FounderListCreateView,
-    FounderDetailView
+    FounderDetailView,
+    download_pitch_deck,
+    view_pitch_deck,
+    grant_pitch_deck_access,
+    revoke_pitch_deck_access,
+    list_pitch_deck_access,
+    share_pitch_deck,
+    list_pitch_deck_shares,
+    request_pitch_deck,
+    list_pitch_deck_requests,
+    respond_to_pitch_deck_request,
+    get_pitch_deck_analytics
 )
 
 urlpatterns = [
@@ -31,6 +42,27 @@ urlpatterns = [
     path('products/<uuid:product_id>/documents/pitch-deck', upload_pitch_deck, name='upload_pitch_deck'),
     path('products/<uuid:product_id>/documents', list_product_documents, name='list_product_documents'),
     path('products/<uuid:product_id>/documents/<uuid:doc_id>', delete_product_document, name='delete_product_document'),
+    
+    # Pitch deck access (download/view) - VL-823
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/download', download_pitch_deck, name='download_pitch_deck'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/view', view_pitch_deck, name='view_pitch_deck'),
+    
+    # Pitch deck access control - VL-824
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/access', list_pitch_deck_access, name='list_pitch_deck_access'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/access/grant', grant_pitch_deck_access, name='grant_pitch_deck_access'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/access/revoke', revoke_pitch_deck_access, name='revoke_pitch_deck_access'),
+    
+    # Pitch deck sharing - VL-825
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/share', share_pitch_deck, name='share_pitch_deck'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/shares', list_pitch_deck_shares, name='list_pitch_deck_shares'),
+    
+    # Pitch deck requests - VL-826
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/request', request_pitch_deck, name='request_pitch_deck'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/requests', list_pitch_deck_requests, name='list_pitch_deck_requests'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/requests/<uuid:request_id>/respond', respond_to_pitch_deck_request, name='respond_to_pitch_deck_request'),
+    
+    # Pitch deck analytics - VL-828
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/analytics', get_pitch_deck_analytics, name='get_pitch_deck_analytics'),
     
     # Team member management
     path('products/<uuid:product_id>/team-members', TeamMemberListCreateView.as_view(), name='team_member_list_create'),

@@ -102,11 +102,17 @@ export const ventureService = {
 
   /**
    * Get list of approved ventures (for investors/mentors)
+   * Handles both array and paginated responses
    */
   async getPublicVentures(params?: { sector?: string; search?: string; page?: number }) {
     try {
       const response = await apiClient.get('/ventures/public', { params });
-      return response.data;
+      // Handle both array and paginated response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // If paginated, return results array
+      return response.data.results || response.data.data || [];
     } catch (error) {
       throw new Error(getErrorMessage(error));
     }

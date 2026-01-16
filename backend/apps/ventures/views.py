@@ -12,7 +12,10 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 
 from shared.permissions import IsApprovedUser, IsAdminOrReviewer
-from apps.ventures.models import VentureProduct, VentureDocument, TeamMember, Founder
+from apps.ventures.models import (
+    VentureProduct, VentureDocument, TeamMember, Founder,
+    PitchDeckAccess, PitchDeckAccessEvent, PitchDeckRequest, PitchDeckShare
+)
 from apps.ventures.serializers import (
     VentureProductSerializer,
     VentureProductCreateSerializer,
@@ -21,10 +24,19 @@ from apps.ventures.serializers import (
     VentureDocumentSerializer,
     VentureDocumentCreateSerializer,
     TeamMemberSerializer,
-    FounderSerializer
+    FounderSerializer,
+    PitchDeckAccessSerializer,
+    PitchDeckAccessEventSerializer,
+    PitchDeckRequestSerializer,
+    PitchDeckRequestCreateSerializer,
+    PitchDeckShareSerializer,
+    PitchDeckShareCreateSerializer
 )
 from apps.approvals.models import ReviewRequest
+from apps.accounts.models import User
 from django.contrib.contenttypes.models import ContentType
+from django.http import FileResponse, Http404
+from django.utils.http import http_date
 
 
 class ProductListCreateView(generics.ListCreateAPIView):
@@ -332,18 +344,83 @@ def upload_pitch_deck(request, product_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Parse traction_metrics if provided as string
+    # Parse and validate traction_metrics if provided
     traction_metrics = None
     if 'traction_metrics' in request.data:
         try:
             import json
             if isinstance(request.data['traction_metrics'], str):
-                traction_metrics = json.loads(request.data['traction_metrics'])
+                # Security: Limit JSON string length to prevent DoS
+                json_str = request.data['traction_metrics']
+                if len(json_str) > 100000:  # 100KB max for JSON string
+                    return Response(
+                        {'detail': 'Traction metrics JSON string is too large (max 100KB).'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                traction_metrics = json.loads(json_str)
             else:
                 traction_metrics = request.data['traction_metrics']
-        except (json.JSONDecodeError, TypeError):
+            
+            # Security: Validate traction_metrics structure and size
+            if isinstance(traction_metrics, dict):
+                if len(traction_metrics) > 50:
+                    return Response(
+                        {'detail': 'Traction metrics cannot have more than 50 fields.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Validate each key and value
+                for key, val in traction_metrics.items():
+                    if not isinstance(key, str):
+                        return Response(
+                            {'detail': 'All traction metric keys must be strings.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if len(str(key)) > 100:
+                        return Response(
+                            {'detail': 'Traction metric keys must be 100 characters or less.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if not isinstance(val, (str, int, float, bool, type(None))):
+                        return Response(
+                            {'detail': 'Traction metric values must be strings, numbers, booleans, or null.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if isinstance(val, str) and len(val) > 1000:
+                        return Response(
+                            {'detail': 'Traction metric string values must be 1,000 characters or less.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+            elif isinstance(traction_metrics, list):
+                if len(traction_metrics) > 100:
+                    return Response(
+                        {'detail': 'Traction metrics list cannot have more than 100 items.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                return Response(
+                    {'detail': 'Traction metrics must be a dictionary or list.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (json.JSONDecodeError, TypeError) as e:
             return Response(
-                {'detail': 'Invalid traction_metrics format. Must be valid JSON.'},
+                {'detail': f'Invalid traction_metrics format. Must be valid JSON. Error: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    # Security: Sanitize and validate metadata fields
+    problem_statement = request.data.get('problem_statement', '').strip()[:10000] if request.data.get('problem_statement') else ''
+    solution_description = request.data.get('solution_description', '').strip()[:10000] if request.data.get('solution_description') else ''
+    target_market = request.data.get('target_market', '').strip()[:10000] if request.data.get('target_market') else ''
+    funding_amount = request.data.get('funding_amount', '').strip()[:50] if request.data.get('funding_amount') else ''
+    funding_stage = request.data.get('funding_stage', '').strip()[:20] if request.data.get('funding_stage') else ''
+    use_of_funds = request.data.get('use_of_funds', '').strip()[:10000] if request.data.get('use_of_funds') else ''
+    
+    # Validate funding_stage if provided
+    if funding_stage:
+        allowed_stages = ['PRE_SEED', 'SEED', 'SERIES_A', 'SERIES_B', 'SERIES_C', 'GROWTH']
+        if funding_stage not in allowed_stages:
+            return Response(
+                {'detail': f'Invalid funding stage. Must be one of: {", ".join(allowed_stages)}.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -354,13 +431,13 @@ def upload_pitch_deck(request, product_id):
         file=file,
         file_size=file.size,
         mime_type=file.content_type,
-        problem_statement=request.data.get('problem_statement', ''),
-        solution_description=request.data.get('solution_description', ''),
-        target_market=request.data.get('target_market', ''),
+        problem_statement=problem_statement,
+        solution_description=solution_description,
+        target_market=target_market,
         traction_metrics=traction_metrics,
-        funding_amount=request.data.get('funding_amount', ''),
-        funding_stage=request.data.get('funding_stage', ''),
-        use_of_funds=request.data.get('use_of_funds', '')
+        funding_amount=funding_amount,
+        funding_stage=funding_stage if funding_stage else None,
+        use_of_funds=use_of_funds
     )
     
     serializer = VentureDocumentSerializer(document)
@@ -429,6 +506,212 @@ def delete_product_document(request, product_id, doc_id):
         {'detail': 'Document deleted successfully.'},
         status=status.HTTP_200_OK
     )
+
+
+# Pitch Deck Access Control & Download/View Endpoints (VL-823, VL-824)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def download_pitch_deck(request, product_id, doc_id):
+    """
+    Download a pitch deck document.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/download
+    Only approved users can download. Access is tracked.
+    """
+    try:
+        # Get the product (must be approved and active)
+        product = VentureProduct.objects.get(
+            id=product_id,
+            status='APPROVED',
+            is_active=True
+        )
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or not available.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Check if user has access
+    # For now, all approved users can access approved products' pitch decks
+    # In the future, this can be restricted via PitchDeckAccess model
+    has_access = True
+    if request.user.role == 'INVESTOR':
+        # Check if there's a specific access record that denies access
+        access_record = PitchDeckAccess.objects.filter(
+            document=document,
+            investor=request.user,
+            is_active=False
+        ).exists()
+        if access_record:
+            has_access = False
+        else:
+            # Check if there's an active access record or if default access is allowed
+            # Default: All approved investors can access approved products' pitch decks
+            has_access = True
+    elif request.user.role == 'VENTURE':
+        # Ventures can only access their own pitch decks
+        has_access = (product.user == request.user)
+    elif request.user.role in ['ADMIN', 'REVIEWER']:
+        # Admins and reviewers have access
+        has_access = True
+    else:
+        has_access = False
+    
+    if not has_access:
+        return Response(
+            {'detail': 'You do not have permission to access this pitch deck.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Track access event
+    PitchDeckAccessEvent.objects.create(
+        document=document,
+        user=request.user,
+        event_type='DOWNLOAD',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]  # Limit length
+    )
+    
+    # Grant access if not already granted (for investors)
+    if request.user.role == 'INVESTOR':
+        PitchDeckAccess.objects.get_or_create(
+            document=document,
+            investor=request.user,
+            defaults={'granted_by': product.user, 'is_active': True}
+        )
+    
+    # Serve the file
+    if not document.file:
+        return Response(
+            {'detail': 'File not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        response = FileResponse(
+            document.file.open('rb'),
+            content_type=document.mime_type,
+            as_attachment=True,
+            filename=document.file.name.split('/')[-1]
+        )
+        response['Content-Length'] = document.file_size
+        response['Last-Modified'] = http_date(document.uploaded_at.timestamp())
+        return response
+    except Exception as e:
+        return Response(
+            {'detail': f'Error serving file: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def view_pitch_deck(request, product_id, doc_id):
+    """
+    View a pitch deck document in browser.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/view
+    Only approved users can view. Access is tracked.
+    """
+    try:
+        product = VentureProduct.objects.get(
+            id=product_id,
+            status='APPROVED',
+            is_active=True
+        )
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or not available.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Check if user has access (same logic as download)
+    has_access = True
+    if request.user.role == 'INVESTOR':
+        access_record = PitchDeckAccess.objects.filter(
+            document=document,
+            investor=request.user,
+            is_active=False
+        ).exists()
+        if access_record:
+            has_access = False
+        else:
+            has_access = True
+    elif request.user.role == 'VENTURE':
+        has_access = (product.user == request.user)
+    elif request.user.role in ['ADMIN', 'REVIEWER']:
+        has_access = True
+    else:
+        has_access = False
+    
+    if not has_access:
+        return Response(
+            {'detail': 'You do not have permission to access this pitch deck.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Track access event
+    PitchDeckAccessEvent.objects.create(
+        document=document,
+        user=request.user,
+        event_type='VIEW',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
+    )
+    
+    # Grant access if not already granted (for investors)
+    if request.user.role == 'INVESTOR':
+        PitchDeckAccess.objects.get_or_create(
+            document=document,
+            investor=request.user,
+            defaults={'granted_by': product.user, 'is_active': True}
+        )
+    
+    # Mark share as viewed if applicable
+    if request.user.role == 'INVESTOR':
+        PitchDeckShare.objects.filter(
+            document=document,
+            investor=request.user,
+            viewed_at__isnull=True
+        ).update(viewed_at=timezone.now())
+    
+    # Serve the file for browser viewing
+    if not document.file:
+        return Response(
+            {'detail': 'File not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        response = FileResponse(
+            document.file.open('rb'),
+            content_type=document.mime_type
+        )
+        response['Content-Length'] = document.file_size
+        response['Last-Modified'] = http_date(document.uploaded_at.timestamp())
+        response['Content-Disposition'] = f'inline; filename="{document.file.name.split("/")[-1]}"'
+        return response
+    except Exception as e:
+        return Response(
+            {'detail': f'Error serving file: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 # Team Member Management Endpoints
@@ -615,3 +898,639 @@ class FounderDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise PermissionDenied('You do not have permission to delete this founder.')
         
         instance.delete()
+
+
+# Pitch Deck Access Control & Download/View Endpoints (VL-823, VL-824)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def download_pitch_deck(request, product_id, doc_id):
+    """
+    Download a pitch deck document.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/download
+    Only approved users can download. Access is tracked.
+    """
+    try:
+        # Get the product (must be approved and active)
+        product = VentureProduct.objects.get(
+            id=product_id,
+            status='APPROVED',
+            is_active=True
+        )
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or not available.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Check if user has access
+    # For now, all approved users can access approved products' pitch decks
+    # In the future, this can be restricted via PitchDeckAccess model
+    has_access = True
+    if request.user.role == 'INVESTOR':
+        # Check if there's a specific access record that denies access
+        access_record = PitchDeckAccess.objects.filter(
+            document=document,
+            investor=request.user,
+            is_active=False
+        ).exists()
+        if access_record:
+            has_access = False
+        else:
+            # Check if there's an active access record or if default access is allowed
+            # Default: All approved investors can access approved products' pitch decks
+            has_access = True
+    elif request.user.role == 'VENTURE':
+        # Ventures can only access their own pitch decks
+        has_access = (product.user == request.user)
+    elif request.user.role in ['ADMIN', 'REVIEWER']:
+        # Admins and reviewers have access
+        has_access = True
+    else:
+        has_access = False
+    
+    if not has_access:
+        return Response(
+            {'detail': 'You do not have permission to access this pitch deck.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Track access event
+    PitchDeckAccessEvent.objects.create(
+        document=document,
+        user=request.user,
+        event_type='DOWNLOAD',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]  # Limit length
+    )
+    
+    # Grant access if not already granted (for investors)
+    if request.user.role == 'INVESTOR':
+        PitchDeckAccess.objects.get_or_create(
+            document=document,
+            investor=request.user,
+            defaults={'granted_by': product.user, 'is_active': True}
+        )
+    
+    # Serve the file
+    if not document.file:
+        return Response(
+            {'detail': 'File not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        response = FileResponse(
+            document.file.open('rb'),
+            content_type=document.mime_type,
+            as_attachment=True,
+            filename=document.file.name.split('/')[-1]
+        )
+        response['Content-Length'] = document.file_size
+        response['Last-Modified'] = http_date(document.uploaded_at.timestamp())
+        return response
+    except Exception as e:
+        return Response(
+            {'detail': f'Error serving file: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def view_pitch_deck(request, product_id, doc_id):
+    """
+    View a pitch deck document in browser.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/view
+    Only approved users can view. Access is tracked.
+    """
+    try:
+        product = VentureProduct.objects.get(
+            id=product_id,
+            status='APPROVED',
+            is_active=True
+        )
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or not available.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Check if user has access (same logic as download)
+    has_access = True
+    if request.user.role == 'INVESTOR':
+        access_record = PitchDeckAccess.objects.filter(
+            document=document,
+            investor=request.user,
+            is_active=False
+        ).exists()
+        if access_record:
+            has_access = False
+        else:
+            has_access = True
+    elif request.user.role == 'VENTURE':
+        has_access = (product.user == request.user)
+    elif request.user.role in ['ADMIN', 'REVIEWER']:
+        has_access = True
+    else:
+        has_access = False
+    
+    if not has_access:
+        return Response(
+            {'detail': 'You do not have permission to access this pitch deck.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Track access event
+    PitchDeckAccessEvent.objects.create(
+        document=document,
+        user=request.user,
+        event_type='VIEW',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')[:500]
+    )
+    
+    # Grant access if not already granted (for investors)
+    if request.user.role == 'INVESTOR':
+        PitchDeckAccess.objects.get_or_create(
+            document=document,
+            investor=request.user,
+            defaults={'granted_by': product.user, 'is_active': True}
+        )
+    
+    # Mark share as viewed if applicable
+    if request.user.role == 'INVESTOR':
+        PitchDeckShare.objects.filter(
+            document=document,
+            investor=request.user,
+            viewed_at__isnull=True
+        ).update(viewed_at=timezone.now())
+    
+    # Serve the file for browser viewing
+    if not document.file:
+        return Response(
+            {'detail': 'File not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        response = FileResponse(
+            document.file.open('rb'),
+            content_type=document.mime_type
+        )
+        response['Content-Length'] = document.file_size
+        response['Last-Modified'] = http_date(document.uploaded_at.timestamp())
+        response['Content-Disposition'] = f'inline; filename="{document.file.name.split("/")[-1]}"'
+        return response
+    except Exception as e:
+        return Response(
+            {'detail': f'Error serving file: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# Pitch Deck Access Control Endpoints (VL-824)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def grant_pitch_deck_access(request, product_id, doc_id):
+    """
+    Grant pitch deck access to an investor.
+    
+    POST /api/ventures/products/{id}/documents/{doc_id}/access/grant
+    Body: { "investor_id": "uuid" }
+    Only product owner can grant access.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    investor_id = request.data.get('investor_id')
+    if not investor_id:
+        return Response(
+            {'detail': 'investor_id is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        investor = User.objects.get(id=investor_id, role='INVESTOR')
+    except User.DoesNotExist:
+        return Response(
+            {'detail': 'Investor not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Create or update access record
+    access, created = PitchDeckAccess.objects.get_or_create(
+        document=document,
+        investor=investor,
+        defaults={'granted_by': request.user, 'is_active': True}
+    )
+    
+    if not created:
+        # Reactivate if previously revoked
+        access.is_active = True
+        access.revoked_at = None
+        access.granted_by = request.user
+        access.save()
+    
+    serializer = PitchDeckAccessSerializer(access)
+    return Response(serializer.data, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def revoke_pitch_deck_access(request, product_id, doc_id):
+    """
+    Revoke pitch deck access from an investor.
+    
+    POST /api/ventures/products/{id}/documents/{doc_id}/access/revoke
+    Body: { "investor_id": "uuid" }
+    Only product owner can revoke access.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    investor_id = request.data.get('investor_id')
+    if not investor_id:
+        return Response(
+            {'detail': 'investor_id is required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        access = PitchDeckAccess.objects.get(
+            document=document,
+            investor_id=investor_id,
+            is_active=True
+        )
+    except PitchDeckAccess.DoesNotExist:
+        return Response(
+            {'detail': 'Access record not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    access.is_active = False
+    access.revoked_at = timezone.now()
+    access.save()
+    
+    return Response(
+        {'detail': 'Access revoked successfully.'},
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_pitch_deck_access(request, product_id, doc_id):
+    """
+    List who has access to a pitch deck.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/access
+    Only product owner can view access list.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    accesses = PitchDeckAccess.objects.filter(document=document, is_active=True).order_by('-granted_at')
+    serializer = PitchDeckAccessSerializer(accesses, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# Pitch Deck Sharing Endpoints (VL-825)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def share_pitch_deck(request, product_id, doc_id):
+    """
+    Share a pitch deck with an investor.
+    
+    POST /api/ventures/products/{id}/documents/{doc_id}/share
+    Body: { "investor_id": "uuid", "message": "optional message" }
+    Only product owner can share.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    serializer = PitchDeckShareCreateSerializer(data={
+        'document': str(document.id),
+        'investor': request.data.get('investor_id'),
+        'message': request.data.get('message', '')
+    })
+    serializer.is_valid(raise_exception=True)
+    
+    # Set shared_by to current user
+    share = serializer.save(shared_by=request.user)
+    
+    # Grant access automatically when sharing
+    PitchDeckAccess.objects.get_or_create(
+        document=document,
+        investor=share.investor,
+        defaults={'granted_by': request.user, 'is_active': True}
+    )
+    
+    # TODO: Send notification email to investor
+    
+    response_serializer = PitchDeckShareSerializer(share)
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_pitch_deck_shares(request, product_id, doc_id):
+    """
+    List shares for a pitch deck.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/shares
+    Only product owner can view shares.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    shares = PitchDeckShare.objects.filter(document=document).order_by('-shared_at')
+    serializer = PitchDeckShareSerializer(shares, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# Pitch Deck Request Endpoints (VL-826)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def request_pitch_deck(request, product_id, doc_id):
+    """
+    Request access to a pitch deck.
+    
+    POST /api/ventures/products/{id}/documents/{doc_id}/request
+    Body: { "message": "optional message" }
+    Only approved investors can request.
+    """
+    if request.user.role != 'INVESTOR':
+        return Response(
+            {'detail': 'Only investors can request pitch decks.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        product = VentureProduct.objects.get(
+            id=product_id,
+            status='APPROVED',
+            is_active=True
+        )
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or not available.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check if request already exists
+    existing_request = PitchDeckRequest.objects.filter(
+        document=document,
+        investor=request.user,
+        status='PENDING'
+    ).first()
+    
+    if existing_request:
+        return Response(
+            {'detail': 'You already have a pending request for this pitch deck.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    serializer = PitchDeckRequestCreateSerializer(data={
+        'document': str(document.id),
+        'message': request.data.get('message', '')
+    })
+    serializer.is_valid(raise_exception=True)
+    
+    request_obj = serializer.save(investor=request.user)
+    
+    # TODO: Send notification email to venture owner
+    
+    response_serializer = PitchDeckRequestSerializer(request_obj)
+    return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_pitch_deck_requests(request, product_id, doc_id):
+    """
+    List requests for a pitch deck.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/requests
+    Only product owner can view requests.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    requests = PitchDeckRequest.objects.filter(document=document).order_by('-requested_at')
+    serializer = PitchDeckRequestSerializer(requests, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def respond_to_pitch_deck_request(request, product_id, doc_id, request_id):
+    """
+    Approve or deny a pitch deck request.
+    
+    POST /api/ventures/products/{id}/documents/{doc_id}/requests/{request_id}/respond
+    Body: { "status": "APPROVED" or "DENIED", "response_message": "optional" }
+    Only product owner can respond.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        request_obj = PitchDeckRequest.objects.get(id=request_id, document=document, status='PENDING')
+    except PitchDeckRequest.DoesNotExist:
+        return Response(
+            {'detail': 'Request not found or already processed.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    new_status = request.data.get('status')
+    if new_status not in ['APPROVED', 'DENIED']:
+        return Response(
+            {'detail': 'status must be APPROVED or DENIED.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    request_obj.status = new_status
+    request_obj.responded_at = timezone.now()
+    request_obj.responded_by = request.user
+    request_obj.response_message = request.data.get('response_message', '').strip()[:2000] if request.data.get('response_message') else None
+    request_obj.save()
+    
+    # If approved, grant access
+    if new_status == 'APPROVED':
+        PitchDeckAccess.objects.get_or_create(
+            document=document,
+            investor=request_obj.investor,
+            defaults={'granted_by': request.user, 'is_active': True}
+        )
+        # TODO: Send notification email to investor
+    
+    response_serializer = PitchDeckRequestSerializer(request_obj)
+    return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+# Pitch Deck Analytics Endpoints (VL-828)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_pitch_deck_analytics(request, product_id, doc_id):
+    """
+    Get analytics for a pitch deck.
+    
+    GET /api/ventures/products/{id}/documents/{doc_id}/analytics
+    Only product owner can view analytics.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get access events
+    events = PitchDeckAccessEvent.objects.filter(document=document)
+    
+    total_views = events.filter(event_type='VIEW').count()
+    total_downloads = events.filter(event_type='DOWNLOAD').count()
+    unique_viewers = events.filter(event_type='VIEW').values('user').distinct().count()
+    unique_downloaders = events.filter(event_type='DOWNLOAD').values('user').distinct().count()
+    
+    # Get recent events
+    recent_events = events.order_by('-accessed_at')[:20]
+    recent_events_serializer = PitchDeckAccessEventSerializer(recent_events, many=True)
+    
+    # Get access permissions count
+    total_access_granted = PitchDeckAccess.objects.filter(document=document, is_active=True).count()
+    
+    return Response({
+        'total_views': total_views,
+        'total_downloads': total_downloads,
+        'unique_viewers': unique_viewers,
+        'unique_downloaders': unique_downloaders,
+        'total_access_granted': total_access_granted,
+        'recent_events': recent_events_serializer.data
+    }, status=status.HTTP_200_OK)

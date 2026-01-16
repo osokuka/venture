@@ -509,9 +509,19 @@ def get_unread_count(request):
     
     Note: All authenticated users can check their unread count,
     even if they're not approved yet. They just can't send messages.
+    
+    This endpoint uses the same logic as the conversations list to ensure
+    the count matches what the user sees in their inbox.
     """
+    # Get conversations where the user is a participant (same as conversations list)
+    # This ensures we only count messages from conversations the user can actually see
+    user_conversations = Conversation.objects.filter(
+        participants=request.user
+    )
+    
+    # Count unread messages in those conversations only
     unread_count = Message.objects.filter(
-        conversation__participants=request.user
+        conversation__in=user_conversations
     ).exclude(
         sender=request.user
     ).filter(

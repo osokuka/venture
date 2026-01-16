@@ -176,9 +176,12 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     setIsLoadingProducts(true);
     try {
       const data = await productService.getMyProducts();
-      setProducts(data);
+      // Ensure data is always an array
+      setProducts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch products:', error);
+      // Ensure products is always an array even on error
+      setProducts([]);
     } finally {
       setIsLoadingProducts(false);
     }
@@ -239,8 +242,63 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     // For now, navigate to messages - the MessagingSystem will handle it via selectedUserId prop
   };
 
-  const handleSharePitch = (investorId: string) => {
-    toast.success("Pitch deck shared with investor!");
+  const handleSharePitch = async (investorId: string, productId?: string, docId?: string) => {
+    // Security: Validate UUID
+    if (!validateUuid(investorId)) {
+      toast.error("Invalid investor ID");
+      return;
+    }
+
+    // If productId and docId not provided, try to get from products
+    let targetProductId = productId;
+    let targetDocId = docId;
+
+    if (!targetProductId || !targetDocId) {
+      // Ensure products is an array and fetch if needed
+      let productsList = Array.isArray(products) ? products : [];
+      
+      // If products not loaded, fetch them
+      if (productsList.length === 0) {
+        try {
+          const fetchedProducts = await productService.getMyProducts();
+          productsList = Array.isArray(fetchedProducts) ? fetchedProducts : [];
+          setProducts(productsList);
+        } catch (err: any) {
+          console.error('Failed to fetch products:', err);
+          toast.error('Failed to load products');
+          return;
+        }
+      }
+      
+      // Find first approved product with pitch deck
+      const approvedProduct = productsList.find((p: any) => p.status === 'APPROVED' && p.is_active && p.documents && Array.isArray(p.documents) && p.documents.length > 0);
+      if (approvedProduct) {
+        targetProductId = approvedProduct.id;
+        const pitchDeck = approvedProduct.documents.find((doc: any) => doc.document_type === 'PITCH_DECK');
+        if (pitchDeck) {
+          targetDocId = pitchDeck.id;
+        }
+      }
+    }
+
+    if (!targetProductId || !targetDocId) {
+      toast.error("No pitch deck available to share");
+      return;
+    }
+
+    // Security: Validate UUIDs
+    if (!validateUuid(targetProductId) || !validateUuid(targetDocId)) {
+      toast.error("Invalid product or document ID");
+      return;
+    }
+
+    try {
+      await productService.sharePitchDeck(targetProductId, targetDocId, investorId);
+      toast.success("Pitch deck shared with investor!");
+    } catch (err: any) {
+      console.error('Failed to share pitch deck:', err);
+      toast.error(err.message || 'Failed to share pitch deck');
+    }
   };
 
   const handleScheduleMeeting = (investorId: string) => {
@@ -790,7 +848,12 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                         onClick={() => {
                           const userId = investor.user || investor.id;
                           if (userId) {
-                            handleSharePitch(userId);
+                            // Security: Validate UUID
+                            if (validateUuid(userId)) {
+                              handleSharePitch(userId);
+                            } else {
+                              toast.error("Invalid investor ID");
+                            }
                           } else {
                             toast.error('Invalid investor user ID');
                           }
@@ -817,6 +880,9 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         <div>
           <h2 className="text-2xl font-bold">Pitch Deck</h2>
           <p className="text-muted-foreground">Manage and share your pitch deck with investors</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Go to Products section to upload and manage pitch decks for your products
+          </p>
         </div>
         <button className="btn-chrome-primary">
           <Upload className="w-4 h-4 mr-2" />

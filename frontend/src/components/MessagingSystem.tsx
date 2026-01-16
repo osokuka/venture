@@ -69,6 +69,47 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
 
+  // Watch for selectedUserId changes and trigger conversation selection
+  useEffect(() => {
+    if (!selectedUserId || !currentUser?.id) {
+      return;
+    }
+
+    // If conversations are already loaded, find and select the conversation
+    if (conversations.length > 0) {
+      const conv = conversations.find(c => c.other_participant?.id === selectedUserId);
+      if (conv) {
+        setSelectedConversation(conv);
+        return;
+      }
+      
+      // Conversation doesn't exist - create temporary one
+      if (selectedUserName) {
+        const tempConv: Conversation = {
+          id: 'new',
+          participants: [],
+          other_participant: {
+            id: selectedUserId,
+            email: '',
+            full_name: selectedUserName,
+            role: selectedUserRole || '',
+          },
+          created_at: new Date().toISOString(),
+          unread_count: 0,
+        };
+        setSelectedConversation(tempConv);
+      } else {
+        // Fetch user details for new conversation
+        fetchUserDetailsForNewConversation(selectedUserId);
+      }
+    } else if (!isLoading) {
+      // If conversations haven't loaded yet but selectedUserId is provided, refetch
+      // This will trigger fetchConversations which will handle selectedUserId
+      fetchConversations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId, selectedUserName, selectedUserRole]);
+
   // Fetch messages when conversation is selected (skip if it's a new conversation)
   useEffect(() => {
     if (selectedConversation?.id && selectedConversation.id !== 'new' && !isLoadingMessages) {
@@ -541,19 +582,19 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
   const formatTime = (timestamp: string) => {
     if (!timestamp) return '';
     try {
-      const date = new Date(timestamp);
+    const date = new Date(timestamp);
       if (isNaN(date.getTime())) return '';
       
-      const now = new Date();
-      const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
 
-      if (diffInHours < 24) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else if (diffInHours < 48) {
-        return 'Yesterday';
-      } else {
-        return date.toLocaleDateString();
-      }
+    if (diffInHours < 24) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffInHours < 48) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString();
+    }
     } catch (error) {
       console.error('Error formatting time:', error);
       return '';
@@ -733,8 +774,8 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                             {conv.last_message && (
                               <span className="text-xs text-gray-500">
                                 {formatTime(conv.last_message.created_at)}
-                              </span>
-                            )}
+                            </span>
+                          )}
                             {/* 3-dot menu - only show on hover */}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -838,10 +879,10 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                         
                         // Check if this is the last message to auto-scroll
                         const isLastMessage = index === messages.length - 1;
-                        
-                        return (
-                          <div
-                            key={message.id}
+                    
+                    return (
+                      <div
+                        key={message.id}
                             className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                             ref={isLastMessage ? (el) => {
                               // Auto-scroll to bottom when last message renders
@@ -864,7 +905,7 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                             {/* Message Bubble */}
                             <div
                               className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative group ${
-                                isCurrentUser
+                            isCurrentUser
                                   ? 'bg-gray-300 rounded-br-sm' // Silver/gray bubble for user's messages
                                   : 'bg-gray-200 rounded-bl-sm' // Silver/gray bubble for other party's messages
                               }`}
@@ -940,7 +981,7 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                                   </div>
                                 </>
                               )}
-                            </div>
+                        </div>
                             
                             {/* Avatar for sent messages (right side) */}
                             {isCurrentUser && (
@@ -950,9 +991,9 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                                 </AvatarFallback>
                               </Avatar>
                             )}
-                          </div>
-                        );
-                      })
+                      </div>
+                    );
+                  })
                     )}
                   </div>
                 )}

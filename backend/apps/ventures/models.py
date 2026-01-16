@@ -171,3 +171,122 @@ class VentureDocument(models.Model):
     class Meta:
         db_table = 'venture_documents'
         ordering = ['-uploaded_at']
+    
+    def __str__(self):
+        return f"{self.document_type} for {self.product.name}"
+
+
+class PitchDeckAccess(models.Model):
+    """
+    Model to track pitch deck access permissions.
+    Tracks which investors have been granted access to which pitch decks.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(VentureDocument, on_delete=models.CASCADE, related_name='access_permissions')
+    investor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pitch_deck_accesses')
+    granted_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='granted_pitch_deck_accesses')
+    granted_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(blank=True, null=True)
+    is_active = models.BooleanField(default=True, help_text="False if access has been revoked")
+    
+    class Meta:
+        db_table = 'pitch_deck_access'
+        unique_together = [['document', 'investor']]
+        indexes = [
+            models.Index(fields=['document', 'investor', 'is_active']),
+            models.Index(fields=['investor', 'is_active']),
+        ]
+    
+    def __str__(self):
+        return f"Access to {self.document.document_type} for {self.investor.email}"
+
+
+class PitchDeckAccessEvent(models.Model):
+    """
+    Model to track pitch deck access events for analytics.
+    Records every time a pitch deck is viewed or downloaded.
+    """
+    EVENT_TYPE_CHOICES = [
+        ('VIEW', 'View'),
+        ('DOWNLOAD', 'Download'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(VentureDocument, on_delete=models.CASCADE, related_name='access_events')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pitch_deck_access_events')
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+    accessed_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        db_table = 'pitch_deck_access_events'
+        ordering = ['-accessed_at']
+        indexes = [
+            models.Index(fields=['document', 'accessed_at']),
+            models.Index(fields=['user', 'accessed_at']),
+            models.Index(fields=['document', 'event_type']),
+        ]
+    
+    def __str__(self):
+        return f"{self.event_type} by {self.user.email} at {self.accessed_at}"
+
+
+class PitchDeckRequest(models.Model):
+    """
+    Model to track pitch deck requests from investors.
+    Investors can request access to pitch decks, and ventures can approve or deny.
+    """
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('APPROVED', 'Approved'),
+        ('DENIED', 'Denied'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(VentureDocument, on_delete=models.CASCADE, related_name='requests')
+    investor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pitch_deck_requests')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    message = models.TextField(blank=True, null=True, help_text="Optional message from investor")
+    requested_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(blank=True, null=True)
+    responded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='responded_pitch_deck_requests')
+    response_message = models.TextField(blank=True, null=True, help_text="Optional response message from venture")
+    
+    class Meta:
+        db_table = 'pitch_deck_requests'
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['document', 'status']),
+            models.Index(fields=['investor', 'status']),
+            models.Index(fields=['status', 'requested_at']),
+        ]
+    
+    def __str__(self):
+        return f"Request from {self.investor.email} for {self.document.document_type} - {self.status}"
+
+
+class PitchDeckShare(models.Model):
+    """
+    Model to track pitch deck sharing from ventures to investors.
+    Ventures can proactively share pitch decks with specific investors.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(VentureDocument, on_delete=models.CASCADE, related_name='shares')
+    investor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_pitch_decks')
+    shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_pitch_deck_shares')
+    message = models.TextField(blank=True, null=True, help_text="Optional message from venture")
+    shared_at = models.DateTimeField(auto_now_add=True)
+    viewed_at = models.DateTimeField(blank=True, null=True, help_text="When investor first viewed the shared pitch deck")
+    
+    class Meta:
+        db_table = 'pitch_deck_shares'
+        ordering = ['-shared_at']
+        indexes = [
+            models.Index(fields=['document', 'shared_at']),
+            models.Index(fields=['investor', 'shared_at']),
+        ]
+    
+    def __str__(self):
+        return f"Shared {self.document.document_type} to {self.investor.email} by {self.shared_by.email}"
