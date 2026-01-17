@@ -36,27 +36,42 @@ This directory contains all project documentation, scope definitions, and task t
    - Frontend changes
    - Business information separation (venture profile vs pitch deck metadata)
 
-5. **[PLATFORM_STATUS.md](./PLATFORM_STATUS.md)**
+
+6. **[PLATFORM_STATUS.md](./PLATFORM_STATUS.md)**
    - Current platform status
    - Celery tasks implementation
    - Feature completion status
 
 ## Technical Documentation
 
+### Tech Debt & Issues
+
+1. **VENTURES_CRUD_STATUS.md** (Section 11)
+   - All core features complete
+   - Minor improvements needed (LinkedIn URL display)
+
+2. **PLATFORM_STATUS.md** (Tech Debt Summary Section)
+   - WebSocket connection errors (non-critical, development only)
+   - Reverse proxy configuration for Vite HMR
+   - Logo display fixes (2026-01-17)
+   - React Hooks violations fixes (2026-01-17)
+
+
 ### Role Management & Authentication
 
-1. **[ROLE_ANALYSIS.md](./ROLE_ANALYSIS.md)**
-   - Detailed analysis of role interconnections
+1. **refined_project_scope.md** (Section 8)
+   - Complete role system architecture
    - Backend and frontend role definitions
-   - Role mapping logic
-   - Permission system overview
-   - Admin dashboard features
+   - Role mapping flow and conversion logic
+   - Role-based access control (RBAC)
+   - Superuser/Admin account details
+   - Demo accounts information
 
-2. **[ROLE_INTERCONNECTION_SUMMARY.md](./ROLE_INTERCONNECTION_SUMMARY.md)**
-   - Quick reference for role mapping
-   - Demo accounts list
-   - Admin account information
-   - Testing instructions
+2. **PLATFORM_STATUS.md** (Authentication Section)
+   - Role system implementation details
+   - Role mapping flow
+   - RBAC implementation status
+   - Known issues and tech debt
 
 3. **[DEMO_ACCOUNTS.md](./DEMO_ACCOUNTS.md)**
    - Complete list of demo accounts
@@ -88,15 +103,14 @@ Located in `frontend/` directory:
 
 ```
 working_scope/
-├── DOCUMENTATION_INDEX.md          # This file
-├── refined_project_scope.md        # Complete project scope
-├── project_details.md              # Initial requirements
-├── jira_tasks.json                 # Task tracking
-├── MULTI_PRODUCT_IMPLEMENTATION.md # Multi-product architecture details
-├── PLATFORM_STATUS.md               # Platform status and features
-├── ROLE_ANALYSIS.md                # Role system analysis
-├── ROLE_INTERCONNECTION_SUMMARY.md # Role quick reference
-└── DEMO_ACCOUNTS.md                # Demo accounts reference
+├── DOCUMENTATION_INDEX.md                    # This file
+├── refined_project_scope.md                  # Complete project scope
+├── project_details.md                        # Initial requirements
+├── jira_tasks.json                           # Task tracking
+├── MULTI_PRODUCT_IMPLEMENTATION.md           # Multi-product architecture details
+├── PLATFORM_STATUS.md                        # Platform status and features (includes role system)
+├── VENTURES_CRUD_STATUS.md                   # Ventures CRUD status (includes pitch deck architecture)
+└── DEMO_ACCOUNTS.md                          # Demo accounts reference
 
 backend/
 ├── README.md                       # Backend setup
@@ -122,6 +136,7 @@ README.md                           # Project overview
 - [Project Scope](./refined_project_scope.md)
 - [Task Tracking](./jira_tasks.json)
 - [API Integration](../frontend/README_API.md)
+- [Ventures CRUD Status](./VENTURES_CRUD_STATUS.md) (includes pitch deck architecture)
 
 ### Configuration
 - [Docker Setup](../backend/README_DOCKER.md)
@@ -129,8 +144,8 @@ README.md                           # Project overview
 - [Port Mapping](../backend/PORT_MAPPING.md)
 
 ### Role & Authentication
-- [Role Analysis](./ROLE_ANALYSIS.md)
-- [Role Summary](./ROLE_INTERCONNECTION_SUMMARY.md)
+- [Project Scope - Role System](./refined_project_scope.md#8-security-requirements) (Section 8)
+- [Platform Status - Role Implementation](./PLATFORM_STATUS.md#authentication) (Authentication Section)
 - [Demo Accounts](./DEMO_ACCOUNTS.md)
 
 ## Document Status
@@ -141,9 +156,8 @@ README.md                           # Project overview
 | project_details.md | ✅ Complete | 2025-01-14 |
 | jira_tasks.json | ✅ Active | 2025-01-14 |
 | MULTI_PRODUCT_IMPLEMENTATION.md | ✅ Complete | 2025-01-14 |
-| PLATFORM_STATUS.md | ✅ Active | 2025-01-14 |
-| ROLE_ANALYSIS.md | ✅ Complete | 2025-01-14 |
-| ROLE_INTERCONNECTION_SUMMARY.md | ✅ Complete | 2025-01-14 |
+| PLATFORM_STATUS.md | ✅ Active | 2026-01-17 |
+| VENTURES_CRUD_STATUS.md | ✅ Complete | 2025-01-16 |
 | DEMO_ACCOUNTS.md | ✅ Complete | 2025-01-14 |
 
 ## Contributing

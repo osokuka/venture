@@ -4,7 +4,12 @@
   import path from 'path';
 
   export default defineConfig({
-    plugins: [react()],
+    // Explicitly set public directory - files here are served at root path
+    publicDir: 'public',
+    plugins: [
+      react(),
+      // No custom plugins - let Vite handle everything naturally
+    ],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {
@@ -49,16 +54,66 @@
         '@': path.resolve(__dirname, './src'),
       },
     },
+    // Source map configuration
+    // Enable source maps in dev mode so Vite can serve source files when requested
+    // This allows DevTools and error traces to access source files properly
+    css: {
+      devSourcemap: true,  // Enable CSS source maps in dev (allows source file serving)
+    },
+    esbuild: {
+      // Enable source maps in dev mode (allows Vite to serve source files)
+      sourcemap: true,
+    },
     build: {
       target: 'esnext',
       outDir: 'build',
+      // Disable source maps in production to prevent source file requests
+      sourcemap: false,
     },
     server: {
       host: '0.0.0.0',  // Allow external connections (for Docker)
       port: 3000,
       open: false,  // Don't auto-open in Docker
+      strictPort: false,  // Allow port fallback if 3000 is taken
+      allowedHosts: [
+        'ventureuplink.com',  // Allow requests from the production domain
+        'www.ventureuplink.com',  // Allow www subdomain
+        'backend.ventureuplink.com',  // Allow requests from the backend API domain
+        'localhost',  // Allow localhost for local development
+      ],
+      // Configure proxy for proper handling of requests via reverse proxy
+      // This ensures Vite handles requests correctly when accessed via domain
+      proxy: {},
+      // Configure HMR WebSocket connection for reverse proxy setup
+      // When accessed via domain (ventureuplink.com), HMR WebSocket needs proper configuration
+      hmr: {
+        // Server-side WebSocket port (internal Docker port)
+        port: 3000,
+        // Client-side: When behind reverse proxy, use the same host as the page (no port in URL)
+        // For https://ventureuplink.com, WebSocket should connect to wss://ventureuplink.com (port 443)
+        // NOT wss://ventureuplink.com:3000
+        // When accessed via domain, detect protocol and use standard ports
+        host: undefined,  // Auto-detect from X-Forwarded-Host header or window.location.hostname
+        // Use the same port as the page (443 for HTTPS, 80 for HTTP) - no port in URL
+        // This prevents WebSocket from trying to connect to port 3000 when accessed via domain
+        clientPort: undefined,  // Will use browser's port (443 for HTTPS, 80 for HTTP) - no port in URL
+        protocol: undefined,  // Auto-detect: wss for HTTPS, ws for HTTP
+        // IMPORTANT: Your reverse proxy must:
+        // 1. Forward WebSocket upgrade requests (Connection: Upgrade, Upgrade: websocket)
+        // 2. Set X-Forwarded-Proto and X-Forwarded-Host headers
+        // 3. Handle the WebSocket connection upgrade properly
+        // 4. The reverse proxy should serve on standard ports (80 for HTTP, 443 for HTTPS)
+      },
       watch: {
         usePolling: true,  // Enable polling for file changes in Docker
+      },
+      // File system access configuration
+      // Allow Vite to serve source files in dev mode (needed for source file requests)
+      fs: {
+        // Allow serving files from project root and parent directories
+        allow: ['..'],
+        // Don't deny any files - let Vite handle source file serving naturally
+        deny: [],
       },
     },
   });

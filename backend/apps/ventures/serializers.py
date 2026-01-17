@@ -5,7 +5,7 @@ from rest_framework import serializers
 from django.core.validators import URLValidator, EmailValidator
 from django.core.exceptions import ValidationError
 from .models import (
-    VentureProduct, Founder, TeamMember, VentureNeed, VentureDocument,
+    VentureProduct, VentureProfile, Founder, TeamMember, VentureNeed, VentureDocument,
     PitchDeckAccess, PitchDeckAccessEvent, PitchDeckRequest, PitchDeckShare
 )
 from apps.accounts.models import User
@@ -474,4 +474,333 @@ class PitchDeckShareCreateSerializer(serializers.ModelSerializer):
         """Security: Validate investor is actually an investor."""
         if value.role != 'INVESTOR':
             raise serializers.ValidationError("Can only share pitch decks with investors.")
+        return value
+
+
+class VentureProfileSerializer(serializers.ModelSerializer):
+    """Serializer for VentureProfile model (read operations)."""
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+    logo_url_display = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = VentureProfile
+        fields = (
+            'id', 'user', 'user_email', 'user_name',
+            'company_name', 'sector', 'short_description',
+            'website', 'linkedin_url', 'address',
+            'year_founded', 'employees_count',
+            'founder_name', 'founder_linkedin', 'founder_role',
+            'customers', 'key_metrics', 'needs',
+            'phone', 'logo', 'logo_url', 'logo_url_display',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = (
+            'id', 'user', 'created_at', 'updated_at'
+        )
+    
+    def get_logo_url_display(self, obj):
+        """Return logo URL (from ImageField or logo_url field)."""
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return obj.logo_url
+
+
+class VentureProfileCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a venture profile."""
+    
+    class Meta:
+        model = VentureProfile
+        fields = (
+            'company_name', 'sector', 'short_description',
+            'website', 'linkedin_url', 'address',
+            'year_founded', 'employees_count',
+            'founder_name', 'founder_linkedin', 'founder_role',
+            'customers', 'key_metrics', 'needs',
+            'phone', 'logo', 'logo_url'
+        )
+    
+    def validate_company_name(self, value):
+        """Security: Validate and sanitize company name."""
+        if value:
+            if len(value.strip()) == 0:
+                raise serializers.ValidationError("Company name cannot be empty.")
+            if len(value) > 255:
+                raise serializers.ValidationError("Company name must be 255 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_sector(self, value):
+        """Security: Validate sector."""
+        if value:
+            if len(value.strip()) == 0:
+                raise serializers.ValidationError("Sector cannot be empty.")
+            if len(value) > 100:
+                raise serializers.ValidationError("Sector must be 100 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_website(self, value):
+        """Security: Validate website URL format."""
+        if value:
+            if len(value) > 2048:
+                raise serializers.ValidationError("Website URL must be 2048 characters or less.")
+            validator = URLValidator()
+            try:
+                validator(value)
+            except ValidationError:
+                raise serializers.ValidationError("Please enter a valid website URL.")
+            return value.strip()
+        return value
+    
+    def validate_linkedin_url(self, value):
+        """Security: Validate LinkedIn URL format."""
+        if value:
+            if len(value) > 2048:
+                raise serializers.ValidationError("LinkedIn URL must be 2048 characters or less.")
+            validator = URLValidator()
+            try:
+                validator(value)
+            except ValidationError:
+                raise serializers.ValidationError("Please enter a valid LinkedIn URL.")
+            return value.strip()
+        return value
+    
+    def validate_founder_linkedin(self, value):
+        """Security: Validate founder LinkedIn URL format."""
+        if value:
+            if len(value) > 2048:
+                raise serializers.ValidationError("Founder LinkedIn URL must be 2048 characters or less.")
+            validator = URLValidator()
+            try:
+                validator(value)
+            except ValidationError:
+                raise serializers.ValidationError("Please enter a valid LinkedIn URL.")
+            return value.strip()
+        return value
+    
+    def validate_phone(self, value):
+        """Security: Validate phone number format."""
+        if value:
+            cleaned = ''.join(c for c in value if c.isdigit() or c in '+()- ')
+            if len(cleaned) > 20:
+                raise serializers.ValidationError("Phone number must be 20 characters or less.")
+            if not any(c.isdigit() for c in cleaned):
+                raise serializers.ValidationError("Phone number must contain digits.")
+        return value.strip() if value else value
+    
+    def validate_year_founded(self, value):
+        """Security: Validate year founded is reasonable."""
+        if value is not None:
+            if value < 1800:
+                raise serializers.ValidationError("Year founded cannot be before 1800.")
+            if value > 2100:
+                raise serializers.ValidationError("Year founded cannot be after 2100.")
+        return value
+    
+    def validate_employees_count(self, value):
+        """Security: Validate employees count is reasonable."""
+        if value is not None:
+            if value < 0:
+                raise serializers.ValidationError("Employees count cannot be negative.")
+            if value > 1000000:
+                raise serializers.ValidationError("Employees count must be 1,000,000 or less.")
+        return value
+    
+    def validate_short_description(self, value):
+        """Security: Validate short description length."""
+        if value:
+            if len(value.strip()) == 0:
+                raise serializers.ValidationError("Short description cannot be empty.")
+            if len(value) > 10000:
+                raise serializers.ValidationError("Short description must be 10,000 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_customers(self, value):
+        """Security: Validate customers field length."""
+        if value:
+            if len(value) > 5000:
+                raise serializers.ValidationError("Customers field must be 5,000 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_key_metrics(self, value):
+        """Security: Validate key metrics field length."""
+        if value:
+            if len(value) > 5000:
+                raise serializers.ValidationError("Key metrics field must be 5,000 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_needs(self, value):
+        """Security: Validate needs JSON structure."""
+        if value is not None:
+            if isinstance(value, list):
+                if len(value) > 50:
+                    raise serializers.ValidationError("Needs list cannot have more than 50 items.")
+                for item in value:
+                    if not isinstance(item, str):
+                        raise serializers.ValidationError("All needs items must be strings.")
+                    if len(item) > 100:
+                        raise serializers.ValidationError("Each need item must be 100 characters or less.")
+            elif isinstance(value, dict):
+                if len(value) > 50:
+                    raise serializers.ValidationError("Needs dictionary cannot have more than 50 keys.")
+            else:
+                raise serializers.ValidationError("Needs must be a list or dictionary.")
+        return value
+    
+    def create(self, validated_data):
+        """Create profile and associate with user."""
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class VentureProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating a venture profile."""
+    
+    class Meta:
+        model = VentureProfile
+        fields = (
+            'company_name', 'sector', 'short_description',
+            'website', 'linkedin_url', 'address',
+            'year_founded', 'employees_count',
+            'founder_name', 'founder_linkedin', 'founder_role',
+            'customers', 'key_metrics', 'needs',
+            'phone', 'logo', 'logo_url'
+        )
+    
+    def validate_company_name(self, value):
+        """Security: Validate and sanitize company name."""
+        if value:
+            if len(value.strip()) == 0:
+                raise serializers.ValidationError("Company name cannot be empty.")
+            if len(value) > 255:
+                raise serializers.ValidationError("Company name must be 255 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_sector(self, value):
+        """Security: Validate sector."""
+        if value:
+            if len(value.strip()) == 0:
+                raise serializers.ValidationError("Sector cannot be empty.")
+            if len(value) > 100:
+                raise serializers.ValidationError("Sector must be 100 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_website(self, value):
+        """Security: Validate website URL format."""
+        if value:
+            if len(value) > 2048:
+                raise serializers.ValidationError("Website URL must be 2048 characters or less.")
+            validator = URLValidator()
+            try:
+                validator(value)
+            except ValidationError:
+                raise serializers.ValidationError("Please enter a valid website URL.")
+            return value.strip()
+        return value
+    
+    def validate_linkedin_url(self, value):
+        """Security: Validate LinkedIn URL format."""
+        if value:
+            if len(value) > 2048:
+                raise serializers.ValidationError("LinkedIn URL must be 2048 characters or less.")
+            validator = URLValidator()
+            try:
+                validator(value)
+            except ValidationError:
+                raise serializers.ValidationError("Please enter a valid LinkedIn URL.")
+            return value.strip()
+        return value
+    
+    def validate_founder_linkedin(self, value):
+        """Security: Validate founder LinkedIn URL format."""
+        if value:
+            if len(value) > 2048:
+                raise serializers.ValidationError("Founder LinkedIn URL must be 2048 characters or less.")
+            validator = URLValidator()
+            try:
+                validator(value)
+            except ValidationError:
+                raise serializers.ValidationError("Please enter a valid LinkedIn URL.")
+            return value.strip()
+        return value
+    
+    def validate_phone(self, value):
+        """Security: Validate phone number format."""
+        if value:
+            cleaned = ''.join(c for c in value if c.isdigit() or c in '+()- ')
+            if len(cleaned) > 20:
+                raise serializers.ValidationError("Phone number must be 20 characters or less.")
+            if not any(c.isdigit() for c in cleaned):
+                raise serializers.ValidationError("Phone number must contain digits.")
+        return value.strip() if value else value
+    
+    def validate_year_founded(self, value):
+        """Security: Validate year founded is reasonable."""
+        if value is not None:
+            if value < 1800:
+                raise serializers.ValidationError("Year founded cannot be before 1800.")
+            if value > 2100:
+                raise serializers.ValidationError("Year founded cannot be after 2100.")
+        return value
+    
+    def validate_employees_count(self, value):
+        """Security: Validate employees count is reasonable."""
+        if value is not None:
+            if value < 0:
+                raise serializers.ValidationError("Employees count cannot be negative.")
+            if value > 1000000:
+                raise serializers.ValidationError("Employees count must be 1,000,000 or less.")
+        return value
+    
+    def validate_short_description(self, value):
+        """Security: Validate short description length."""
+        if value:
+            if len(value.strip()) == 0:
+                raise serializers.ValidationError("Short description cannot be empty.")
+            if len(value) > 10000:
+                raise serializers.ValidationError("Short description must be 10,000 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_customers(self, value):
+        """Security: Validate customers field length."""
+        if value:
+            if len(value) > 5000:
+                raise serializers.ValidationError("Customers field must be 5,000 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_key_metrics(self, value):
+        """Security: Validate key metrics field length."""
+        if value:
+            if len(value) > 5000:
+                raise serializers.ValidationError("Key metrics field must be 5,000 characters or less.")
+            return value.strip()
+        return value
+    
+    def validate_needs(self, value):
+        """Security: Validate needs JSON structure."""
+        if value is not None:
+            if isinstance(value, list):
+                if len(value) > 50:
+                    raise serializers.ValidationError("Needs list cannot have more than 50 items.")
+                for item in value:
+                    if not isinstance(item, str):
+                        raise serializers.ValidationError("All needs items must be strings.")
+                    if len(item) > 100:
+                        raise serializers.ValidationError("Each need item must be 100 characters or less.")
+            elif isinstance(value, dict):
+                if len(value) > 50:
+                    raise serializers.ValidationError("Needs dictionary cannot have more than 50 keys.")
+            else:
+                raise serializers.ValidationError("Needs must be a list or dictionary.")
         return value

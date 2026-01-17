@@ -432,20 +432,20 @@ export function InvestorRegistration() {
   };
 
   return (
-    <div className="min-h-screen bg-background py-12 px-6">
+    <div className="min-h-screen bg-white py-12 px-6">
       <div className="max-w-2xl mx-auto">
-        <Card>
+        <Card className="border-gray-200">
           <CardHeader>
             <div className="flex items-center justify-between mb-4">
-              <CardTitle>Investor Registration</CardTitle>
-              <Badge variant="outline">
+              <CardTitle className="text-gray-900">Investor Registration</CardTitle>
+              <Badge variant="outline" className="border-gray-300 text-gray-700">
                 Step {currentStep} of {totalSteps}
               </Badge>
             </div>
             <Progress value={progress} className="w-full" />
             
             {currentStep <= 4 && (
-              <div className="text-sm text-muted-foreground mt-2">
+              <div className="text-sm text-gray-600 mt-2">
                 {currentStep === 1 && "Create your account"}
                 {currentStep === 2 && "Profile and contact information"}
                 {currentStep === 3 && "Investment preferences and criteria"}

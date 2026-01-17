@@ -574,6 +574,46 @@ backend/
 ## 8. Security Requirements
 
 ### Authentication & Authorization
+
+#### Role System Architecture
+
+**Backend Role Definitions** (Django User Model):
+- **Role Choices**: `'VENTURE'`, `'INVESTOR'`, `'MENTOR'`, `'ADMIN'`
+- **Storage**: Roles stored as uppercase strings in database
+- **Admin Role**: Automatically assigned to superusers (`is_staff=True`, `is_superuser=True`)
+- **Registration**: Users cannot register as `ADMIN` (only `VENTURE`, `INVESTOR`, `MENTOR` allowed)
+- **API Responses**: `/api/auth/me` returns role in uppercase format
+
+**Frontend Role Definitions** (TypeScript):
+- **UserRole Type**: `'venture' | 'investor' | 'mentor' | 'admin'`
+- **Storage**: Roles stored as lowercase strings in frontend
+- **Mapping**: Backend uppercase → Frontend lowercase conversion in `AuthContext.tsx`
+
+**Role Mapping Flow**:
+- **Registration**: Frontend (lowercase) → Backend (UPPERCASE) → Database (UPPERCASE)
+- **Login**: Database (UPPERCASE) → API Response (UPPERCASE) → Frontend (lowercase)
+- **Dashboard Routing**: Frontend role determines which dashboard component to render
+
+**Role-Based Access Control (RBAC)**:
+- **Backend Permissions** (`backend/shared/permissions.py`):
+  - `IsApprovedUser`: Checks profile approval status (admin users always pass)
+  - `IsAdminOrReviewer`: Only ADMIN role allowed
+  - `IsOwnerOrReadOnly`: Read for all authenticated users, write only for owner
+- **Frontend Permissions**: Role-based dashboard routing, role-based registration forms
+
+**Superuser/Admin Account**:
+- **Credentials**: `admin@venturelink.com` / `admin123`
+- **Role**: `ADMIN` (backend) / `admin` (frontend)
+- **Access**: Full platform access + Django Admin Panel
+- **Creation**: Automatically created on first Docker startup via `entrypoint.sh`
+
+**Demo Accounts**:
+- All demo accounts use password: `demo123`
+- Automatically created via `seed_demo_data` management command
+- See `DEMO_ACCOUNTS.md` for complete list
+- **Total**: 9 demo accounts (4 Ventures, 3 Investors, 2 Mentors)
+
+#### Authentication & Authorization Details
 - JWT tokens with 15-minute access token, 7-day refresh token
 - Password hashing using Django's PBKDF2
 - Rate limiting on auth endpoints (5 requests/minute)

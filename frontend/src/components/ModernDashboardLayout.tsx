@@ -28,10 +28,10 @@ import {
   Menu,
   X
 } from "lucide-react";
-import { VentureUPLinkIcon } from "./VentureUPLinkIcon";
 import { type FrontendUser } from '../types';
 import { messagingService } from '../services/messagingService';
 import { useAuth } from './AuthContext';
+import logoImage from '../assets/logos/ventureuplink.png';
 
 interface ModernDashboardLayoutProps {
   children: React.ReactElement;
@@ -82,11 +82,12 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
   const getUserDisplayName = () => {
     switch (user.role) {
       case 'venture':
-        return (user.profile as any)?.companyName || user.full_name || user.email;
+        // For ventures, show full_name (user's name) first, then company name as fallback
+        return user.full_name || (user.profile as any)?.companyName || user.email;
       case 'investor':
-        return (user.profile as any)?.name || user.full_name || user.email;
+        return user.full_name || (user.profile as any)?.name || user.email;
       case 'mentor':
-        return (user.profile as any)?.name || user.full_name || user.email;
+        return user.full_name || (user.profile as any)?.name || user.email;
       case 'admin':
         return user.full_name || user.email || 'Admin';
       default:
@@ -108,7 +109,8 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
   const getUserSubtitle = () => {
     switch (user.role) {
       case 'venture':
-        return (user.profile as any)?.shortDescription || 'Venture';
+        // Show company name, not business description
+        return (user.profile as any)?.companyName || 'Venture';
       case 'investor':
         return (user.profile as any)?.organizationName || 'Investor';
       case 'mentor':
@@ -216,20 +218,23 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
   });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       {/* Top Navigation */}
-      <nav className="bg-white border-b border-border sticky top-0 z-50 shadow-soft">
+      <nav className="bg-white/95 backdrop-blur-lg border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-20">
             {/* Logo and Brand */}
             <div className="flex items-center space-x-8">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-                  <VentureUPLinkIcon size={20} className="text-white" />
-                </div>
+                <img 
+                  src={logoImage} 
+                  alt="VentureUP Link" 
+                  className="w-19 h-19 object-contain"
+                  style={{ maxWidth: '75px', maxHeight: '75px' }}
+                />
                 <div className="hidden sm:block">
-                  <h1 className="text-xl font-bold text-foreground">VentureUP Link</h1>
-                  <p className="text-xs text-muted-foreground capitalize">{user.role} Portal</p>
+                  <h1 className="text-xl font-bold text-gray-900">VentureUP Link</h1>
+                  <p className="text-xs text-gray-600 capitalize">{user.role} Portal</p>
                 </div>
               </div>
 
@@ -277,16 +282,16 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
                       <AvatarFallback className="text-xs">{getUserDisplayName()[0]}</AvatarFallback>
                     </Avatar>
                     <div className="hidden sm:block text-left">
-                      <p className="text-sm font-medium">{getUserDisplayName()}</p>
-                      <p className="text-xs text-muted-foreground truncate max-w-32">{getUserSubtitle()}</p>
+                      <p className="text-sm font-medium text-gray-900">{getUserDisplayName()}</p>
+                      <p className="text-xs text-gray-600 truncate max-w-32">{getUserSubtitle()}</p>
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
                   <DropdownMenuLabel>
                     <div>
-                      <p className="font-medium">{getUserDisplayName()}</p>
-                      <p className="text-sm text-muted-foreground">{getUserSubtitle()}</p>
+                      <p className="font-medium text-gray-900">{getUserDisplayName()}</p>
+                      <p className="text-sm text-gray-600">{getUserSubtitle()}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -327,7 +332,7 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
 
           {/* Mobile Navigation */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-border py-4 space-y-2">
+            <div className="md:hidden border-t border-gray-200 py-4 space-y-2">
               {getNavItems().map((item) => (
                 <Button
                   key={item.id}
@@ -350,7 +355,7 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
                 </Button>
               ))}
               
-              <div className="border-t border-border pt-2 mt-2 space-y-2">
+              <div className="border-t border-gray-200 pt-2 mt-2 space-y-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -394,12 +399,12 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
       </nav>
 
       {/* Page Header */}
-      <div className="bg-white border-b border-border">
+      <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">{getPageTitle()}</h1>
-              <p className="text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold text-gray-900">{getPageTitle()}</h1>
+              <p className="text-gray-600 mt-1">
                 Welcome back, {getUserDisplayName()}
               </p>
             </div>

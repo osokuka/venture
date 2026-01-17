@@ -11,7 +11,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci
 
-# Copy source code
+# Copy source code (includes src/assets/logos/ and public/logos/)
+# Logo files in src/assets/ will be processed by Vite during build
+# Logo files in public/ will be copied as-is to build output
 COPY . .
 
 # Build the application

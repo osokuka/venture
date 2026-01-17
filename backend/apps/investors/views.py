@@ -145,14 +145,18 @@ def submit_investor_profile(request):
 
 class PublicInvestorListView(generics.ListAPIView):
     """
-    List visible investors (for approved ventures/admin).
+    List visible investors (public endpoint - accessible to all authenticated users).
     
     GET /api/investors/public
     Returns:
     - Investors with visible_to_ventures=True (publicly visible)
     - Investors visible to the current venture user (via InvestorVisibleToVenture)
+    
+    Note: This is a public listing, so authenticated users can view it even without
+    approved profiles. However, only approved ventures can see investors who have
+    made themselves visible to specific ventures.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    permission_classes = [IsAuthenticated]  # Allow all authenticated users, not just approved ones
     serializer_class = InvestorProfileSerializer
     
     def get_queryset(self):
@@ -182,12 +186,16 @@ class PublicInvestorListView(generics.ListAPIView):
 
 class PublicInvestorDetailView(generics.RetrieveAPIView):
     """
-    Get investor detail (for approved ventures/admin).
+    Get investor detail (public endpoint - accessible to all authenticated users).
     
     GET /api/investors/{id}
     Only returns investors that are visible to the current user.
+    
+    Note: This is a public endpoint, so authenticated users can view investor details
+    even without approved profiles. However, only approved ventures can see investors
+    who have made themselves visible to specific ventures.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    permission_classes = [IsAuthenticated]  # Allow all authenticated users, not just approved ones
     serializer_class = InvestorProfileSerializer
     lookup_field = 'id'
     

@@ -63,6 +63,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           };
           
+          // Optionally fetch venture profile data if user is a venture
+          if (frontendRole === 'venture') {
+            try {
+              const { ventureService } = await import('../services/ventureService');
+              const ventureProfile = await ventureService.getMyProfile();
+              if (ventureProfile) {
+                // Map backend profile to frontend profile format
+                userObject.profile = {
+                  ...userObject.profile,
+                  companyName: ventureProfile.company_name,
+                  sector: ventureProfile.sector,
+                  shortDescription: ventureProfile.short_description,
+                  website: ventureProfile.website,
+                  linkedinUrl: ventureProfile.linkedin_url,
+                  address: ventureProfile.address,
+                  foundedYear: ventureProfile.year_founded?.toString(),
+                  employeeCount: ventureProfile.employees_count?.toString(),
+                  founderName: ventureProfile.founder_name,
+                  founderLinkedin: ventureProfile.founder_linkedin,
+                  founderRole: ventureProfile.founder_role,
+                  customers: ventureProfile.customers,
+                  keyMetrics: ventureProfile.key_metrics,
+                  needs: ventureProfile.needs || [],
+                  phone: ventureProfile.phone,
+                  logo: ventureProfile.logo_url_display || ventureProfile.logo_url,
+                };
+              }
+            } catch (error) {
+              // Profile might not exist yet, that's okay
+              console.log('Venture profile not found or error fetching:', error);
+            }
+          }
+          
           setUser(userObject as User);
           setCurrentView('dashboard');
         } catch (error) {
@@ -111,6 +144,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       };
       
+      // Optionally fetch venture profile data if user is a venture
+      if (frontendRole === 'venture') {
+        try {
+          const { ventureService } = await import('../services/ventureService');
+          const ventureProfile = await ventureService.getMyProfile();
+          if (ventureProfile) {
+            // Map backend profile to frontend profile format
+            userObject.profile = {
+              ...userObject.profile,
+              companyName: ventureProfile.company_name,
+              sector: ventureProfile.sector,
+              shortDescription: ventureProfile.short_description,
+              website: ventureProfile.website,
+              linkedinUrl: ventureProfile.linkedin_url,
+              address: ventureProfile.address,
+              foundedYear: ventureProfile.year_founded?.toString(),
+              employeeCount: ventureProfile.employees_count?.toString(),
+              founderName: ventureProfile.founder_name,
+              founderLinkedin: ventureProfile.founder_linkedin,
+              founderRole: ventureProfile.founder_role,
+              customers: ventureProfile.customers,
+              keyMetrics: ventureProfile.key_metrics,
+              needs: ventureProfile.needs || [],
+              phone: ventureProfile.phone,
+              logo: ventureProfile.logo_url_display || ventureProfile.logo_url,
+            };
+          }
+        } catch (error) {
+          // Profile might not exist yet, that's okay
+          console.log('Venture profile not found or error fetching:', error);
+        }
+      }
+      
       setUser(userObject as User);
       setCurrentView('dashboard');
       // Navigate will be handled by React Router in AppWithRouter
@@ -136,7 +202,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeRegistration = async (userData: any) => {
     try {
       // Map frontend role to backend role
-      const backendRole = registrationRole?.toUpperCase() as 'VENTURE' | 'INVESTOR' | 'MENTOR';
+      // Fallback to 'VENTURE' if registrationRole is not set (for direct navigation to registration pages)
+      const roleToUse = registrationRole || userData.role || 'venture';
+      const backendRole = roleToUse.toUpperCase() as 'VENTURE' | 'INVESTOR' | 'MENTOR';
+      
+      if (!backendRole || !['VENTURE', 'INVESTOR', 'MENTOR'].includes(backendRole)) {
+        throw new Error('Invalid registration role. Please select a valid role.');
+      }
       
       // Register user
       const registeredUser = await authService.register({

@@ -5,6 +5,7 @@
 
 import apiClient from './api';
 import { validatePitchDeckFile, createSanitizedFile } from '../utils/fileValidation';
+import { validateUuid } from '../utils/security';
 
 export interface VentureProduct {
   id: string;
@@ -93,10 +94,18 @@ export interface FounderUpdatePayload extends Partial<FounderCreatePayload> {}
 export const productService = {
   /**
    * Get all products for the current user
+   * Handles both paginated and non-paginated responses
    */
   async getMyProducts(): Promise<VentureProduct[]> {
     const response = await apiClient.get('/ventures/products');
-    return response.data;
+    // Handle paginated response format: {count, next, previous, results: [...]}
+    // Or direct array format: [...]
+    if (response.data && Array.isArray(response.data.results)) {
+      return response.data.results;
+    } else if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
   },
 
   /**
@@ -146,10 +155,27 @@ export const productService = {
   },
 
   /**
-   * Upload pitch deck for a product
+   * Upload pitch deck for a product with optional metadata
    * Security: Validates file on client side before upload
    */
-  async uploadPitchDeck(productId: string, file: File): Promise<any> {
+  async uploadPitchDeck(
+    productId: string, 
+    file: File, 
+    metadata?: {
+      problem_statement?: string;
+      solution_description?: string;
+      target_market?: string;
+      traction_metrics?: any;
+      funding_amount?: string;
+      funding_stage?: 'PRE_SEED' | 'SEED' | 'SERIES_A' | 'SERIES_B' | 'SERIES_C' | 'GROWTH';
+      use_of_funds?: string;
+    }
+  ): Promise<any> {
+    // Security: Validate UUID
+    if (!validateUuid(productId)) {
+      throw new Error('Invalid product ID');
+    }
+
     // Security: Validate file before upload
     const validation = validatePitchDeckFile(file);
     if (!validation.isValid) {
@@ -161,6 +187,39 @@ export const productService = {
     
     const formData = new FormData();
     formData.append('file', sanitizedFile);
+
+    // Add metadata fields if provided
+    if (metadata) {
+      if (metadata.problem_statement) {
+        formData.append('problem_statement', metadata.problem_statement.slice(0, 10000));
+      }
+      if (metadata.solution_description) {
+        formData.append('solution_description', metadata.solution_description.slice(0, 10000));
+      }
+      if (metadata.target_market) {
+        formData.append('target_market', metadata.target_market.slice(0, 10000));
+      }
+      if (metadata.funding_amount) {
+        formData.append('funding_amount', metadata.funding_amount.slice(0, 50));
+      }
+      if (metadata.funding_stage) {
+        formData.append('funding_stage', metadata.funding_stage);
+      }
+      if (metadata.use_of_funds) {
+        formData.append('use_of_funds', metadata.use_of_funds.slice(0, 10000));
+      }
+      if (metadata.traction_metrics) {
+        try {
+          const jsonStr = JSON.stringify(metadata.traction_metrics);
+          if (jsonStr.length > 100000) {
+            throw new Error('Traction metrics JSON is too large (max 100KB)');
+          }
+          formData.append('traction_metrics', jsonStr);
+        } catch (err) {
+          throw new Error('Invalid traction_metrics format');
+        }
+      }
+    }
 
     const response = await apiClient.post(
       `/ventures/products/${productId}/documents/pitch-deck`,
@@ -179,6 +238,69 @@ export const productService = {
    */
   async getProductDocuments(productId: string): Promise<any[]> {
     const response = await apiClient.get(`/ventures/products/${productId}/documents`);
+    return response.data;
+  },
+
+  /**
+   * Update pitch deck metadata (without replacing the file)
+   */
+  async updatePitchDeckMetadata(productId: string, docId: string, metadata: {
+    problem_statement?: string;
+    solution_description?: string;
+    target_market?: string;
+    traction_metrics?: any;
+    funding_amount?: string;
+    funding_stage?: 'PRE_SEED' | 'SEED' | 'SERIES_A' | 'SERIES_B' | 'SERIES_C' | 'GROWTH';
+    use_of_funds?: string;
+  }): Promise<VentureProduct> {
+    // Security: Validate UUIDs
+    if (!productId || !docId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId) || 
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(docId)) {
+      throw new Error('Invalid product or document ID');
+    }
+    
+    // Security: Sanitize and validate metadata
+    const sanitizedMetadata: any = {};
+    
+    if (metadata.problem_statement !== undefined) {
+      sanitizedMetadata.problem_statement = String(metadata.problem_statement).slice(0, 10000);
+    }
+    if (metadata.solution_description !== undefined) {
+      sanitizedMetadata.solution_description = String(metadata.solution_description).slice(0, 10000);
+    }
+    if (metadata.target_market !== undefined) {
+      sanitizedMetadata.target_market = String(metadata.target_market).slice(0, 10000);
+    }
+    if (metadata.funding_amount !== undefined) {
+      sanitizedMetadata.funding_amount = String(metadata.funding_amount).slice(0, 50);
+    }
+    if (metadata.funding_stage !== undefined) {
+      const allowedStages = ['PRE_SEED', 'SEED', 'SERIES_A', 'SERIES_B', 'SERIES_C', 'GROWTH'];
+      if (!allowedStages.includes(metadata.funding_stage)) {
+        throw new Error('Invalid funding stage');
+      }
+      sanitizedMetadata.funding_stage = metadata.funding_stage;
+    }
+    if (metadata.use_of_funds !== undefined) {
+      sanitizedMetadata.use_of_funds = String(metadata.use_of_funds).slice(0, 10000);
+    }
+    if (metadata.traction_metrics !== undefined) {
+      // Validate traction_metrics is JSON-serializable
+      try {
+        const jsonStr = JSON.stringify(metadata.traction_metrics);
+        if (jsonStr.length > 100000) {
+          throw new Error('Traction metrics JSON is too large (max 100KB)');
+        }
+        sanitizedMetadata.traction_metrics = metadata.traction_metrics;
+      } catch (err) {
+        throw new Error('Invalid traction_metrics format');
+      }
+    }
+    
+    const response = await apiClient.patch(
+      `/ventures/products/${productId}/documents/${docId}/metadata`,
+      sanitizedMetadata
+    );
     return response.data;
   },
 

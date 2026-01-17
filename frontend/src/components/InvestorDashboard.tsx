@@ -10,7 +10,7 @@ import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Separator } from "./ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { toast } from "sonner@2.0.3";
+import { toast } from 'sonner';
 import { productService } from '../services/productService';
 import { validateUuid, sanitizeInput, safeDisplayText } from '../utils/security';
 import { 

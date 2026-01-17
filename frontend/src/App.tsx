@@ -17,8 +17,8 @@ import { LoginForm } from "./components/LoginForm";
 import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
 import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
-import { VentureUPLinkIcon } from "./components/VentureUPLinkIcon";
 import { useState, useEffect } from "react";
+import logoImage from './assets/logos/ventureuplink.png';
 
 // Dashboard wrapper component that receives props from ModernDashboardLayout
 function DashboardContent({ user, activeView, onViewChange, onProfileUpdate }: any) {
@@ -137,9 +137,12 @@ function AppContent() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <button onClick={handleLogoClick} className="flex items-center space-x-3 group">
-              <div className="w-9 h-9 bg-gray-800 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-md">
-                <VentureUPLinkIcon size={20} className="text-white" />
-              </div>
+              <img 
+                src={logoImage} 
+                alt="VentureUP Link" 
+                className="w-19 h-19 object-contain group-hover:scale-105 transition-transform"
+                style={{ maxWidth: '75px', maxHeight: '75px' }}
+              />
               <div className="flex items-center space-x-2">
                 <span className="text-xl font-bold text-gray-900">
                   VentureUP Link
@@ -323,8 +326,8 @@ function AppContent() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
-              <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                <VentureUPLinkIcon size={24} className="text-white" />
+              <div className="w-16 h-16 flex items-center justify-center bg-blue-600 rounded">
+                <span className="text-white text-2xl font-bold">VU</span>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-xl font-bold">VentureUP Link</span>

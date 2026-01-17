@@ -1,5 +1,30 @@
 from django.contrib import admin
-from .models import VentureProduct, Founder, TeamMember, VentureNeed, VentureDocument
+from .models import VentureProduct, VentureProfile, Founder, TeamMember, VentureNeed, VentureDocument
+
+
+@admin.register(VentureProfile)
+class VentureProfileAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'user', 'sector', 'created_at', 'updated_at')
+    list_filter = ('sector', 'created_at')
+    search_fields = ('company_name', 'user__email', 'user__full_name')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        ('Company Information', {
+            'fields': ('user', 'company_name', 'sector', 'short_description', 'website', 'linkedin_url', 'address', 'year_founded', 'employees_count')
+        }),
+        ('Founder Information', {
+            'fields': ('founder_name', 'founder_linkedin', 'founder_role')
+        }),
+        ('Additional Information', {
+            'fields': ('customers', 'key_metrics', 'needs', 'phone')
+        }),
+        ('Media', {
+            'fields': ('logo', 'logo_url')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
 
 
 @admin.register(VentureProduct)

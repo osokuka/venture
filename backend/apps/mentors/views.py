@@ -20,14 +20,17 @@ from django.contrib.contenttypes.models import ContentType
 
 class PublicMentorListView(generics.ListAPIView):
     """
-    List visible mentors (for approved ventures/admin).
+    List visible mentors (public endpoint - accessible to all authenticated users).
     
     GET /api/mentors/public
     Returns:
     - Mentors with visible_to_ventures=True (publicly visible)
     - Only approved mentors
+    
+    Note: This is a public listing, so authenticated users can view it even without
+    approved profiles.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    permission_classes = [IsAuthenticated]  # Allow all authenticated users, not just approved ones
     serializer_class = MentorProfileSerializer
     
     def get_queryset(self):
@@ -62,12 +65,15 @@ class PublicMentorListView(generics.ListAPIView):
 
 class PublicMentorDetailView(generics.RetrieveAPIView):
     """
-    Get mentor detail (for approved ventures/admin).
+    Get mentor detail (public endpoint - accessible to all authenticated users).
     
     GET /api/mentors/{id}
     Only returns mentors that are visible to the current user.
+    
+    Note: This is a public endpoint, so authenticated users can view mentor details
+    even without approved profiles.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    permission_classes = [IsAuthenticated]  # Allow all authenticated users, not just approved ones
     serializer_class = MentorProfileSerializer
     lookup_field = 'id'
     

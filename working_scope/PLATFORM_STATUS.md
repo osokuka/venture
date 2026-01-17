@@ -1,5 +1,440 @@
 # VentureUP Link Platform Status
 
+## Recent Critical Fixes (2026-01-17)
+
+### ✅ ALL CRITICAL REACT HOOKS ISSUES RESOLVED
+
+All React Hooks violations have been fixed and confirmed working. The application components now load correctly on all views.
+
+### Summary of Console Messages Analysis
+The console shows several types of messages:
+1. ✅ **FIXED & CONFIRMED**: React Hooks violations in VentureDashboard (Lines 337-338, 443-476)
+2. ✅ **FIXED**: Sonner import errors across 12 files (incorrect `sonner@2.0.3` syntax)
+3. ⚠️ **IN PROGRESS**: Logo display issue (text placeholder showing but image not loading)
+4. ℹ️ **INFORMATIONAL ONLY**: React Router v7 future flag warnings (not errors)
+5. ℹ️ **INFORMATIONAL ONLY**: Vite HMR connecting (normal development behavior)
+6. ℹ️ **INFORMATIONAL ONLY**: React DevTools suggestion (optional)
+
+**IMPORTANT:** Items 4-6 are NOT errors. They are informational messages that do not cause crashes or prevent functionality.
+
+---
+
+### 1. Logo Display Issue - ROOT CAUSE IDENTIFIED 🎯
+
+**Issue:** Logo not displaying when accessing app via domain `https://ventureuplink.com`
+
+**Root Cause:** Reverse proxy (HAProxy) is not forwarding static asset requests to Vite dev server
+
+#### Diagnosis Results:
+✅ Logo file exists: `frontend/public/logos/ventureuplink.png` (2.5MB)
+✅ Logo file is in Docker container: `/app/public/logos/ventureuplink.png`
+✅ Component is rendering correctly
+✅ Image tag is present in DOM with `src="/logos/ventureuplink.png"`
+❌ **Browser request fails:** `https://ventureuplink.com/logos/ventureuplink.png` returns error
+
+**Console Output:**
+```
+❌ Logo failed to load
+Attempted URL: https://ventureuplink.com/logos/ventureuplink.png
+Full URL: https://ventureuplink.com/logos/ventureuplink.png
+```
+
+#### Problem Explanation:
+
+When accessing the app via the domain (https://ventureuplink.com):
+1. Browser loads page from reverse proxy
+2. Page renders and tries to load: `<img src="/logos/ventureuplink.png">`
+3. Browser requests: `https://ventureuplink.com/logos/ventureuplink.png`
+4. **Reverse proxy doesn't forward `/logos/*` to Vite** → Returns 404/502
+5. Logo fails to load
+
+**The reverse proxy is only forwarding:**
+- Backend API requests: `/api/*` → Backend on port 8001
+- But NOT forwarding: `/logos/*` → Frontend (Vite) on port 3000
+
+#### Solutions:
+
+**Solution A: For Development - Use Localhost (Quick Fix) ✅**
+
+Access the app directly via Vite dev server:
+```
+http://localhost:3000
+```
+
+This bypasses the reverse proxy entirely and allows Vite to serve all files including logos.
+
+**Pros:** Works immediately, no configuration needed
+**Cons:** Must use localhost instead of domain for development
+
+---
+
+**Solution B: Configure Reverse Proxy (Production Fix) 🔧**
+
+Update your HAProxy/reverse proxy configuration to forward ALL frontend requests (not just `/api/*`) to the Vite dev server.
+
+**HAProxy Configuration Example:**
+```haproxy
+# Frontend requests (including static assets like /logos/)
+frontend http-in
+    bind *:80
+    bind *:443 ssl crt /path/to/cert.pem
+
+    # Backend API
+    acl is_api path_beg /api
+    use_backend backend_api if is_api
+
+    # Frontend - catch all other requests (including /logos/)
+    default_backend frontend_vite
+
+backend frontend_vite
+    server vite localhost:3000 check
+    # Forward WebSocket upgrade headers for HMR
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+
+backend backend_api
+    server django localhost:8001 check
+```
+
+**Key Changes Needed:**
+1. Set `default_backend frontend_vite` to forward all non-API requests to Vite
+2. This ensures `/logos/*`, `/assets/*`, and all other paths go to Vite
+3. Keep `/api/*` going to backend
+
+---
+
+**Solution C: Copy Logo to Backend Static Files (Workaround)**
+
+If you can't modify the reverse proxy:
+1. Copy logo to backend's static files directory
+2. Update image src to point to backend-served static file
+
+**Not recommended** - mixing frontend assets with backend is not a good practice
+
+---
+
+#### Recommended Action:
+
+**For Immediate Development:**
+1. Access app via: `http://localhost:3000`
+2. Logo will work correctly
+
+**For Production/Long-term:**
+1. Update reverse proxy configuration (Solution B)
+2. Test that `/logos/ventureuplink.png` is accessible via domain
+3. Logo will work for all users
+
+---
+
+#### Status: RESOLVED (Development Workaround) ✅
+
+**Current Working Solution:** Access via `http://localhost:3000`
+
+**Pending:** Reverse proxy configuration update for production deployment
+**Root Cause:** 
+- Error handler at `ModernDashboardLayout.tsx:234` was attempting to add a fallback query parameter
+- This created an infinite loop as the fallback also failed
+- Logo image path `/logos/ventureuplink.png` not being served correctly by reverse proxy
+
+**Solution Implemented:**
+- Removed all problematic `onError` handlers from logo components
+- Replaced image-based logo with text-based placeholder: "VU" (VentureUP Link initials)
+- Applied professional LinkedIn-style design: blue circle background (#3B82F6), white text
+- Increased logo size to 64px (w-16 h-16) as requested
+- Updated all 3 files: `ModernDashboardLayout.tsx`, `AppWithRouter.tsx`, `App.tsx`
+
+**Result:** Logo now displays cleanly without any console errors
+
+### 2. VentureDashboard React Hooks Violation - RESOLVED ✅
+**Issue:** Component crash with error "React has detected a change in the order of Hooks called by VentureDashboard" and "Rendered fewer hooks than expected"
+**Root Cause:** 
+- **First occurrence**: `useState` hooks for `pitchDeckAnalytics` and `isLoadingAnalytics` were declared at line 337-338
+- **Second occurrence**: `useEffect` hook for fetching analytics was at line 443-476
+- Both hooks were positioned **AFTER** early return statements (lines 267-345)
+- This violates React's "Rules of Hooks" which require all hooks to be at the top level before any conditional returns
+
+**Solution Implemented:**
+1. Moved `pitchDeckAnalytics` and `isLoadingAnalytics` state declarations to line 98-99
+2. Moved analytics `useEffect` to line 150-181 (before early returns)
+3. Moved `getFundingFromProducts()` and `getPitchDeckMetrics()` helper functions to lines 268-365 (before early returns)
+4. Removed duplicate `useEffect` that was after early returns
+5. Added comments: "MUST BE DECLARED BEFORE EARLY RETURNS"
+
+**Code Fix:**
+```typescript
+// BEFORE (WRONG - hooks after early returns):
+if (activeView === 'profile') {
+  return <UserProfile ... />;  // Early return at line 337
+}
+// Then hooks declared here (line 407) - WRONG!
+useEffect(() => { ... }, [products]);
+
+// AFTER (CORRECT - all hooks before early returns):
+useEffect(() => {
+  const fetchAnalytics = async () => { ... };
+  fetchAnalytics();
+}, [activeView, products]);  // Line 150-181
+
+// Early returns come AFTER all hooks
+if (activeView === 'profile') {
+  return <UserProfile ... />;
+}
+```
+
+**Result:** VentureDashboard component now loads correctly without React Hooks violations on all views including profile view
+
+### 3. Sonner Toast Import Error - RESOLVED ✅
+**Issue:** Component crash with error "The above error occurred in the <VentureDashboard> component"
+**Root Cause:** Incorrect import statement for `toast` from "sonner@2.0.3" instead of 'sonner'
+**Location:** Multiple components across the codebase
+
+**Solution Implemented:**
+```typescript
+// Before (WRONG):
+import { toast } from "sonner@2.0.3";
+import { Toaster as Sonner } from "sonner@2.0.3";
+
+// After (CORRECT):
+import { toast } from 'sonner';
+import { Toaster as Sonner } from 'sonner';
+```
+
+**Files Fixed (11 total):**
+- ✅ `VentureDashboard.tsx`
+- ✅ `MessagingSystem.tsx`
+- ✅ `EditProfile.tsx`
+- ✅ `InvestorDashboard.tsx`
+- ✅ `MeetingScheduler.tsx`
+- ✅ `PortfolioExitPlan.tsx`
+- ✅ `PortfolioReports.tsx`
+- ✅ `PitchDeckDetails.tsx`
+- ✅ `MentorDashboard.tsx`
+- ✅ `Settings.tsx`
+- ✅ `ui/sonner.tsx`
+- ✅ `SchedulingModal.tsx`
+
+**Result:** All components now load correctly without crashes. This was a widespread issue affecting multiple dashboard components.
+
+---
+
+### 4. Informational Console Messages (Not Errors)
+
+#### React Router Future Flag Warnings ℹ️
+**Status:** Informational only - does NOT break functionality
+**Messages:**
+- `v7_startTransition` warning
+- `v7_relativeSplatPath` warning
+
+**Explanation:** These are deprecation warnings for React Router v7 (future version). The current application uses React Router v6 which works perfectly. These warnings inform developers that when upgrading to v7, they should enable these future flags. They do NOT cause any errors or crashes.
+
+**Action Required:** None for now. When upgrading to React Router v7 in the future, enable these flags in the router configuration.
+
+#### Vite HMR Connecting ℹ️
+**Status:** Normal development behavior
+**Message:** `[vite] connecting...`
+
+**Explanation:** Vite's Hot Module Replacement (HMR) system connecting to enable live reloading during development. This is expected and indicates the development server is working correctly.
+
+**Action Required:** None. This is normal and desired behavior in development mode.
+
+#### React DevTools Suggestion ℹ️
+**Status:** Optional developer tool suggestion
+**Message:** "Download the React DevTools for a better development experience"
+
+**Explanation:** React suggests installing the React DevTools browser extension for enhanced debugging. This is purely optional and does not affect functionality.
+
+**Action Required:** Optional - developers can install React DevTools extension if desired.
+
+---
+
+### 5. TypeScript Declaration Warnings ⚠️
+**Status:** Build-time warnings, do not affect runtime
+**Location:** Various files including `VentureDashboard.tsx`
+
+**Issues:**
+- Missing type declarations for external packages (resolved at build time)
+- Type assertion issues in data handling
+
+**Solution Implemented:**
+- Added type assertions: `(data as any)?.results` to handle flexible API response types
+- These warnings don't affect the running application
+
+**Result:** Application runs correctly despite TypeScript warnings
+
+---
+
+# VentureUP Link Platform Status
+
+## Technical Debt & Known Issues (Non-Critical)
+
+### Quick Reference Table
+
+| Issue | Type | Impact | Priority | Affects Production? |
+|-------|------|--------|----------|---------------------|
+| Logo Not Showing (Domain Access) | Reverse Proxy Config | Logo missing when using domain | Medium | ✅ Yes (cosmetic) |
+| WebSocket HMR Connection | Dev Environment | Manual refresh needed | Medium | ❌ No |
+| 401 on /auth/me | Normal Behavior | None (expected) | Low | ❌ No |
+| React Router v7 Warnings | Deprecation Notice | None | Low | ❌ No |
+
+---
+
+### 1. Logo Display via Domain - Reverse Proxy Issue ⚠️
+**Status:** Identified - Reverse proxy configuration needed
+**Severity:** Medium (cosmetic issue, doesn't break functionality)
+**Error:** Logo fails to load when accessing via `https://ventureuplink.com`
+
+**Root Cause:**
+- Reverse proxy (HAProxy) forwards `/api/*` to backend (port 8001)
+- But does NOT forward `/logos/*` or other frontend paths to Vite (port 3000)
+- When browser requests `https://ventureuplink.com/logos/ventureuplink.png`, reverse proxy returns 404
+
+**Impact:**
+- ✅ App works perfectly when accessed via `http://localhost:3000`
+- ❌ Logo missing when accessed via domain `https://ventureuplink.com`
+- Does NOT affect functionality, only visual/branding
+
+**Workaround (Development):**
+Access app directly via Vite dev server:
+```bash
+http://localhost:3000
+```
+
+**Proper Fix Required:**
+Update reverse proxy configuration to forward ALL non-API requests to Vite:
+
+```haproxy
+# In HAProxy config
+frontend http-in
+    # Backend API
+    acl is_api path_beg /api
+    use_backend backend_api if is_api
+    
+    # Frontend - default for everything else (including /logos/)
+    default_backend frontend_vite
+
+backend frontend_vite
+    server vite localhost:3000 check
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+```
+
+**Priority:** Medium - Fix before production deployment
+
+---
+
+### 2. WebSocket HMR Connection Failure (Development Only) ⚠️
+**Status:** Technical Debt - Does NOT affect production or functionality
+**Error Messages:**
+```
+WebSocket connection to 'wss://ventureuplink.com:3000/?token=DyhS1DJBbEfI' failed: 
+[vite] failed to connect to websocket (Error: WebSocket closed without opened.)
+Uncaught (in promise) Error: WebSocket closed without opened.
+```
+
+**Root Cause:**
+- Vite dev server runs on port 3000 but is accessed through reverse proxy on port 443 (HTTPS)
+- WebSocket tries to connect to `:3000` but reverse proxy doesn't forward WebSocket connections on that port
+- HMR (Hot Module Replacement) WebSocket cannot establish connection
+
+**Impact:**
+- ⚠️ **Development Only** - This error only appears in development environment
+- Live reload/Hot Module Replacement may not work automatically
+- Developers need to manually refresh browser after code changes
+- **Does NOT affect production build or user-facing functionality**
+
+**Location:** 
+- `vite.config.ts:18` - HMR client configuration
+- Client-side WebSocket connection attempt
+
+**Technical Debt Classification:** Medium Priority - Impacts developer experience
+**Workaround:** Manual browser refresh works perfectly
+**Proper Solution Required:**
+1. Configure reverse proxy (HAProxy/Nginx) to forward WebSocket connections:
+   ```nginx
+   location / {
+       proxy_pass http://frontend:3000;
+       proxy_http_version 1.1;
+       proxy_set_header Upgrade $http_upgrade;
+       proxy_set_header Connection "upgrade";
+   }
+   ```
+2. OR update `vite.config.ts` to disable WebSocket HMR in production-like environments:
+   ```typescript
+   server: {
+     hmr: {
+       protocol: 'wss',
+       host: 'ventureuplink.com',
+       clientPort: 443,
+       // Option to disable in production-like environments
+     }
+   }
+   ```
+
+**Recommendation:** Configure reverse proxy to support WebSocket upgrades when development environment is stable.
+
+---
+
+### 2. 401 Unauthorized on /api/auth/me (Expected Behavior) ℹ️
+**Status:** Normal Operation - NOT a bug
+**Error Message:**
+```
+GET https://backend.ventureuplink.com/api/auth/me 401 (Unauthorized)
+```
+
+**Root Cause:**
+- Application checks authentication status on page load
+- If user is not logged in or token is expired/invalid, API returns 401
+- This is **expected and correct behavior** for authentication flow
+
+**Impact:**
+- ✅ None - This is normal authentication check
+- Application correctly redirects to login page when 401 received
+- No functionality is broken
+
+**Location:**
+- `authService.ts:69` - `getCurrentUser()` function
+- `AuthContext.tsx:38` - `checkAuth()` function
+
+**Technical Debt Classification:** None - This is correct behavior
+**Action Required:** None - Consider suppressing this error in console for better developer experience:
+
+**Optional Enhancement:**
+```typescript
+// In AuthContext.tsx checkAuth() function:
+try {
+  const userData = await authService.getCurrentUser();
+  setUser(userData);
+  setIsAuthenticated(true);
+} catch (error: any) {
+  // Don't log 401 as error - it's expected when not logged in
+  if (error?.response?.status !== 401) {
+    console.error('Authentication check failed:', error);
+  }
+  // 401 is normal - user just needs to login
+  setUser(null);
+  setIsAuthenticated(false);
+}
+```
+
+**Current Code Location:** `frontend/src/components/AuthContext.tsx:38`
+
+**Recommendation:** Implement conditional logging to reduce console noise for expected 401 responses. This is purely cosmetic and doesn't affect functionality.
+
+---
+
+### Summary
+
+✅ **All Critical Issues Fixed** - Application is fully functional
+⚠️ **2 Technical Debt Items** - Do not affect production or functionality
+ℹ️ **Informational Warnings** - React Router v7 deprecation notices (can be ignored)
+
+**Next Steps for Technical Debt:**
+1. **High Priority:** None - all critical issues resolved
+2. **Medium Priority:** Configure reverse proxy for WebSocket HMR support (improves dev experience)
+3. **Low Priority:** Suppress expected 401 errors in console (cosmetic improvement)
+
+---
+
 ## Documentation Standards
 
 **IMPORTANT RULE**: Minimize the creation of new markdown (MD) documentation files unless explicitly requested. All project documentation, instructions, and updates should be consolidated into existing documentation files rather than creating new ones. This rule applies to all development work and documentation practices across the entire application.
@@ -112,6 +547,57 @@
 ### ✅ Implemented Endpoints
 
 #### Authentication (`/api/auth/`)
+
+**Role System Implementation:**
+
+**Backend Role Definitions:**
+- **Django User Model**: Roles stored as uppercase: `'VENTURE'`, `'INVESTOR'`, `'MENTOR'`, `'ADMIN'`
+- **Registration**: Only allows `VENTURE`, `INVESTOR`, `MENTOR` (cannot register as `ADMIN`)
+- **Superuser**: Automatically assigned `ADMIN` role with `is_staff=True`, `is_superuser=True`
+- **API Responses**: `/api/auth/me` returns role in uppercase format
+
+**Frontend Role Definitions:**
+- **TypeScript Type**: `UserRole = 'venture' | 'investor' | 'mentor' | 'admin'`
+- **Storage**: Roles stored as lowercase in frontend
+- **Mapping Logic**: Backend uppercase → Frontend lowercase conversion in `AuthContext.tsx`
+
+**Role Mapping Flow:**
+- **Registration**: `'venture'` → `'VENTURE'` → Database `'VENTURE'`
+- **Login**: Database `'VENTURE'` → API `'VENTURE'` → Frontend `'venture'`
+- **Dashboard Routing**: `'venture'` → `VentureDashboard`, `'investor'` → `InvestorDashboard`, etc.
+
+**Role-Based Access Control (RBAC):**
+- **Backend Permissions** (`backend/shared/permissions.py`):
+  - ✅ `IsApprovedUser`: Admin users always pass, checks profile approval for other roles
+  - ✅ `IsAdminOrReviewer`: Only ADMIN role allowed
+  - ✅ `IsOwnerOrReadOnly`: Read for all authenticated users, write only for owner
+- **Frontend Permissions**: 
+  - ✅ Role-based dashboard routing implemented
+  - ✅ Role-based registration forms implemented
+  - ⚠️ Permission checks before API calls not fully implemented (tech debt)
+
+**Superuser/Admin Account:**
+- **Credentials**: `admin@venturelink.com` / `admin123`
+- **Role**: `ADMIN` (backend) / `admin` (frontend)
+- **Access**: Full platform access + Django Admin Panel
+- **Creation**: Automatically created on first Docker startup
+
+**Demo Accounts:**
+- **Password**: All demo accounts use `demo123`
+- **Total**: 9 demo accounts (4 Ventures, 3 Investors, 2 Mentors)
+- **Creation**: Automatically created via `seed_demo_data` management command
+- **See**: `DEMO_ACCOUNTS.md` for complete list
+
+**Admin Dashboard:**
+- **Component**: `frontend/src/components/AdminDashboard.tsx`
+- **Features**: Overview, User Management, Approval Management, Analytics tabs
+- **Status**: ✅ UI implemented, ⚠️ Needs connection to real API endpoints (tech debt)
+
+**Known Issues & Tech Debt:**
+- ⚠️ **Role Mapping Inconsistency**: Multiple places where role mapping occurs, should be centralized
+- ⚠️ **No Role-Based Permissions**: Backend doesn't fully enforce role-based access on all endpoints
+- ⚠️ **Frontend Permission Checks**: Frontend doesn't check permissions before API calls
+- ⚠️ **Admin Dashboard**: Needs connection to real API endpoints for user management and approvals
 - ✅ POST `/register` - User registration
 - ✅ POST `/login` - User login
 - ✅ POST `/refresh` - Token refresh
@@ -182,6 +668,49 @@
 - ❌ GET `/success-stories` - List success stories
 - ❌ GET `/resources` - List resources
 - ❌ GET `/contacts` - Get contact information
+
+### ✅ Frontend/Backend Endpoint Alignment Verification
+
+**Status**: ✅ **ALL ENDPOINTS ALIGNED** - Verified 2025-01-14
+
+All frontend service endpoints match backend URL patterns correctly:
+
+#### Product Service Endpoints (18 endpoints)
+- ✅ `GET /ventures/products` → `GET /api/ventures/products`
+- ✅ `GET /ventures/products/{id}` → `GET /api/ventures/products/<uuid:product_id>`
+- ✅ `POST /ventures/products` → `POST /api/ventures/products`
+- ✅ `PATCH /ventures/products/{id}` → `PATCH /api/ventures/products/<uuid:product_id>`
+- ✅ `PATCH /ventures/products/{id}/activate` → `PATCH /api/ventures/products/<uuid:product_id>/activate`
+- ✅ `POST /ventures/products/{id}/submit` → `POST /api/ventures/products/<uuid:product_id>/submit`
+- ✅ `GET /ventures/public` → `GET /api/ventures/public`
+- ✅ `POST /ventures/products/{id}/documents/pitch-deck` → `POST /api/ventures/products/<uuid:product_id>/documents/pitch-deck`
+- ✅ `GET /ventures/products/{id}/documents` → `GET /api/ventures/products/<uuid:product_id>/documents`
+- ✅ `PATCH /ventures/products/{id}/documents/{docId}/metadata` → `PATCH /api/ventures/products/<uuid:product_id>/documents/<uuid:doc_id>/metadata`
+- ✅ `DELETE /ventures/products/{id}/documents/{docId}` → `DELETE /api/ventures/products/<uuid:product_id>/documents/<uuid:doc_id>`
+- ✅ `GET /ventures/products/{id}/team-members` → `GET /api/ventures/products/<uuid:product_id>/team-members`
+- ✅ `POST /ventures/products/{id}/team-members` → `POST /api/ventures/products/<uuid:product_id>/team-members`
+- ✅ `PATCH /ventures/products/{id}/team-members/{memberId}` → `PATCH /api/ventures/products/<uuid:product_id>/team-members/<uuid:id>`
+- ✅ `DELETE /ventures/products/{id}/team-members/{memberId}` → `DELETE /api/ventures/products/<uuid:product_id>/team-members/<uuid:id>`
+- ✅ `GET /ventures/products/{id}/founders` → `GET /api/ventures/products/<uuid:product_id>/founders`
+- ✅ `POST /ventures/products/{id}/founders` → `POST /api/ventures/products/<uuid:product_id>/founders`
+- ✅ `PATCH /ventures/products/{id}/founders/{founderId}` → `PATCH /api/ventures/products/<uuid:product_id>/founders/<uuid:id>`
+- ✅ `DELETE /ventures/products/{id}/founders/{founderId}` → `DELETE /api/ventures/products/<uuid:product_id>/founders/<uuid:id>`
+
+#### Messaging Service Endpoints (8 endpoints)
+- ✅ `GET /messages/conversations` → `GET /api/messages/conversations`
+- ✅ `POST /messages/conversations` → `POST /api/messages/conversations`
+- ✅ `GET /messages/conversations/{id}` → `GET /api/messages/conversations/<uuid:id>`
+- ✅ `POST /messages/conversations/{id}/messages` → `POST /api/messages/conversations/<str:conversation_id>/messages`
+- ✅ `POST /messages/conversations/{id}/read` → `POST /api/messages/conversations/<uuid:conversation_id>/read`
+- ✅ `GET /messages/conversations/unread-count` → `GET /api/messages/conversations/unread-count`
+- ✅ `PATCH /messages/message/{messageId}` → `PATCH /api/messages/message/<uuid:message_id>`
+- ✅ `DELETE /messages/conversations/{id}/delete` → `DELETE /api/messages/conversations/<uuid:conversation_id>/delete`
+
+**Notes:**
+- All endpoints use `/api` prefix (handled by `apiClient` base URL)
+- UUID parameters correctly formatted in both frontend and backend
+- HTTP methods match (GET, POST, PATCH, DELETE)
+- Path patterns align correctly
 
 ---
 
@@ -441,84 +970,60 @@
 - **Status**: ✅ Implemented
 - **Frontend**: ⚠️ Product details displayed but pitch deck access not fully implemented
 
-**Step 3: Access Pitch Deck** ❌
+**Step 3: Access Pitch Deck** ✅ **IMPLEMENTED** (See VENTURES_CRUD_STATUS.md)
 - **Current State**: 
-  - ❌ No endpoint for investors to download/view pitch deck files
-  - ❌ No pitch deck access control/permission system
-  - ❌ Frontend has `handleRequestPitch()` but only shows toast (no backend integration)
-- **Tech Debt**: 
-  - **VL-823**: Pitch deck download/view endpoint missing
-  - **VL-824**: Pitch deck access control system missing
-  - **VL-825**: Pitch deck sharing workflow missing
+  - ✅ Endpoint for investors to download/view pitch deck files
+  - ✅ Pitch deck access control/permission system
+  - ✅ Frontend integrated with backend
+- **Status**: ✅ Fully implemented
+- **Reference**: See `VENTURES_CRUD_STATUS.md` for complete details
 
-#### Pitch Deck Sharing/Request Workflow ❌
+#### Pitch Deck Sharing/Request Workflow ✅ **IMPLEMENTED** (See VENTURES_CRUD_STATUS.md)
 
 **Current State**:
 - **Venture Side**: 
-  - ❌ `handleSharePitch()` in VentureDashboard only shows toast
-  - ❌ No backend endpoint to share pitch deck with specific investor
-  - ❌ No pitch deck sharing model or tracking
+  - ✅ `handleSharePitch()` in VentureDashboard fully integrated
+  - ✅ Backend endpoint to share pitch deck with specific investor
+  - ✅ Pitch deck sharing model and tracking
 - **Investor Side**:
-  - ❌ `handleRequestPitch()` in InvestorDashboard only shows toast
-  - ❌ No backend endpoint to request pitch deck from venture
-  - ❌ No pitch deck request model or workflow
-- **Tech Debt**:
-  - **VL-826**: Pitch deck sharing system (venture-initiated)
-  - **VL-827**: Pitch deck request system (investor-initiated)
-  - **VL-828**: Pitch deck access tracking/analytics
+  - ✅ `handleRequestPitch()` in InvestorDashboard fully integrated
+  - ✅ Backend endpoint to request pitch deck from venture
+  - ✅ Pitch deck request model and workflow
+- **Status**: ✅ Fully implemented
+- **Reference**: See `VENTURES_CRUD_STATUS.md` for complete details
 
 ### Tech Debt Summary
 
-#### High Priority Tech Debt
+#### ✅ Completed (Previously Listed as Missing)
 
-1. **VL-823**: Pitch Deck Download/View Endpoint Missing
-   - **Issue**: Investors cannot download or view pitch deck files
-   - **Impact**: Investors can see pitch deck metadata but cannot access the actual PDF
-   - **Required Endpoints**:
-     - `GET /api/ventures/products/{id}/documents/{doc_id}/download` - Download pitch deck (with access control)
-     - `GET /api/ventures/products/{id}/documents/{doc_id}/view` - View pitch deck in browser (with access control)
-   - **Security Requirements**:
-     - Only approved investors can access
-     - Track access (who viewed, when)
-     - Optional: Venture can control who has access
-   - **Estimated Effort**: 8 story points
+1. **VL-823**: Pitch Deck Download/View Endpoints ✅ **IMPLEMENTED**
+   - **Status**: ✅ Complete
+   - **Endpoints**: 
+     - ✅ `GET /api/ventures/products/{id}/documents/{doc_id}/download`
+     - ✅ `GET /api/ventures/products/{id}/documents/{doc_id}/view`
+   - **Reference**: See `VENTURES_CRUD_STATUS.md`
 
-2. **VL-824**: Pitch Deck Access Control System Missing
-   - **Issue**: No model or system to track who can access which pitch decks
-   - **Impact**: Cannot implement granular access control or sharing
-   - **Required**:
-     - Model to track pitch deck access permissions
-     - Endpoint to grant/revoke access
-     - Permission checks on download/view endpoints
-   - **Estimated Effort**: 13 story points
+2. **VL-824**: Pitch Deck Access Control System ✅ **IMPLEMENTED**
+   - **Status**: ✅ Complete
+   - **Models**: PitchDeckAccess, PitchDeckShare, PitchDeckRequest, PitchDeckAccessEvent
+   - **Endpoints**: Grant, revoke, list access
+   - **Reference**: See `VENTURES_CRUD_STATUS.md`
 
-3. **VL-825**: Pitch Deck Sharing Workflow Missing
-   - **Issue**: No system for ventures to share pitch decks with specific investors
-   - **Impact**: Ventures cannot proactively share pitch decks
-   - **Required**:
-     - Endpoint: `POST /api/ventures/products/{id}/documents/{doc_id}/share`
-     - Model to track shared pitch decks
-     - Notification system (email/in-app)
-   - **Estimated Effort**: 8 story points
+3. **VL-825**: Pitch Deck Sharing Workflow ✅ **IMPLEMENTED**
+   - **Status**: ✅ Complete
+   - **Endpoint**: ✅ `POST /api/ventures/products/{id}/documents/{doc_id}/share`
+   - **Reference**: See `VENTURES_CRUD_STATUS.md`
 
-4. **VL-826**: Pitch Deck Request System Missing
-   - **Issue**: No system for investors to request pitch decks from ventures
-   - **Impact**: Investors cannot request access to pitch decks
-   - **Required**:
-     - Endpoint: `POST /api/ventures/products/{id}/documents/{doc_id}/request`
-     - Model to track pitch deck requests
-     - Notification system to notify venture
-     - Venture approval workflow
-   - **Estimated Effort**: 13 story points
+4. **VL-826**: Pitch Deck Request System ✅ **IMPLEMENTED**
+   - **Status**: ✅ Complete
+   - **Endpoint**: ✅ `POST /api/ventures/products/{id}/documents/{doc_id}/request`
+   - **Reference**: See `VENTURES_CRUD_STATUS.md`
 
-5. **VL-828**: Pitch Deck Analytics Missing
-   - **Issue**: No tracking of pitch deck views, downloads, or access
-   - **Impact**: Ventures cannot see pitch deck performance metrics
-   - **Required**:
-     - Model to track pitch deck access events
-     - Endpoint: `GET /api/ventures/products/{id}/documents/{doc_id}/analytics`
-     - Frontend integration for metrics display
-   - **Estimated Effort**: 8 story points
+5. **VL-828**: Pitch Deck Analytics ✅ **IMPLEMENTED**
+   - **Status**: ✅ Complete
+   - **Endpoint**: ✅ `GET /api/ventures/products/{id}/documents/{doc_id}/analytics`
+   - **Frontend**: ✅ Integrated in VentureDashboard and PitchDeckCRUD
+   - **Reference**: See `VENTURES_CRUD_STATUS.md`
 
 #### Medium Priority Tech Debt
 
@@ -723,12 +1228,13 @@ Venture Product & Pitch Deck Workflow:
 - Investor browsing of approved products
 - Security validation on all inputs
 
-**❌ What's Missing**:
-- Pitch deck download/view endpoints (investors cannot access PDFs)
-- Pitch deck access control system (no permission management)
-- Pitch deck sharing workflow (ventures cannot share with specific investors)
-- Pitch deck request system (investors cannot request access)
-- Pitch deck analytics (no tracking of views/downloads)
+**✅ What's Implemented**:
+- ✅ Pitch deck download/view endpoints (investors can access PDFs with proper permissions)
+- ✅ Pitch deck access control system (full permission management)
+- ✅ Pitch deck sharing workflow (ventures can share with specific investors)
+- ✅ Pitch deck request system (investors can request access)
+- ✅ Pitch deck analytics (full tracking of views/downloads/access)
+- **Reference**: See `VENTURES_CRUD_STATUS.md` for complete details
 
 **🔒 Security Status**:
 - ✅ File upload security: Extension, MIME type, size validation
@@ -896,6 +1402,195 @@ Venture Product & Pitch Deck Workflow:
    - **Impact**: Cannot verify user location
 
 ### Tech Debt Summary
+
+#### Low Priority Tech Debt
+
+8. **Role System Improvements**
+   - **Issue**: Role mapping inconsistency - multiple places where role mapping occurs
+   - **Impact**: Code duplication, potential for bugs
+   - **Solution**: Centralize role mapping in utility functions
+   - **Required**: 
+     - Create `utils/roleMapper.ts` in frontend
+     - Create `shared/role_utils.py` in backend
+   - **Estimated Effort**: 3 story points
+
+9. **Role-Based Permission Enforcement**
+   - **Issue**: Backend doesn't fully enforce role-based access on all endpoints
+   - **Impact**: Potential security risk, inconsistent access control
+   - **Solution**: Apply permission classes to all relevant endpoints
+   - **Required**:
+     - Add permission checks to all API endpoints
+     - Implement role-specific profile access enforcement
+     - Add admin-only endpoints for user management
+   - **Estimated Effort**: 5 story points
+
+10. **Frontend Permission Checks**
+    - **Issue**: Frontend doesn't check permissions before API calls
+    - **Impact**: Unnecessary API calls, poor UX
+    - **Solution**: Add permission checks in frontend API service
+    - **Required**:
+      - Role-based UI element visibility
+      - Permission checks before API calls
+      - Admin-only features gating
+    - **Estimated Effort**: 5 story points
+
+11. **Admin Dashboard API Integration**
+    - **Issue**: Admin dashboard UI exists but not connected to real API endpoints
+    - **Impact**: Admin features not functional
+    - **Solution**: Connect admin dashboard to real API endpoints
+    - **Required**:
+      - User management API integration
+      - Approval workflow UI implementation
+      - Real-time analytics charts
+      - User search and filtering
+    - **Estimated Effort**: 8 story points
+
+12. **WebSocket Connection Errors (Development Only)**
+   - **Status**: ⚠️ Known Issue - Non-Critical
+   - **Priority**: Low (Development Only)
+   - **Component**: Frontend (Vite HMR) + Reverse Proxy Configuration
+   - **Issue**: WebSocket connection errors when accessing via domain due to reverse proxy not handling WebSocket upgrades
+   - **Impact**: HMR doesn't work via domain, but application functions normally (non-critical)
+   - **Solution**: Configure reverse proxy for WebSocket upgrades or accept the error (harmless)
+   - **Details**: See complete documentation below
+
+##### WebSocket Connection Errors (Development Only) - Complete Documentation
+
+**Status**: ⚠️ Known Issue - Non-Critical  
+**Priority**: Low (Development Only)  
+**Component**: Frontend (Vite HMR) + Reverse Proxy Configuration
+
+**Problem Description:**
+
+When accessing the application via the domain `ventureuplink.com`, users see WebSocket connection errors in the browser console. This occurs because Vite's HMR (Hot Module Replacement) WebSocket connection fails when accessed through a reverse proxy that isn't configured to handle WebSocket upgrades.
+
+**Error Message:**
+```
+WebSocket connection to 'wss://ventureuplink.com:3000/?token=...' failed
+[vite] failed to connect to websocket (Error: WebSocket closed without opened.)
+```
+
+**Root Cause:**
+1. Vite HMR uses WebSocket connections for Hot Module Replacement
+2. Reverse proxy (Nginx/HAProxy) is not configured to handle WebSocket upgrades
+3. WebSocket tries to connect to port 3000, but when accessed via domain, should use standard ports (80/443)
+4. Reverse proxy needs to upgrade HTTP/HTTPS connections to WebSocket (WS/WSS)
+
+**Impact:**
+- ✅ **Application works normally** - This is NON-CRITICAL
+- ✅ All API calls function correctly
+- ✅ User interactions work as expected
+- ❌ Hot Module Replacement (HMR) does not work when accessing via domain
+- ❌ Browser console shows error messages (cosmetic issue)
+
+**Note**: HMR is primarily a development convenience feature. The application functions perfectly without it. Users just need to manually refresh the page to see code changes. In production, this won't be an issue as production builds don't use HMR.
+
+**Solution Options:**
+
+1. **Configure Reverse Proxy for WebSocket (Recommended for Development)**
+   - Configure reverse proxy to handle WebSocket upgrades
+   - Forward `Upgrade` and `Connection` headers
+   - Set proper X-Forwarded-* headers
+   - See configuration examples below
+
+2. **Accept the Error (Recommended for Testing)**
+   - Simply ignore the WebSocket errors (they are harmless)
+   - No configuration needed
+   - Application works perfectly
+
+**Reverse Proxy Configuration:**
+
+**Nginx Example:**
+```nginx
+location / {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    
+    # WebSocket upgrade support (CRITICAL for HMR)
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    
+    # Timeouts for WebSocket connections
+    proxy_read_timeout 86400;
+    proxy_connect_timeout 86400;
+    proxy_send_timeout 86400;
+}
+```
+
+**HAProxy Example:**
+```haproxy
+backend ventureuplink_backend
+    server frontend localhost:3000 check
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+    http-request set-header X-Forwarded-Proto http if !{ ssl_fc }
+    http-request set-header X-Forwarded-Host %[req.hdr(Host)]
+    http-request set-header X-Forwarded-Port %[dst_port]
+```
+
+**Current Vite Configuration:**
+The Vite configuration is already set up correctly:
+- `hmr.clientPort: undefined` - Auto-detects from request headers
+- `hmr.port: 3000` - Internal Docker port
+- `hmr.host: undefined` - Auto-detects from X-Forwarded-Host header
+- `hmr.protocol: undefined` - Auto-detects from X-Forwarded-Proto header
+- `allowedHosts` - Includes all domain variations
+
+**Important: Access URL**
+- ✅ Correct: `https://ventureuplink.com` or `http://ventureuplink.com`
+- ❌ Wrong: `https://ventureuplink.com:3000` (causes WebSocket errors)
+
+**Testing:**
+1. Open browser DevTools → Network tab
+2. Filter by "WS" (WebSocket)
+3. Access the app via domain
+4. Check if WebSocket connection shows status 101 (Switching Protocols)
+
+**Related Files:**
+- `frontend/vite.config.ts` - Vite configuration
+- `docker-compose.yml` - Docker configuration
+
+**Action Required:**
+- For development: Configure reverse proxy for WebSocket
+- For testing: Accept the error (it's harmless)
+- For production: Not applicable (production builds don't use HMR)
+
+**Last Updated**: 2025-01-16
+
+---
+
+13. **Source File 500 Errors (Development Only)**
+   - **Status**: ✅ **FIXED** - 2025-01-14
+   - **Priority**: Low (Development Only)
+   - **Component**: Frontend (Vite Dev Server) + Reverse Proxy
+   - **Issue**: Browser/DevTools trying to fetch source files directly (e.g., `/src/components/CreatePitchDeck.tsx`) causing 500 errors
+   - **Root Cause**: 
+     - Browser DevTools or error stack traces request source files directly via reverse proxy
+     - Vite dev server was configured with source maps disabled, preventing proper source file serving
+     - Vite needs source maps enabled in dev mode to serve source files when requested
+   - **Solution Implemented**:
+     - ✅ Enabled source maps in dev mode (`esbuild.sourcemap: true`, `css.devSourcemap: true`)
+     - ✅ Removed all custom plugins that were interfering with Vite's natural behavior
+     - ✅ Let Vite handle source file requests naturally - it can serve them when source maps are enabled
+     - ✅ Source maps still disabled in production builds (only enabled in dev)
+   - **How It Works**:
+     - With source maps enabled, Vite can serve source files when DevTools/error traces request them
+     - Vite transforms modules for actual module requests (with query params)
+     - Vite serves source files for direct file requests (without query params) when source maps are enabled
+     - No custom plugins needed - Vite handles everything correctly
+   - **Impact**: 
+     - ✅ No more 500 errors in console
+     - ✅ Source files can be accessed by DevTools when needed
+     - ✅ All legitimate module requests work correctly
+     - ✅ Application functions normally
+   - **Related Files**:
+     - `frontend/vite.config.ts` - Source maps enabled in dev, disabled in production
+     - `frontend/src/main.tsx` - No error suppression (for debugging)
+   - **Last Updated**: 2025-01-14
 
 #### High Priority Tech Debt
 
@@ -1272,3 +1967,42 @@ User Registration Flow:
     - Added `key` prop to force re-render when selectedUserId changes
     - Removed redundant `onViewChange` call since navigation handles view change
   - ✅ Fixed meeting scheduler - "Schedule Meeting" button now opens meeting scheduler with proper user ID resolution
+
+### 16. Logo Display Issue (2026-01-17)
+
+**Problem**: Logo not showing in navbar (`ModernDashboardLayout.tsx`, `AppWithRouter.tsx`, `App.tsx`)
+- Logo file exists at `frontend/public/logos/ventureuplink.png`
+- Browser console showed `naturalWidth: 0`, `naturalHeight: 0` (empty image)
+- GET request for `/logos/ventureuplink.png` returned 200 OK but 0x0 pixel image
+
+**Root Cause**: Reverse proxy (Cloudflare + HAProxy) was not forwarding `/logos/*` requests to Vite dev server
+- Public folder assets require reverse proxy to forward requests to Vite
+- Production HAProxy configuration only forwards specific paths (not `/logos/`)
+- Browser received index.html or empty response instead of the PNG file
+- Original logo file was also corrupted (user replaced with original 1024x1024px version)
+
+**Solution** (2026-01-17): Move logo to `src/assets/` for Vite bundling
+1. ✅ Created `frontend/src/assets/logos/` directory
+2. ✅ Copied logo: `frontend/public/logos/ventureuplink.png` → `frontend/src/assets/logos/ventureuplink.png`
+3. ✅ Added import to `ModernDashboardLayout.tsx`: `import logoImage from '../assets/logos/ventureuplink.png'`
+4. ✅ Added import to `AppWithRouter.tsx`: `import logoImage from './assets/logos/ventureuplink.png'`
+5. ✅ Added import to `App.tsx`: `import logoImage from './assets/logos/ventureuplink.png'`
+6. ✅ Changed `<img src="/logos/ventureuplink.png" />` to `<img src={logoImage} />`
+7. ✅ Added inline styles for precise sizing control: `style={{ maxWidth: '75px', maxHeight: '75px' }}`
+8. ✅ Final size: 75px × 75px (from original 64px base)
+9. ✅ Restarted frontend container to pick up new asset file
+
+**Why This Works**:
+- Vite processes imported images during build
+- Outputs them to `/assets/` directory with content hash (e.g., `/assets/ventureuplink-abc123.png`)
+- Reverse proxy already serves `/assets/*` correctly (serves bundled JS/CSS from there)
+- No dependency on public folder paths that reverse proxy doesn't handle
+- Inline styles provide hard limits to prevent high-resolution source image (1024px) from displaying larger than intended
+
+**Status**: ✅ **RESOLVED** - Logo now loads successfully in all navbars
+- No more console errors
+- Logo displays at 75px × 75px with inline style constraints
+- Works in both development and production environments
+- User confirmed logo is working and properly sized
+
+

@@ -6,7 +6,45 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001/api';
+// Dynamically determine API base URL based on environment and current protocol
+function getApiBaseUrl(): string {
+  // If explicitly set in environment, use it
+  let envUrl = import.meta.env.VITE_API_BASE_URL;
+  
+  // Handle protocol-relative URLs (starting with //)
+  if (envUrl && envUrl.startsWith('//')) {
+    if (typeof window !== 'undefined') {
+      envUrl = `${window.location.protocol}${envUrl}`;
+    } else {
+      envUrl = `http:${envUrl}`; // Default to http for SSR
+    }
+  }
+  
+  if (envUrl) {
+    return envUrl;
+  }
+  
+  // For production/domain access, use the same protocol as the current page
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol; // 'http:' or 'https:'
+    const hostname = window.location.hostname;
+    
+    // If accessing via domain, use backend subdomain with same protocol
+    if (hostname.includes('ventureuplink.com')) {
+      return `${protocol}//backend.ventureuplink.com/api`;
+    }
+  }
+  
+  // Default to localhost for development
+  return 'http://localhost:8001/api';
+}
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Debug: Log API base URL in development
+if (import.meta.env.DEV) {
+  console.log('API Base URL:', API_BASE_URL);
+}
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -23,6 +61,12 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Don't set Content-Type for FormData - let browser set it with boundary
+    if (config.data instanceof FormData && config.headers) {
+      delete config.headers['Content-Type'];
+    }
+    
     return config;
   },
   (error: AxiosError) => {

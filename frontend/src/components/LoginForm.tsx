@@ -57,7 +57,7 @@ export function LoginForm() {
 
 
   return (
-    <div className="min-h-screen bg-background py-12 px-6">
+    <div className="min-h-screen bg-white py-12 px-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <Button 

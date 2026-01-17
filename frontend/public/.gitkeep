@@ -1,0 +1,2 @@
+# This file ensures the public directory is tracked by git
+# Static assets placed in public/ are served as-is

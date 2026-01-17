@@ -1334,8 +1334,8 @@
       "priority": "Medium",
       "storyPoints": 3,
       "acceptanceCriteria": [
-        "ROLE_ANALYSIS.md created with detailed role interconnection analysis",
-        "ROLE_INTERCONNECTION_SUMMARY.md created as quick reference",
+        "Role system architecture documented in refined_project_scope.md (Section 8)",
+        "Role implementation details documented in PLATFORM_STATUS.md (Authentication Section)",
         "Role mapping logic documented",
         "Permission system documented",
         "Admin role handling documented"
@@ -1375,7 +1375,7 @@
       "tasks": [
         {
           "summary": "Move project documentation to working_scope",
-          "description": "Move ROLE_ANALYSIS.md, DEMO_ACCOUNTS.md, ROLE_INTERCONNECTION_SUMMARY.md to working_scope/",
+          "description": "Move DEMO_ACCOUNTS.md to working_scope/ (role documentation consolidated into project scope and platform status)",
           "type": "Task",
           "estimate": "1h",
           "status": "Done"
@@ -1468,7 +1468,7 @@
         },
         {
           "summary": "Create product creation UI in dashboard",
-          "description": "Add product creation form/modal to VentureDashboard",
+          "description": "Add product creation inline form to VentureDashboard (per NO_MODALS_RULE - no modals allowed)",
           "type": "Task",
           "estimate": "4h",
           "status": "Pending"
@@ -1877,7 +1877,7 @@
         },
         {
           "summary": "Implement conversation deletion UI",
-          "description": "Add delete conversation option with confirmation dialog",
+          "description": "Add delete conversation option with inline confirmation (per NO_MODALS_RULE - no modals/dialogs allowed)",
           "type": "Task",
           "estimate": "2h",
           "status": "Done"
@@ -2282,15 +2282,292 @@
         }
       ],
       "status": "Pending"
+    },
+    {
+      "key": "VL-833",
+      "summary": "Fix Venture Profile Data Persistence - EditProfile Not Saving to Backend",
+      "description": "Venture users can edit their profile information (company name, website, LinkedIn URL, sector, address, etc.) through the EditProfile component, but this data is NOT being saved to the backend. The data only exists in frontend React state and is lost on page refresh. This is a critical UX issue - users expect their data to be saved. See VENTURES_CRUD_STATUS.md Section 11 for detailed analysis.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 13,
+      "acceptanceCriteria": [
+        "VentureProfile model created (similar to InvestorProfile/MentorProfile)",
+        "GET /api/ventures/profile/me endpoint returns user's profile data",
+        "PATCH /api/ventures/profile/me endpoint saves profile data to backend",
+        "EditProfile component calls API to save data on submit",
+        "UserProfile component fetches and displays profile data from API",
+        "Profile data persists across page refreshes",
+        "All profile fields (companyName, website, linkedinUrl, sector, etc.) are saved",
+        "Validation and sanitization for all profile fields",
+        "Profile data displays correctly in profile view"
+      ],
+      "tasks": [
+        {
+          "summary": "Create VentureProfile model in backend",
+          "description": "Create VentureProfile model with fields matching EditProfile form (companyName, website, linkedinUrl, sector, address, foundedYear, employeeCount, shortDescription, phone, logo, founder info, etc.)",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create VentureProfile serializers",
+          "description": "Create VentureProfileSerializer (for GET) and VentureProfileUpdateSerializer (for PATCH) with validation and sanitization",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create VentureProfile API endpoints",
+          "description": "Create GET /api/ventures/profile/me and PATCH /api/ventures/profile/me endpoints with VentureProfileCreateUpdateView class",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add VentureProfile routes to urls.py",
+          "description": "Add profile endpoints to backend/apps/ventures/urls.py",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create database migration for VentureProfile",
+          "description": "Generate and run migration for new VentureProfile model",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update ventureService with profile methods",
+          "description": "Add getMyProfile() and updateProfile(data) methods to frontend/src/services/ventureService.ts",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update EditProfile to save to backend",
+          "description": "Update EditProfile.handleSubmit() to call ventureService.updateProfile() API instead of only updating local state",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update UserProfile to fetch from API",
+          "description": "Update UserProfile component to fetch profile data from API on mount and display it (already has priority logic, just needs API integration)",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update AuthContext to optionally fetch profile",
+          "description": "Optionally fetch profile data on login/checkAuth to populate user.profile in state",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Test profile persistence",
+          "description": "Test that profile data saves correctly, persists after refresh, and displays in profile view",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-834",
+      "summary": "Centralize Role Mapping - Remove Code Duplication",
+      "description": "Role mapping logic exists in multiple places (AuthContext, registration forms, etc.). Should be centralized in utility functions. Create utils/roleMapper.ts in frontend and shared/role_utils.py in backend. See PLATFORM_STATUS.md Tech Debt section for details.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Low",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Role mapping centralized in frontend utility function",
+        "Role mapping centralized in backend utility function",
+        "All existing code updated to use centralized functions",
+        "No duplicate role mapping logic remains"
+      ],
+      "tasks": [
+        {
+          "summary": "Create frontend roleMapper utility",
+          "description": "Create utils/roleMapper.ts with functions to convert between backend and frontend role formats",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Create backend role_utils utility",
+          "description": "Create shared/role_utils.py with functions for role validation and conversion",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update AuthContext to use roleMapper",
+          "description": "Replace inline role mapping with utility function calls",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update registration forms to use roleMapper",
+          "description": "Replace inline role conversion with utility function calls",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-835",
+      "summary": "Implement Full Role-Based Permission Enforcement",
+      "description": "Backend doesn't fully enforce role-based access on all endpoints. Need to apply permission classes to all relevant endpoints, implement role-specific profile access enforcement, and add admin-only endpoints. See PLATFORM_STATUS.md Tech Debt section for details.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "All API endpoints have appropriate permission classes",
+        "Role-specific profile access enforcement implemented",
+        "Admin-only endpoints properly protected",
+        "Permission checks tested and verified"
+      ],
+      "tasks": [
+        {
+          "summary": "Audit all endpoints for permission classes",
+          "description": "Review all API endpoints and identify which need permission classes",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Apply permission classes to all endpoints",
+          "description": "Add IsAuthenticated, IsApprovedUser, IsAdminOrReviewer as appropriate",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement role-specific profile access",
+          "description": "Ensure users can only access profiles they're allowed to see based on role",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add admin-only endpoint protection",
+          "description": "Ensure admin-only endpoints are properly protected with IsAdminOrReviewer",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-836",
+      "summary": "Add Frontend Permission Checks",
+      "description": "Frontend doesn't check permissions before API calls. Need to add role-based UI element visibility, permission checks before API calls, and admin-only features gating. See PLATFORM_STATUS.md Tech Debt section for details.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Role-based UI element visibility implemented",
+        "Permission checks before API calls added",
+        "Admin-only features properly gated",
+        "Better UX with permission-aware UI"
+      ],
+      "tasks": [
+        {
+          "summary": "Create permission utility functions",
+          "description": "Create utils/permissions.ts with functions to check user permissions",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add role-based UI visibility",
+          "description": "Update components to show/hide elements based on user role",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add permission checks to API service",
+          "description": "Update API service to check permissions before making calls",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Gate admin-only features",
+          "description": "Ensure admin-only features are only visible/accessible to admin users",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-837",
+      "summary": "Connect Admin Dashboard to Real API Endpoints",
+      "description": "Admin dashboard UI exists but not connected to real API endpoints. Need to connect user management, approval workflow UI, real-time analytics charts, and user search/filtering. See PLATFORM_STATUS.md Tech Debt section for details.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "Medium",
+      "storyPoints": 8,
+      "acceptanceCriteria": [
+        "User management tab connected to real API",
+        "Approval workflow UI functional",
+        "Real-time analytics charts displaying data",
+        "User search and filtering working"
+      ],
+      "tasks": [
+        {
+          "summary": "Connect user management to API",
+          "description": "Update AdminDashboard user management tab to use real API endpoints",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement approval workflow UI",
+          "description": "Create functional approval workflow interface connected to API",
+          "type": "Task",
+          "estimate": "5h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add real-time analytics charts",
+          "description": "Connect analytics tab to real API and display charts",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Implement user search and filtering",
+          "description": "Add search and filter functionality to user management",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
     }
   ],
   "bugs": [],
   "metadata": {
     "created": "2025-01-27",
-    "updated": "2025-01-15",
-    "version": "1.6",
-    "totalStories": 52,
-    "totalTasks": 252,
-    "estimatedStoryPoints": 293
+    "updated": "2025-01-16",
+    "version": "1.8",
+    "totalStories": 57,
+    "totalTasks": 282,
+    "estimatedStoryPoints": 327
   }
 }

@@ -26,7 +26,7 @@ import {
   MoreVertical,
   Trash2
 } from "lucide-react";
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { type FrontendUser } from '../types';
 import { messagingService, type Conversation, type Message } from '../services/messagingService';
 import { validateMessage, sanitizeInput, sanitizeForDisplay } from '../utils/security';
@@ -466,8 +466,24 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
           }
         }, 100);
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to send message');
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      
+      // Handle 403 Forbidden errors with specific messages
+      if (error?.response?.status === 403) {
+        const errorDetail = error?.response?.data?.detail || error?.message || '';
+        
+        // Check if it's an approval/permission issue
+        if (errorDetail.includes('approved') || errorDetail.includes('profile must be approved')) {
+          toast.error('You need at least one approved product to send messages. Please submit and get your product approved first.');
+        } else if (errorDetail.includes('not available for messaging') || errorDetail.includes('visible')) {
+          toast.error('This investor is not available for messaging. They may not be approved or may have restricted visibility.');
+        } else {
+          toast.error(errorDetail || 'You do not have permission to send messages. Please ensure your profile is approved.');
+        }
+      } else {
+        toast.error(error?.response?.data?.detail || error?.message || 'Failed to send message. Please try again.');
+      }
     }
   };
 

@@ -11,7 +11,9 @@ from .views import (
     PublicProductDetailView,
     AdminProductListView,
     AdminProductDetailView,
+    VentureProfileCreateUpdateView,
     upload_pitch_deck,
+    update_pitch_deck_metadata,
     list_product_documents,
     delete_product_document,
     TeamMemberListCreateView,
@@ -32,6 +34,10 @@ from .views import (
 )
 
 urlpatterns = [
+    # Profile management (user endpoints)
+    path('profile', VentureProfileCreateUpdateView.as_view(), name='venture_profile_create'),
+    path('profile/me', VentureProfileCreateUpdateView.as_view(), name='venture_profile_me'),
+    
     # Product management (user endpoints)
     path('products', ProductListCreateView.as_view(), name='product_list_create'),
     path('products/<uuid:product_id>', ProductDetailView.as_view(), name='product_detail'),
@@ -41,6 +47,7 @@ urlpatterns = [
     # Document management (pitch deck CRUD)
     path('products/<uuid:product_id>/documents/pitch-deck', upload_pitch_deck, name='upload_pitch_deck'),
     path('products/<uuid:product_id>/documents', list_product_documents, name='list_product_documents'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/metadata', update_pitch_deck_metadata, name='update_pitch_deck_metadata'),
     path('products/<uuid:product_id>/documents/<uuid:doc_id>', delete_product_document, name='delete_product_document'),
     
     # Pitch deck access (download/view) - VL-823

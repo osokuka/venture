@@ -8,10 +8,28 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from apps.accounts.views import AdminUserListCreateView, AdminUserDetailView, admin_stats
 from apps.ventures.views import AdminProductListView, AdminProductDetailView
 
+def api_root(request):
+    """Simple API root endpoint for testing."""
+    return JsonResponse({
+        'message': 'VentureUP Link API',
+        'version': '1.0',
+        'endpoints': {
+            'auth': '/api/auth/',
+            'admin': '/api/admin/',
+            'ventures': '/api/ventures/',
+            'investors': '/api/investors/',
+            'mentors': '/api/mentors/',
+            'messages': '/api/messages/',
+            'content': '/api/content/',
+        }
+    })
+
 urlpatterns = [
+    path('', api_root, name='api_root'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls')),
     path('api/admin/stats', admin_stats, name='admin_stats'),

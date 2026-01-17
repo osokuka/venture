@@ -65,7 +65,68 @@ class VentureProduct(models.Model):
 
 
 # Backward compatibility alias (deprecated, use VentureProduct)
-VentureProfile = VentureProduct
+# Note: This alias is kept for backward compatibility, but a new VentureProfile model
+# is being added below for user-level profile data (separate from products)
+OldVentureProfile = VentureProduct
+
+
+class VentureProfile(models.Model):
+    """
+    Venture user profile model.
+    
+    This model stores user-level profile information for venture users,
+    separate from VentureProduct (which represents individual products/companies).
+    
+    A user can have:
+    - One VentureProfile (user-level profile data)
+    - Up to 3 VentureProducts (individual products/companies)
+    
+    This is similar to InvestorProfile and MentorProfile architecture.
+    """
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='venture_profile')
+    
+    # Company Information
+    company_name = models.CharField(max_length=255, blank=True, null=True)
+    sector = models.CharField(max_length=100, blank=True, null=True)
+    short_description = models.TextField(blank=True, null=True)
+    website = models.URLField(blank=True, null=True)
+    linkedin_url = models.URLField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    year_founded = models.IntegerField(blank=True, null=True)
+    employees_count = models.IntegerField(blank=True, null=True)
+    
+    # Founder Information
+    founder_name = models.CharField(max_length=255, blank=True, null=True)
+    founder_linkedin = models.URLField(blank=True, null=True)
+    founder_role = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Additional Information
+    customers = models.TextField(blank=True, null=True)
+    key_metrics = models.TextField(blank=True, null=True)
+    needs = models.JSONField(default=list, blank=True, null=True)
+    
+    # Contact Information
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    
+    # Media
+    logo = models.ImageField(upload_to='ventures/profiles/logos/', blank=True, null=True)
+    # Alternative: logo_url if storing externally
+    logo_url = models.URLField(blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'venture_profiles'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user']),
+        ]
+    
+    def __str__(self):
+        return f"{self.company_name or 'Unnamed'} - {self.user.email}"
 
 
 class Founder(models.Model):

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -9,6 +9,7 @@ import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { useAuth } from "./AuthContext";
 import { ArrowLeft, ArrowRight, Upload, CheckCircle, Clock } from "lucide-react";
+import { sanitizeInput, validateEmail, validatePassword } from '../utils/security';
 
 interface VentureFormData {
   // User Account Creation Only
@@ -19,7 +20,7 @@ interface VentureFormData {
 }
 
 export function VentureRegistration() {
-  const { completeRegistration } = useAuth();
+  const { completeRegistration, startRegistration } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<VentureFormData>({
@@ -28,6 +29,11 @@ export function VentureRegistration() {
     confirmPassword: '',
     full_name: ''
   });
+
+  // Set registration role when component mounts
+  useEffect(() => {
+    startRegistration('venture');
+  }, [startRegistration]);
 
   const totalSteps = 2; // Account creation + email verification message
   const progress = (currentStep / totalSteps) * 100;
@@ -91,6 +97,9 @@ export function VentureRegistration() {
     setIsSubmitting(true);
     
     try {
+      // Ensure registration role is set
+      startRegistration('venture');
+      
       // Security: Sanitize data before sending
       await completeRegistration({
         email: sanitizeInput(formData.email, 254),
@@ -212,20 +221,20 @@ export function VentureRegistration() {
   };
 
   return (
-    <div className="min-h-screen bg-background py-12 px-6">
+    <div className="min-h-screen bg-white py-12 px-6">
       <div className="max-w-2xl mx-auto">
-        <Card>
+        <Card className="border-gray-200">
           <CardHeader>
             <div className="flex items-center justify-between mb-4">
-              <CardTitle>Venture Registration</CardTitle>
-              <Badge variant="outline">
+              <CardTitle className="text-gray-900">Venture Registration</CardTitle>
+              <Badge variant="outline" className="border-gray-300 text-gray-700">
                 Step {currentStep} of {totalSteps}
               </Badge>
             </div>
             <Progress value={progress} className="w-full" />
             
             {currentStep === 1 && (
-              <div className="text-sm text-muted-foreground mt-2">
+              <div className="text-sm text-gray-600 mt-2">
                 Create your account - you'll add products after email verification
               </div>
             )}

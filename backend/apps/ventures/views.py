@@ -13,7 +13,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 
 from shared.permissions import IsApprovedUser, IsAdminOrReviewer
 from apps.ventures.models import (
-    VentureProduct, VentureDocument, TeamMember, Founder,
+    VentureProduct, VentureProfile, VentureDocument, TeamMember, Founder,
     PitchDeckAccess, PitchDeckAccessEvent, PitchDeckRequest, PitchDeckShare
 )
 from apps.ventures.serializers import (
@@ -21,6 +21,9 @@ from apps.ventures.serializers import (
     VentureProductCreateSerializer,
     VentureProductUpdateSerializer,
     VentureProductActivateSerializer,
+    VentureProfileSerializer,
+    VentureProfileCreateSerializer,
+    VentureProfileUpdateSerializer,
     VentureDocumentSerializer,
     VentureDocumentCreateSerializer,
     TeamMemberSerializer,
@@ -45,12 +48,22 @@ class ProductListCreateView(generics.ListCreateAPIView):
     
     GET /api/ventures/products - List all user's products
     POST /api/ventures/products - Create new product (max 3)
+    
+    Note: Pagination is disabled for this endpoint since users can only have max 3 products.
     """
     permission_classes = [IsAuthenticated]
+    pagination_class = None  # Disable pagination - users can only have max 3 products
     
     def get_queryset(self):
-        """Return only products owned by the current user."""
-        return VentureProduct.objects.filter(user=self.request.user).order_by('-created_at')
+        """Return only products owned by the current user with all related data."""
+        return VentureProduct.objects.filter(
+            user=self.request.user
+        ).prefetch_related(
+            'documents',  # Prefetch pitch deck documents
+            'founders',   # Prefetch founders
+            'team_members',  # Prefetch team members
+            'needs'       # Prefetch venture needs
+        ).select_related('user').order_by('-created_at')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -59,6 +72,24 @@ class ProductListCreateView(generics.ListCreateAPIView):
 
 
 class ProductDetailView(generics.RetrieveUpdateAPIView):
+    """
+    Get, update, or delete a single product.
+    
+    GET /api/ventures/products/{id} - Get product details
+    PATCH /api/ventures/products/{id} - Update product (only if DRAFT or REJECTED)
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return only products owned by the current user with all related data."""
+        return VentureProduct.objects.filter(
+            user=self.request.user
+        ).prefetch_related(
+            'documents',  # Prefetch pitch deck documents
+            'founders',   # Prefetch founders
+            'team_members',  # Prefetch team members
+            'needs'       # Prefetch venture needs
+        ).select_related('user')
     """
     Retrieve or update a product.
     
@@ -70,8 +101,15 @@ class ProductDetailView(generics.RetrieveUpdateAPIView):
     lookup_field = 'id'
     
     def get_queryset(self):
-        """Return products owned by the current user."""
-        return VentureProduct.objects.filter(user=self.request.user)
+        """Return products owned by the current user with all related data."""
+        return VentureProduct.objects.filter(
+            user=self.request.user
+        ).prefetch_related(
+            'documents',  # Prefetch pitch deck documents
+            'founders',   # Prefetch founders
+            'team_members',  # Prefetch team members
+            'needs'       # Prefetch venture needs
+        ).select_related('user')
     
     def get_serializer_class(self):
         if self.request.method == 'GET':
@@ -202,6 +240,94 @@ class PublicProductDetailView(generics.RetrieveAPIView):
             status='APPROVED',
             is_active=True
         ).select_related('user')
+
+
+class VentureProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveUpdateAPIView):
+    """
+    Create or update venture profile.
+    
+    POST /api/ventures/profile - Create venture profile (draft)
+    GET /api/ventures/profile/me - Get own venture profile
+    PATCH /api/ventures/profile/me - Update own profile
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]  # Support file uploads for logo
+    
+    def get_object(self):
+        """Get venture profile for current user."""
+        try:
+            return VentureProfile.objects.get(user=self.request.user)
+        except VentureProfile.DoesNotExist:
+            return None
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return VentureProfileCreateSerializer
+        elif self.request.method == 'PATCH':
+            return VentureProfileUpdateSerializer
+        return VentureProfileSerializer
+    
+    def get_serializer_context(self):
+        """Add request to serializer context for building absolute URLs."""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+    
+    def create(self, request, *args, **kwargs):
+        """Create venture profile."""
+        # Check if profile already exists
+        if VentureProfile.objects.filter(user=request.user).exists():
+            return Response(
+                {'detail': 'Venture profile already exists. Use PATCH to update.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        
+        # Return serialized data with logo URL
+        response_serializer = VentureProfileSerializer(serializer.instance, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    def get(self, request, *args, **kwargs):
+        """Handle GET requests for /profile/me (no pk in URL)."""
+        return self.retrieve(request, *args, **kwargs)
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Get own venture profile."""
+        profile = self.get_object()
+        if not profile:
+            return Response(
+                {'detail': 'Venture profile not found. Create one first.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data)
+    
+    def patch(self, request, *args, **kwargs):
+        """Handle PATCH requests for /profile/me (no pk in URL)."""
+        return self.update(request, *args, **kwargs)
+    
+    def update(self, request, *args, **kwargs):
+        """Update own venture profile."""
+        profile = self.get_object()
+        if not profile:
+            # Auto-create profile if it doesn't exist (for backward compatibility)
+            serializer = VentureProfileCreateSerializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save(user=request.user)
+            response_serializer = VentureProfileSerializer(serializer.instance, context={'request': request})
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+        
+        serializer = self.get_serializer(profile, data=request.data, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        # Return serialized data with logo URL
+        response_serializer = VentureProfileSerializer(serializer.instance, context={'request': request})
+        return Response(response_serializer.data)
 
 
 # Admin endpoints for product management
@@ -482,11 +608,19 @@ def delete_product_document(request, product_id, doc_id):
         )
     
     try:
-        document = VentureDocument.objects.get(id=doc_id, product=product)
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
     except VentureDocument.DoesNotExist:
         return Response(
-            {'detail': 'Document not found.'},
+            {'detail': 'Pitch deck document not found.'},
             status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Only allow deletion if product is in DRAFT or REJECTED status
+    # This ensures consistency with upload and update operations
+    if product.status not in ['DRAFT', 'REJECTED']:
+        return Response(
+            {'detail': f'Cannot delete pitch deck for product with status {product.status}. Only DRAFT or REJECTED products can be modified.'},
+            status=status.HTTP_400_BAD_REQUEST
         )
     
     # Delete the file from storage
@@ -506,6 +640,140 @@ def delete_product_document(request, product_id, doc_id):
         {'detail': 'Document deleted successfully.'},
         status=status.HTTP_200_OK
     )
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_pitch_deck_metadata(request, product_id, doc_id):
+    """
+    Update pitch deck metadata (without replacing the file).
+    
+    PATCH /api/ventures/products/{id}/documents/{doc_id}
+    Body: JSON with optional metadata fields:
+    - problem_statement
+    - solution_description
+    - target_market
+    - traction_metrics (JSON)
+    - funding_amount
+    - funding_stage
+    - use_of_funds
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+    except VentureDocument.DoesNotExist:
+        return Response(
+            {'detail': 'Pitch deck document not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Only allow updates if product is in DRAFT or REJECTED status
+    if product.status not in ['DRAFT', 'REJECTED']:
+        return Response(
+            {'detail': f'Cannot update pitch deck metadata for product with status {product.status}. Only DRAFT or REJECTED products can be modified.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Parse and validate traction_metrics if provided
+    if 'traction_metrics' in request.data:
+        try:
+            import json
+            traction_metrics = request.data['traction_metrics']
+            if isinstance(traction_metrics, str):
+                # Security: Limit JSON string length to prevent DoS
+                json_str = traction_metrics
+                if len(json_str) > 100000:  # 100KB max for JSON string
+                    return Response(
+                        {'detail': 'Traction metrics JSON string is too large (max 100KB).'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                traction_metrics = json.loads(json_str)
+            
+            # Security: Validate traction_metrics structure and size
+            if isinstance(traction_metrics, dict):
+                if len(traction_metrics) > 50:
+                    return Response(
+                        {'detail': 'Traction metrics cannot have more than 50 fields.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Validate each key and value
+                for key, val in traction_metrics.items():
+                    if not isinstance(key, str):
+                        return Response(
+                            {'detail': 'All traction metric keys must be strings.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if len(str(key)) > 100:
+                        return Response(
+                            {'detail': 'Traction metric keys must be 100 characters or less.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if not isinstance(val, (str, int, float, bool, type(None))):
+                        return Response(
+                            {'detail': 'Traction metric values must be strings, numbers, booleans, or null.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if isinstance(val, str) and len(val) > 1000:
+                        return Response(
+                            {'detail': 'Traction metric string values must be 1,000 characters or less.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+            elif isinstance(traction_metrics, list):
+                if len(traction_metrics) > 100:
+                    return Response(
+                        {'detail': 'Traction metrics list cannot have more than 100 items.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                return Response(
+                    {'detail': 'Traction metrics must be a dictionary or list.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            document.traction_metrics = traction_metrics
+        except (json.JSONDecodeError, TypeError) as e:
+            return Response(
+                {'detail': f'Invalid traction_metrics format. Must be valid JSON. Error: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    # Security: Sanitize and validate metadata fields
+    if 'problem_statement' in request.data:
+        document.problem_statement = request.data.get('problem_statement', '').strip()[:10000] if request.data.get('problem_statement') else None
+    
+    if 'solution_description' in request.data:
+        document.solution_description = request.data.get('solution_description', '').strip()[:10000] if request.data.get('solution_description') else None
+    
+    if 'target_market' in request.data:
+        document.target_market = request.data.get('target_market', '').strip()[:10000] if request.data.get('target_market') else None
+    
+    if 'funding_amount' in request.data:
+        document.funding_amount = request.data.get('funding_amount', '').strip()[:50] if request.data.get('funding_amount') else None
+    
+    if 'funding_stage' in request.data:
+        funding_stage = request.data.get('funding_stage', '').strip()[:20] if request.data.get('funding_stage') else None
+        if funding_stage:
+            allowed_stages = ['PRE_SEED', 'SEED', 'SERIES_A', 'SERIES_B', 'SERIES_C', 'GROWTH']
+            if funding_stage not in allowed_stages:
+                return Response(
+                    {'detail': f'Invalid funding stage. Must be one of: {", ".join(allowed_stages)}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        document.funding_stage = funding_stage
+    
+    if 'use_of_funds' in request.data:
+        document.use_of_funds = request.data.get('use_of_funds', '').strip()[:10000] if request.data.get('use_of_funds') else None
+    
+    document.save()
+    
+    serializer = VentureDocumentSerializer(document)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 # Pitch Deck Access Control & Download/View Endpoints (VL-823, VL-824)

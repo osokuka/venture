@@ -29,6 +29,13 @@ CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Strict'
 CSRF_USE_SESSIONS = False
 
+# CSRF Trusted Origins - Allow requests from these origins
+# Can be set via environment variable CSRF_TRUSTED_ORIGINS (comma-separated)
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://ventureuplink.com,https://www.ventureuplink.com,https://backend.ventureuplink.com'
+).split(',')
+
 # TLS 1.3+ Security Headers
 SECURE_HSTS_SECONDS = 31536000  # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Checkbox } from "./ui/checkbox";
 import { Switch } from "./ui/switch";
 import { Separator } from "./ui/separator";
-import { toast } from "sonner@2.0.3";
+import { toast } from 'sonner';
 import { 
   User, 
   Camera, 
@@ -34,10 +34,12 @@ import {
 import { useAuth } from './AuthContext';
 import { type FrontendUser } from '../types';
 import { sanitizeInput, validateEmail, validateAndSanitizeUrl, sanitizeFormData } from '../utils/security';
+import type { Venture, Investor, Mentor } from './MockData';
 
 interface EditProfileProps {
   user: FrontendUser;
   onProfileUpdate?: (updatedUser: FrontendUser) => void;
+  onCancel?: () => void; // Optional callback for cancel action
 }
 
 export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
@@ -74,6 +76,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           
           // Contact Information
           email: user.email || '',
+          phone: venture.profile?.phone || '',
           
           // Media
           logo: venture.profile.logo || '',
@@ -152,12 +155,64 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
       }
       
       default:
-        return {};
+        return {
+          email: user.email || '',
+          phone: '',
+        };
     }
   };
 
   const [formData, setFormData] = useState(initializeFormData());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  
+  // Fetch profile data from API for venture users on mount
+  useEffect(() => {
+    if (user.role === 'venture') {
+      const fetchProfile = async () => {
+        try {
+          setIsLoadingProfile(true);
+          const { ventureService } = await import('../services/ventureService');
+          const profile = await ventureService.getMyProfile();
+          
+          if (profile) {
+            // Update form data with API profile data
+            setFormData(prev => ({
+              ...prev,
+              companyName: profile.company_name || prev.companyName || '',
+              sector: profile.sector || prev.sector || '',
+              shortDescription: profile.short_description || prev.shortDescription || '',
+              website: profile.website || prev.website || '',
+              linkedinUrl: profile.linkedin_url || prev.linkedinUrl || '',
+              address: profile.address || prev.address || '',
+              foundedYear: profile.year_founded?.toString() || prev.foundedYear || '',
+              employeeCount: profile.employees_count?.toString() || prev.employeeCount || '',
+              founderName: profile.founder_name || prev.founderName || '',
+              founderLinkedin: profile.founder_linkedin || prev.founderLinkedin || '',
+              founderRole: profile.founder_role || prev.founderRole || '',
+              customers: profile.customers || prev.customers || '',
+              keyMetrics: profile.key_metrics || prev.keyMetrics || '',
+              needs: profile.needs || prev.needs || [],
+              phone: profile.phone || prev.phone || '',
+              logo: profile.logo_url_display || profile.logo_url || prev.logo || '',
+            }));
+            
+            // Set profile image if logo exists
+            if (profile.logo_url_display || profile.logo_url) {
+              setProfileImage(profile.logo_url_display || profile.logo_url);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch venture profile:', error);
+          // Profile might not exist yet, that's okay - use default form data
+        } finally {
+          setIsLoadingProfile(false);
+        }
+      };
+      
+      fetchProfile();
+    }
+  }, [user.role, user.id]);
 
   const handleInputChange = (field: string, value: string | string[] | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -179,12 +234,14 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Store the File object for upload
+      setProfileImage(file as any);
+      
+      // Also show preview using FileReader
       const reader = new FileReader();
       reader.onload = (e) => {
         const imageUrl = e.target?.result as string;
-        setProfileImage(imageUrl);
-        const imageField = user.role === 'venture' ? 'logo' : 'avatar';
-        handleInputChange(imageField, imageUrl);
+        // Preview is handled by profileImage state (will be converted to File when needed)
       };
       reader.readAsDataURL(file);
     }
@@ -238,17 +295,6 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
     setIsLoading(true);
 
     try {
-      // Update basic user profile (full_name) via API
-      const { userService } = await import('../services/userService');
-      
-      // For now, we'll update the full_name if it's available in formData
-      // Note: This component works with complex profile structures, so we're
-      // only updating the basic user fields that the API supports
-      const updateData: any = {};
-      if (formData.full_name || formData.name) {
-        updateData.full_name = formData.full_name || formData.name;
-      }
-      
       // Security: Sanitize all form data before updating
       const sanitizedFormData = sanitizeFormData(formData, {
         email: 254,
@@ -265,20 +311,136 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
         description: 5000,
       });
       
-      if (Object.keys(updateData).length > 0) {
-        await userService.updateProfile(updateData);
-      }
-      
-      toast.success("Profile updated successfully!");
-      
-      if (onProfileUpdate) {
-        const updatedUser = { ...user };
-        Object.assign(updatedUser.profile, sanitizedFormData);
-        // Also update the user's full_name if it was changed
-        if (updateData.full_name) {
-          updatedUser.profile.full_name = updateData.full_name;
+      // Handle venture profile update separately
+      if (user.role === 'venture') {
+        const { ventureService } = await import('../services/ventureService');
+        
+        // Map frontend form data to backend API format
+        const profileUpdateData: any = {
+          company_name: sanitizedFormData.companyName,
+          sector: sanitizedFormData.sector,
+          short_description: sanitizedFormData.shortDescription,
+          website: sanitizedFormData.website,
+          linkedin_url: sanitizedFormData.linkedinUrl,
+          address: sanitizedFormData.address,
+          year_founded: sanitizedFormData.foundedYear ? parseInt(sanitizedFormData.foundedYear) : undefined,
+          employees_count: sanitizedFormData.employeeCount ? parseInt(sanitizedFormData.employeeCount) : undefined,
+          founder_name: sanitizedFormData.founderName,
+          founder_linkedin: sanitizedFormData.founderLinkedin,
+          founder_role: sanitizedFormData.founderRole,
+          customers: sanitizedFormData.customers,
+          key_metrics: sanitizedFormData.keyMetrics,
+          needs: sanitizedFormData.needs || [],
+          phone: sanitizedFormData.phone,
+          logo_url: sanitizedFormData.logo, // If logo is a URL string
+        };
+        
+        // Handle logo file upload if profileImage is set
+        // profileImage can be either a File object (for new uploads) or a string URL (for existing/preview)
+        if (profileImage) {
+          if (profileImage instanceof File) {
+            // New file upload - use File object directly
+            profileUpdateData.logo = profileImage;
+            // Remove logo_url if we're uploading a new file
+            if (profileUpdateData.logo_url) {
+              delete profileUpdateData.logo_url;
+            }
+          } else if (typeof profileImage === 'string') {
+            // If it's a data URL (from FileReader), try to convert back to File
+            if (profileImage.startsWith('data:')) {
+              try {
+                const response = await fetch(profileImage);
+                const blob = await response.blob();
+                const file = new File([blob], 'logo.png', { type: blob.type });
+                profileUpdateData.logo = file;
+                if (profileUpdateData.logo_url) {
+                  delete profileUpdateData.logo_url;
+                }
+              } catch (error) {
+                console.warn('Could not convert data URL to File, skipping logo update:', error);
+              }
+            } else if (profileImage.startsWith('http')) {
+              // Existing URL - use logo_url
+              profileUpdateData.logo_url = profileImage;
+              // Don't include logo field if we're using URL
+              if (profileUpdateData.logo) {
+                delete profileUpdateData.logo;
+              }
+            }
+          }
         }
-        onProfileUpdate(updatedUser);
+        
+        // Remove undefined/null values
+        Object.keys(profileUpdateData).forEach(key => {
+          if (profileUpdateData[key] === undefined || profileUpdateData[key] === null || profileUpdateData[key] === '') {
+            delete profileUpdateData[key];
+          }
+        });
+        
+        // Call API to save venture profile
+        const savedProfile = await ventureService.updateProfile(profileUpdateData);
+        
+        toast.success("Profile updated successfully!");
+        
+        // Update local state with saved profile data
+        if (onProfileUpdate) {
+          const updatedUser = { ...user };
+          // Map backend response to frontend profile format
+          updatedUser.profile = {
+            ...updatedUser.profile,
+            companyName: savedProfile.company_name,
+            sector: savedProfile.sector,
+            shortDescription: savedProfile.short_description,
+            website: savedProfile.website,
+            linkedinUrl: savedProfile.linkedin_url,
+            address: savedProfile.address,
+            foundedYear: savedProfile.year_founded?.toString(),
+            employeeCount: savedProfile.employees_count?.toString(),
+            founderName: savedProfile.founder_name,
+            founderLinkedin: savedProfile.founder_linkedin,
+            founderRole: savedProfile.founder_role,
+            customers: savedProfile.customers,
+            keyMetrics: savedProfile.key_metrics,
+            needs: savedProfile.needs || [],
+            phone: savedProfile.phone,
+            logo: savedProfile.logo_url_display || savedProfile.logo_url || savedProfile.logo,
+          };
+          onProfileUpdate(updatedUser);
+        }
+      } else {
+        // Handle investor/mentor profile updates
+        const { userService } = await import('../services/userService');
+        
+        // Note: For ventures, we should NOT update full_name with companyName
+        // full_name should remain as the user's personal name, not the company name
+        // Only update full_name if there's an explicit full_name or name field (for investor/mentor)
+        const updateData: any = {};
+        // Only update full_name for investor/mentor roles (they have 'name' field)
+        // For ventures, full_name should stay as the user's personal name
+        if (user.role !== 'venture' && (formData.full_name || formData.name)) {
+          updateData.full_name = formData.full_name || formData.name;
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          await userService.updateProfile(updateData);
+        }
+        
+        toast.success("Profile updated successfully!");
+        
+        if (onProfileUpdate) {
+          const updatedUser = { ...user };
+          if (updatedUser.profile) {
+            Object.assign(updatedUser.profile, sanitizedFormData);
+          } else {
+            updatedUser.profile = sanitizedFormData;
+          }
+          // Also update the user's full_name if it was changed (only for non-venture roles)
+          if (updateData.full_name) {
+            updatedUser.full_name = updateData.full_name;
+            // Don't update profile.full_name - keep it separate
+          }
+          onProfileUpdate(updatedUser);
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update profile. Please try again.";
@@ -307,7 +469,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="companyName">Company Name *</Label>
               <Input
                 id="companyName"
-                value={formData.companyName}
+                value={formData.companyName || ''}
                 onChange={(e) => handleInputChange('companyName', e.target.value)}
                 className={errors.companyName ? 'border-red-500' : ''}
               />
@@ -321,7 +483,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             
             <div className="space-y-2">
               <Label htmlFor="sector">Sector *</Label>
-              <Select onValueChange={(value) => handleInputChange('sector', value)} value={formData.sector}>
+              <Select onValueChange={(value) => handleInputChange('sector', value)} value={formData.sector || ''}>
                 <SelectTrigger className={errors.sector ? 'border-red-500' : ''}>
                   <SelectValue placeholder="Select sector" />
                 </SelectTrigger>
@@ -351,7 +513,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="shortDescription">Short Description *</Label>
             <Input
               id="shortDescription"
-              value={formData.shortDescription}
+              value={formData.shortDescription || ''}
               onChange={(e) => handleInputChange('shortDescription', e.target.value)}
               placeholder="Brief description of your company"
               className={errors.shortDescription ? 'border-red-500' : ''}
@@ -370,7 +532,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Input
                 id="website"
                 type="url"
-                value={formData.website}
+                value={formData.website || ''}
                 onChange={(e) => handleInputChange('website', e.target.value)}
                 placeholder="https://your-company.com"
               />
@@ -381,7 +543,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Input
                 id="linkedinUrl"
                 type="url"
-                value={formData.linkedinUrl}
+                value={formData.linkedinUrl || ''}
                 onChange={(e) => handleInputChange('linkedinUrl', e.target.value)}
                 placeholder="https://linkedin.com/company/your-company"
               />
@@ -393,7 +555,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="foundedYear">Founded Year</Label>
               <Input
                 id="foundedYear"
-                value={formData.foundedYear}
+                value={formData.foundedYear || ''}
                 onChange={(e) => handleInputChange('foundedYear', e.target.value)}
                 placeholder="2024"
               />
@@ -401,7 +563,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
             <div className="space-y-2">
               <Label htmlFor="employeeCount">Employee Count</Label>
-              <Select onValueChange={(value) => handleInputChange('employeeCount', value)} value={formData.employeeCount}>
+              <Select onValueChange={(value) => handleInputChange('employeeCount', value)} value={formData.employeeCount || ''}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select size" />
                 </SelectTrigger>
@@ -421,7 +583,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"
-                value={formData.address}
+                value={formData.address || ''}
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="City, State, Country"
               />
@@ -447,7 +609,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="founderName">Founder Name *</Label>
               <Input
                 id="founderName"
-                value={formData.founderName}
+                value={formData.founderName || ''}
                 onChange={(e) => handleInputChange('founderName', e.target.value)}
                 className={errors.founderName ? 'border-red-500' : ''}
               />
@@ -463,7 +625,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="founderRole">Founder Role</Label>
               <Input
                 id="founderRole"
-                value={formData.founderRole}
+                value={formData.founderRole || ''}
                 onChange={(e) => handleInputChange('founderRole', e.target.value)}
                 placeholder="CEO & Founder"
               />
@@ -475,7 +637,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Input
               id="founderLinkedin"
               type="url"
-              value={formData.founderLinkedin}
+              value={formData.founderLinkedin || ''}
               onChange={(e) => handleInputChange('founderLinkedin', e.target.value)}
               placeholder="https://linkedin.com/in/founder-name"
             />
@@ -505,7 +667,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="name">Full Name *</Label>
               <Input
                 id="name"
-                value={formData.name}
+                value={formData.name || ''}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 className={errors.name ? 'border-red-500' : ''}
               />
@@ -519,7 +681,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             
             <div className="space-y-2">
               <Label htmlFor="investorType">Investor Type</Label>
-              <Select onValueChange={(value) => handleInputChange('investorType', value)} value={formData.investorType}>
+              <Select onValueChange={(value) => handleInputChange('investorType', value)} value={formData.investorType || 'individual'}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
@@ -538,7 +700,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="organizationName">Organization Name</Label>
               <Input
                 id="organizationName"
-                value={formData.organizationName}
+                value={formData.organizationName || ''}
                 onChange={(e) => handleInputChange('organizationName', e.target.value)}
                 placeholder="Investment firm or company"
               />
@@ -549,7 +711,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Input
                 id="website"
                 type="url"
-                value={formData.website}
+                value={formData.website || ''}
                 onChange={(e) => handleInputChange('website', e.target.value)}
                 placeholder="https://your-website.com"
               />
@@ -560,7 +722,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="bio">Bio *</Label>
             <Textarea
               id="bio"
-              value={formData.bio}
+              value={formData.bio || ''}
               onChange={(e) => handleInputChange('bio', e.target.value)}
               placeholder="Tell us about your investment experience and interests"
               className={`min-h-24 ${errors.bio ? 'border-red-500' : ''}`}
@@ -577,7 +739,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="investmentExperience">Investment Experience *</Label>
             <Textarea
               id="investmentExperience"
-              value={formData.investmentExperience}
+              value={formData.investmentExperience || ''}
               onChange={(e) => handleInputChange('investmentExperience', e.target.value)}
               placeholder="Describe your investment experience, notable deals, etc."
               className={`min-h-20 ${errors.investmentExperience ? 'border-red-500' : ''}`}
@@ -595,7 +757,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"
-                value={formData.address}
+                value={formData.address || ''}
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="City, State, Country"
               />
@@ -606,7 +768,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Input
                 id="linkedinUrl"
                 type="url"
-                value={formData.linkedinUrl}
+                value={formData.linkedinUrl || ''}
                 onChange={(e) => handleInputChange('linkedinUrl', e.target.value)}
                 placeholder="https://linkedin.com/in/your-name"
               />
@@ -632,7 +794,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="minInvestment">Minimum Investment</Label>
               <Input
                 id="minInvestment"
-                value={formData.minInvestment}
+                value={formData.minInvestment || ''}
                 onChange={(e) => handleInputChange('minInvestment', e.target.value)}
                 placeholder="100k"
               />
@@ -642,7 +804,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="maxInvestment">Maximum Investment</Label>
               <Input
                 id="maxInvestment"
-                value={formData.maxInvestment}
+                value={formData.maxInvestment || ''}
                 onChange={(e) => handleInputChange('maxInvestment', e.target.value)}
                 placeholder="5m"
               />
@@ -653,7 +815,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="ticketSize">Typical Ticket Size</Label>
             <Input
               id="ticketSize"
-              value={formData.ticketSize}
+              value={formData.ticketSize || ''}
               onChange={(e) => handleInputChange('ticketSize', e.target.value)}
               placeholder="$100K - $500K"
             />
@@ -711,7 +873,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="investmentPhilosophy">Investment Philosophy</Label>
             <Textarea
               id="investmentPhilosophy"
-              value={formData.investmentPhilosophy}
+              value={formData.investmentPhilosophy || ''}
               onChange={(e) => handleInputChange('investmentPhilosophy', e.target.value)}
               placeholder="Describe your investment philosophy and what you look for in startups"
               className="min-h-24"
@@ -722,7 +884,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="notableInvestments">Notable Investments</Label>
             <Textarea
               id="notableInvestments"
-              value={formData.notableInvestments}
+              value={formData.notableInvestments || ''}
               onChange={(e) => handleInputChange('notableInvestments', e.target.value)}
               placeholder="Highlight your notable investments and portfolio companies"
               className="min-h-20"
@@ -794,7 +956,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="name">Full Name *</Label>
               <Input
                 id="name"
-                value={formData.name}
+                value={formData.name || ''}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 className={errors.name ? 'border-red-500' : ''}
               />
@@ -810,7 +972,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="jobTitle">Job Title *</Label>
               <Input
                 id="jobTitle"
-                value={formData.jobTitle}
+                value={formData.jobTitle || ''}
                 onChange={(e) => handleInputChange('jobTitle', e.target.value)}
                 placeholder="CEO, CTO, Founder, etc."
                 className={errors.jobTitle ? 'border-red-500' : ''}
@@ -829,7 +991,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="company">Company *</Label>
               <Input
                 id="company"
-                value={formData.company}
+                value={formData.company || ''}
                 onChange={(e) => handleInputChange('company', e.target.value)}
                 placeholder="Current or previous company"
                 className={errors.company ? 'border-red-500' : ''}
@@ -846,7 +1008,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="location">Location</Label>
               <Input
                 id="location"
-                value={formData.location}
+                value={formData.location || ''}
                 onChange={(e) => handleInputChange('location', e.target.value)}
                 placeholder="City, State, Country"
               />
@@ -858,7 +1020,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Input
               id="linkedinUrl"
               type="url"
-              value={formData.linkedinUrl}
+              value={formData.linkedinUrl || ''}
               onChange={(e) => handleInputChange('linkedinUrl', e.target.value)}
               placeholder="https://linkedin.com/in/your-name"
             />
@@ -868,7 +1030,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="bio">Bio *</Label>
             <Textarea
               id="bio"
-              value={formData.bio}
+              value={formData.bio || ''}
               onChange={(e) => handleInputChange('bio', e.target.value)}
               placeholder="Tell us about your background and mentoring experience"
               className={`min-h-24 ${errors.bio ? 'border-red-500' : ''}`}
@@ -885,7 +1047,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             <Label htmlFor="workExperience">Work Experience</Label>
             <Textarea
               id="workExperience"
-              value={formData.workExperience}
+              value={formData.workExperience || ''}
               onChange={(e) => handleInputChange('workExperience', e.target.value)}
               placeholder="Describe your professional experience and achievements"
               className="min-h-20"
@@ -894,7 +1056,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
           <div className="space-y-2">
             <Label htmlFor="experienceYears">Years of Experience</Label>
-            <Select onValueChange={(value) => handleInputChange('experienceYears', value)} value={formData.experienceYears}>
+            <Select onValueChange={(value) => handleInputChange('experienceYears', value)} value={formData.experienceYears || ''}>
               <SelectTrigger>
                 <SelectValue placeholder="Select experience range" />
               </SelectTrigger>
@@ -1003,7 +1165,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="frequency">Session Frequency</Label>
-              <Select onValueChange={(value) => handleInputChange('frequency', value)} value={formData.frequency}>
+              <Select onValueChange={(value) => handleInputChange('frequency', value)} value={formData.frequency || ''}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select frequency" />
                 </SelectTrigger>
@@ -1019,7 +1181,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
             <div className="space-y-2">
               <Label htmlFor="maxMentees">Maximum Mentees</Label>
-              <Select onValueChange={(value) => handleInputChange('maxMentees', value)} value={formData.maxMentees}>
+              <Select onValueChange={(value) => handleInputChange('maxMentees', value)} value={formData.maxMentees || ''}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select capacity" />
                 </SelectTrigger>
@@ -1051,7 +1213,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               <Label htmlFor="hourlyRate">Hourly Rate ($)</Label>
               <Input
                 id="hourlyRate"
-                value={formData.hourlyRate}
+                value={formData.hourlyRate || ''}
                 onChange={(e) => handleInputChange('hourlyRate', e.target.value)}
                 placeholder="300"
               />
@@ -1075,6 +1237,18 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
     </>
   );
 
+  // Show loading state while fetching profile data
+  if (isLoadingProfile) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+          <span className="ml-2 text-muted-foreground">Loading profile data...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -1082,13 +1256,13 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           <h1 className="text-2xl font-bold">Edit Profile</h1>
           <p className="text-muted-foreground">Update your profile information and preferences</p>
         </div>
-        <Badge variant={user.profile.approvalStatus === 'approved' ? 'default' : 'secondary'}>
-          {user.profile.approvalStatus === 'approved' ? (
+        <Badge variant={user.profile?.approvalStatus === 'approved' ? 'default' : 'secondary'}>
+          {user.profile?.approvalStatus === 'approved' ? (
             <CheckCircle className="w-3 h-3 mr-1" />
           ) : (
             <AlertCircle className="w-3 h-3 mr-1" />
           )}
-          {user.profile.approvalStatus.charAt(0).toUpperCase() + user.profile.approvalStatus.slice(1)}
+          {(user.profile?.approvalStatus || 'pending').charAt(0).toUpperCase() + (user.profile?.approvalStatus || 'pending').slice(1)}
         </Badge>
       </div>
 
@@ -1107,11 +1281,17 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           <CardContent>
             <div className="flex items-center space-x-6">
               <Avatar className="w-20 h-20">
-                <AvatarImage src={profileImage || (user.role === 'venture' ? (user as Venture).profile.logo : (user as Investor | Mentor).profile.avatar)} />
+                <AvatarImage src={
+                  profileImage && typeof profileImage === 'string' 
+                    ? profileImage 
+                    : (user.role === 'venture' 
+                        ? ((user as Venture).profile?.logo || '') 
+                        : ((user as Investor | Mentor).profile?.avatar || ''))
+                } />
                 <AvatarFallback className="text-lg">
                   {user.role === 'venture' 
-                    ? (user as Venture).profile.companyName?.[0] 
-                    : (user as Investor | Mentor).profile.name?.[0]
+                    ? ((user as Venture).profile?.companyName?.[0] || 'C') 
+                    : ((user as Investor | Mentor).profile?.name?.[0] || 'U')
                   }
                 </AvatarFallback>
               </Avatar>
@@ -1154,7 +1334,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
                 <Input
                   id="email"
                   type="email"
-                  value={formData.email}
+                  value={formData.email || ''}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   className={errors.email ? 'border-red-500' : ''}
                 />
@@ -1171,7 +1351,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
                 <Input
                   id="phone"
                   type="tel"
-                  value={formData.phone}
+                  value={formData.phone || ''}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   placeholder="+1 (555) 123-4567"
                 />
@@ -1187,7 +1367,15 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
         {/* Submit Button */}
         <div className="flex justify-end space-x-4 pt-6 border-t">
-          <button type="button" className="btn-chrome-secondary">
+          <button 
+            type="button" 
+            className="btn-chrome-secondary"
+            onClick={() => {
+              if (onCancel) {
+                onCancel();
+              }
+            }}
+          >
             Cancel
           </button>
           <button 

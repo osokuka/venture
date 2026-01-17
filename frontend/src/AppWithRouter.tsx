@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./components/AuthContext";
+import logoImage from './assets/logos/ventureuplink.png';
 import { HeroSection } from "./components/HeroSection";
 import { FeaturesSection } from "./components/FeaturesSection";
 import { ServicesSection } from "./components/ServicesSection";
@@ -20,11 +21,11 @@ import { PortfolioDetails } from "./components/PortfolioDetails";
 import { PortfolioReports } from "./components/PortfolioReports";
 import { PortfolioExitPlan } from "./components/PortfolioExitPlan";
 import { MeetingScheduler } from "./components/MeetingScheduler";
+import CreatePitchDeck from "./components/CreatePitchDeck";
 import { LoginForm } from "./components/LoginForm";
 import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
 import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
-import { VentureUPLinkIcon } from "./components/VentureUPLinkIcon";
 
 // Dashboard wrapper component
 function DashboardContent({ user, onRefreshUnreadCount }: { user: any; onRefreshUnreadCount?: () => void }) {
@@ -133,11 +134,14 @@ function LandingPage() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-b border-gray-200 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-20">
             <button onClick={handleLogoClick} className="flex items-center space-x-3 group">
-              <div className="w-9 h-9 bg-gray-800 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-md">
-                <VentureUPLinkIcon size={20} className="text-white" />
-              </div>
+              <img 
+                src={logoImage} 
+                alt="VentureUP Link" 
+                className="w-19 h-19 object-contain group-hover:scale-105 transition-transform"
+                style={{ maxWidth: '75px', maxHeight: '75px' }}
+              />
               <div className="flex items-center space-x-2">
                 <span className="text-xl font-bold text-gray-900">VentureUP Link</span>
                 <Sparkles className="w-4 h-4 text-gray-600" />
@@ -224,8 +228,12 @@ function LandingPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
-              <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
-                <VentureUPLinkIcon size={24} className="text-white" />
+              <div className="w-10 h-10 flex items-center justify-center">
+                <img 
+                  src="/logos/ventureuplink.png" 
+                  alt="VentureUP Link" 
+                  className="w-10 h-10 object-contain"
+                />
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-xl font-bold">VentureUP Link</span>
@@ -343,6 +351,20 @@ function AppRoutes() {
           user ? (
             <ModernDashboardLayout user={user}>
               <MeetingScheduler />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Create Pitch Deck Route */}
+      <Route
+        path="/dashboard/venture/pitch-decks/create"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <CreatePitchDeck />
             </ModernDashboardLayout>
           ) : (
             <Navigate to="/login" replace />

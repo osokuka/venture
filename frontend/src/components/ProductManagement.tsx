@@ -4,19 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
+// NO MODALS - All forms displayed inline per NO_MODALS_RULE.md
 import {
   Select,
   SelectContent,
@@ -64,21 +58,25 @@ import {
 import { validatePitchDeckFile } from '../utils/fileValidation';
 import { Download, Share2, BarChart3, Eye, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { PitchDeckCRUD } from './PitchDeckCRUD';
 
 interface ProductManagementProps {
   user: any;
+  defaultTab?: 'company' | 'team' | 'founders' | 'documents';
+  autoOpenProductId?: string; // If provided, auto-open manage dialog for this product
 }
 
-export function ProductManagement({ user }: ProductManagementProps) {
+export function ProductManagement({ user, defaultTab = 'company', autoOpenProductId }: ProductManagementProps) {
+  const navigate = useNavigate(); // Initialize navigate hook
   const [products, setProducts] = useState<VentureProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [manageDialogOpen, setManageDialogOpen] = useState(false);
+  // Inline display state (no modals per NO_MODALS_RULE.md)
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [managingProductId, setManagingProductId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<VentureProduct | null>(null);
   const [isMutating, setIsMutating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'company' | 'team' | 'founders' | 'documents'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'team' | 'founders' | 'documents'>(defaultTab);
   
   // Team member and founder state
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -110,7 +108,7 @@ export function ProductManagement({ user }: ProductManagementProps) {
   const [pitchDeckRequests, setPitchDeckRequests] = useState<any[]>([]);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showShareForm, setShowShareForm] = useState(false);
   const [shareInvestorId, setShareInvestorId] = useState('');
   const [shareMessage, setShareMessage] = useState('');
 
@@ -134,6 +132,26 @@ export function ProductManagement({ user }: ProductManagementProps) {
     fetchProducts();
   }, []);
 
+  // Auto-open manage dialog for specified product when products are loaded
+  useEffect(() => {
+    if (autoOpenProductId && products.length > 0 && !isLoading) {
+      const product = products.find(p => p.id === autoOpenProductId);
+      if (product) {
+        // Open with the default tab (documents for pitch deck creation)
+        openManageDialog(product, defaultTab);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenProductId, products, isLoading]);
+
+  // Load pitch deck data when document is selected for analytics
+  useEffect(() => {
+    if (selectedDocumentId && selectedProduct && !showShareForm) {
+      loadPitchDeckData(selectedProduct.id, selectedDocumentId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDocumentId, selectedProduct, showShareForm]);
+
   const fetchProducts = async () => {
     try {
       setIsLoading(true);
@@ -149,53 +167,7 @@ export function ProductManagement({ user }: ProductManagementProps) {
     }
   };
 
-  const handleCreate = async () => {
-    if (!formData.name || !formData.industry_sector || !formData.website || !formData.linkedin_url) {
-      toast.error('Please fill in all required fields (name, industry, website, LinkedIn).');
-      return;
-    }
-
-    // Security: Sanitize form data before submission
-    const sanitizedData = sanitizeFormData(formData, {
-      name: 255,
-      industry_sector: 100,
-      website: 2048,
-      linkedin_url: 2048,
-      address: 500,
-      short_description: 10000, // Increased to match backend limit
-    });
-
-    // Validate URLs
-    const websiteUrl = validateAndSanitizeUrl(sanitizedData.website);
-    const linkedinUrl = validateAndSanitizeUrl(sanitizedData.linkedin_url);
-    
-    if (!websiteUrl || !linkedinUrl) {
-      alert('Please provide valid URLs for website and LinkedIn.');
-      return;
-    }
-
-    sanitizedData.website = websiteUrl;
-    sanitizedData.linkedin_url = linkedinUrl;
-
-    try {
-      setIsMutating(true);
-      await productService.createProduct(sanitizedData);
-      setCreateDialogOpen(false);
-      resetForm();
-      await fetchProducts();
-      alert('Product created successfully! You can now submit it for approval.');
-    } catch (err: any) {
-      console.error('Failed to create product:', err);
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to create product.';
-      if (errorMsg.includes('maximum limit')) {
-        toast.error('You have reached the maximum limit of 3 products.');
-      } else {
-        toast.error(errorMsg);
-      }
-    } finally {
-      setIsMutating(false);
-    }
-  };
+  // handleCreate removed - now using dedicated CreatePitchDeck page at /dashboard/venture/pitch-decks/create
 
   const handleUpdate = async () => {
     if (!selectedProduct) return;
@@ -225,7 +197,7 @@ export function ProductManagement({ user }: ProductManagementProps) {
     try {
       setIsMutating(true);
       await productService.updateProduct(selectedProduct.id, sanitizedData);
-      setEditDialogOpen(false);
+      setEditingProductId(null);
       setSelectedProduct(null);
       resetForm();
       await fetchProducts();
@@ -285,6 +257,7 @@ export function ProductManagement({ user }: ProductManagementProps) {
 
   const openEditDialog = (product: VentureProduct) => {
     setSelectedProduct(product);
+    setEditingProductId(product.id);
     setFormData({
       name: product.name,
       industry_sector: product.industry_sector,
@@ -296,7 +269,6 @@ export function ProductManagement({ user }: ProductManagementProps) {
       short_description: product.short_description,
       // Note: Business information fields are now associated with pitch deck documents
     });
-    setEditDialogOpen(true);
   };
 
   const resetForm = () => {
@@ -331,11 +303,11 @@ export function ProductManagement({ user }: ProductManagementProps) {
     return product.status === 'DRAFT' || product.status === 'REJECTED';
   };
 
-  // Open manage dialog and load product details
-  const openManageDialog = async (product: VentureProduct) => {
+  // Open manage view inline and load product details
+  const openManageDialog = async (product: VentureProduct, tab: 'company' | 'team' | 'founders' | 'documents' = 'company') => {
     setSelectedProduct(product);
-    setManageDialogOpen(true);
-    setActiveTab('company');
+    setManagingProductId(product.id);
+    setActiveTab(tab);
     await loadProductDetails(product.id);
   };
 
@@ -570,26 +542,90 @@ export function ProductManagement({ user }: ProductManagementProps) {
     });
   };
 
+  // Load pitch deck analytics, access, shares, and requests
+  const loadPitchDeckData = async (productId: string, docId: string) => {
+    // Security: Validate UUIDs
+    if (!validateUuid(productId) || !validateUuid(docId)) {
+      toast.error('Invalid product or document ID');
+      return;
+    }
+
+    setIsLoadingAnalytics(true);
+    try {
+      // Load all pitch deck data in parallel
+      const [analytics, access, shares, requests] = await Promise.all([
+        productService.getPitchDeckAnalytics(productId, docId),
+        productService.listPitchDeckAccess(productId, docId),
+        productService.listPitchDeckShares(productId, docId),
+        productService.listPitchDeckRequests(productId, docId),
+      ]);
+
+      setPitchDeckAnalytics(analytics);
+      setPitchDeckAccess(access);
+      setPitchDeckShares(shares);
+      setPitchDeckRequests(requests);
+    } catch (err: any) {
+      console.error('Failed to load pitch deck data:', err);
+      toast.error(err.message || 'Failed to load pitch deck data');
+    } finally {
+      setIsLoadingAnalytics(false);
+    }
+  };
+
+  // Pitch deck sharing handler
+  const handleSharePitchDeck = async () => {
+    if (!selectedProduct || !selectedDocumentId) {
+      toast.error('No product or pitch deck selected');
+      return;
+    }
+
+    // Security: Validate UUIDs
+    if (!validateUuid(selectedProduct.id) || !validateUuid(selectedDocumentId) || !validateUuid(shareInvestorId)) {
+      toast.error('Invalid product, document, or investor ID');
+      return;
+    }
+
+    try {
+      setIsMutating(true);
+      await productService.sharePitchDeck(
+        selectedProduct.id,
+        selectedDocumentId,
+        shareInvestorId,
+        shareMessage.trim() || undefined
+      );
+      toast.success('Pitch deck shared successfully!');
+      setShowShareForm(false);
+      setShareInvestorId('');
+      setShareMessage('');
+      // Reload pitch deck data to show updated shares
+      await loadPitchDeckData(selectedProduct.id, selectedDocumentId);
+    } catch (err: any) {
+      console.error('Failed to share pitch deck:', err);
+      toast.error(err.response?.data?.detail || err.message || 'Failed to share pitch deck');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>My Products</CardTitle>
+              <CardTitle>My Pitch Decks</CardTitle>
               <CardDescription>
-                Manage your venture products (up to 3). Create, activate, and submit for approval.
+                Manage your pitch decks (up to 3). Create, activate, and submit for approval.
               </CardDescription>
             </div>
             <Button
               onClick={() => {
-                resetForm();
-                setCreateDialogOpen(true);
+                navigate('/dashboard/venture/pitch-decks/create');
               }}
               disabled={products.length >= 3 || isLoading || isMutating}
             >
               <PlusCircle className="w-4 h-4 mr-2" />
-              Create Product {products.length >= 3 && '(Max 3)'}
+              Create Pitch Deck {products.length >= 3 && '(Max 3)'}
             </Button>
           </div>
         </CardHeader>
@@ -608,12 +644,16 @@ export function ProductManagement({ user }: ProductManagementProps) {
           ) : products.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Building className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-lg font-medium">No products yet</p>
-              <p className="text-sm mt-2">Create your first venture product to get started</p>
+              <p className="text-lg font-medium">No pitch decks yet</p>
+              <p className="text-sm mt-2">Create your first pitch deck to get started</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map((product) => (
+              {products.map((product) => {
+                // Get pitch deck document for this product
+                const pitchDeck = product.documents?.find((doc: any) => doc.document_type === 'PITCH_DECK');
+                
+                return (
                 <Card key={product.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -625,23 +665,117 @@ export function ProductManagement({ user }: ProductManagementProps) {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Status:</span>
-                        <span className="font-medium">{product.status}</span>
+                    <div className="space-y-4">
+                      {/* Basic Info */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Status:</span>
+                          <span className="font-medium">{product.status}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Active:</span>
+                          <Badge variant={product.is_active ? 'default' : 'outline'}>
+                            {product.is_active ? 'Yes' : 'No'}
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">Active:</span>
-                        <Badge variant={product.is_active ? 'default' : 'outline'}>
-                          {product.is_active ? 'Yes' : 'No'}
-                        </Badge>
-                      </div>
+
+                      {/* Pitch Deck Information */}
+                      {pitchDeck && (
+                        <div className="pt-3 border-t space-y-3">
+                          <h4 className="text-sm font-semibold text-gray-900">Pitch Deck Information</h4>
+                          
+                          {/* Problem Statement */}
+                          {pitchDeck.problem_statement && (
+                            <div>
+                              <Label className="text-xs font-semibold text-gray-700">Problem Statement</Label>
+                              <p className="text-sm text-gray-900 mt-1 line-clamp-2">{pitchDeck.problem_statement}</p>
+                            </div>
+                          )}
+
+                          {/* Solution Description */}
+                          {pitchDeck.solution_description && (
+                            <div>
+                              <Label className="text-xs font-semibold text-gray-700">Solution</Label>
+                              <p className="text-sm text-gray-900 mt-1 line-clamp-2">{pitchDeck.solution_description}</p>
+                            </div>
+                          )}
+
+                          {/* Target Market */}
+                          {pitchDeck.target_market && (
+                            <div>
+                              <Label className="text-xs font-semibold text-gray-700">Target Market</Label>
+                              <p className="text-sm text-gray-900 mt-1 line-clamp-2">{pitchDeck.target_market}</p>
+                            </div>
+                          )}
+
+                          {/* Funding Information */}
+                          {(pitchDeck.funding_amount || pitchDeck.funding_stage) && (
+                            <div className="grid grid-cols-2 gap-2">
+                              {pitchDeck.funding_amount && (
+                                <div>
+                                  <Label className="text-xs font-semibold text-gray-700">Investment Size</Label>
+                                  <p className="text-sm text-gray-900 mt-1">{pitchDeck.funding_amount}</p>
+                                </div>
+                              )}
+                              {pitchDeck.funding_stage && (
+                                <div>
+                                  <Label className="text-xs font-semibold text-gray-700">Funding Stage</Label>
+                                  <p className="text-sm text-gray-900 mt-1">{pitchDeck.funding_stage.replace('_', ' ')}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Traction Metrics */}
+                          {pitchDeck.traction_metrics && (
+                            <div>
+                              <Label className="text-xs font-semibold text-gray-700">Traction Metrics</Label>
+                              <div className="text-sm text-gray-900 mt-1">
+                                {typeof pitchDeck.traction_metrics === 'object' ? (
+                                  <div className="space-y-1">
+                                    {Object.entries(pitchDeck.traction_metrics).slice(0, 3).map(([key, value]) => (
+                                      <div key={key} className="flex justify-between">
+                                        <span className="text-gray-600">{key}:</span>
+                                        <span className="font-medium">{String(value)}</span>
+                                      </div>
+                                    ))}
+                                    {Object.keys(pitchDeck.traction_metrics).length > 3 && (
+                                      <p className="text-xs text-gray-500">
+                                        +{Object.keys(pitchDeck.traction_metrics).length - 3} more metrics
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p>{String(pitchDeck.traction_metrics)}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Use of Funds */}
+                          {pitchDeck.use_of_funds && (
+                            <div>
+                              <Label className="text-xs font-semibold text-gray-700">Use of Funds</Label>
+                              <p className="text-sm text-gray-900 mt-1 line-clamp-2">{pitchDeck.use_of_funds}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!pitchDeck && (
+                        <div className="pt-3 border-t">
+                          <p className="text-xs text-gray-500 text-center">No pitch deck uploaded yet</p>
+                        </div>
+                      )}
+
+                      {/* Actions */}
                       <div className="pt-3 border-t space-y-2">
                         <Button
                           variant="outline"
                           size="sm"
                           className="w-full"
-                          onClick={() => openManageDialog(product)}
+                          onClick={() => openManageDialog(product, 'company')}
                           disabled={isMutating}
                         >
                           <Settings className="w-4 h-4 mr-2" />
@@ -696,119 +830,40 @@ export function ProductManagement({ user }: ProductManagementProps) {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Create Product Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create New Product</DialogTitle>
-            <DialogDescription>
-              Create a new venture product. You can have up to 3 products.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Create Pitch Deck - Now handled by dedicated page /dashboard/venture/pitch-decks/create */}
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+      {/* Edit Product Form - Inline (No Modal) */}
+      {editingProductId && selectedProduct && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
               <div>
-                <Label>Product Name *</Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: sanitizeInput(e.target.value, 255) })}
-                  placeholder="Company/Product name"
-                />
+                <CardTitle>Edit Product</CardTitle>
+                <CardDescription>
+                  Update product details. Only DRAFT or REJECTED products can be edited.
+                </CardDescription>
               </div>
-              <div>
-                <Label>Industry Sector *</Label>
-                <Select
-                  value={formData.industry_sector}
-                  onValueChange={(value) => setFormData({ ...formData, industry_sector: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select industry" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fintech">FinTech</SelectItem>
-                    <SelectItem value="healthtech">HealthTech</SelectItem>
-                    <SelectItem value="edtech">EdTech</SelectItem>
-                    <SelectItem value="cleantech">CleanTech</SelectItem>
-                    <SelectItem value="ai">AI/ML</SelectItem>
-                    <SelectItem value="saas">SaaS</SelectItem>
-                    <SelectItem value="ecommerce">E-commerce</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditingProductId(null);
+                  setSelectedProduct(null);
+                  resetForm();
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Website *</Label>
-                <Input
-                  value={formData.website}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value, 2048);
-                    setFormData({ ...formData, website: sanitized });
-                  }}
-                  placeholder="https://yourcompany.com"
-                />
-              </div>
-              <div>
-                <Label>LinkedIn URL *</Label>
-                <Input
-                  value={formData.linkedin_url}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value, 2048);
-                    setFormData({ ...formData, linkedin_url: sanitized });
-                  }}
-                  placeholder="https://linkedin.com/company/yourcompany"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label>Short Description *</Label>
-              <Textarea
-                value={formData.short_description}
-                onChange={(e) => setFormData({ ...formData, short_description: sanitizeInput(e.target.value, 1000) })}
-                placeholder="Brief description of your product"
-                rows={2}
-              />
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Business information fields (target market, problem statement, 
-                solution, traction, funding, and use of funds) are now associated with each pitch deck 
-                document. You can add these details when uploading pitch decks.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={isMutating}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={isMutating}>
-              {isMutating ? 'Creating...' : 'Create Product'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Product Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Product</DialogTitle>
-            <DialogDescription>
-              Update product details. Only DRAFT or REJECTED products can be edited.
-            </DialogDescription>
-          </DialogHeader>
+          </CardHeader>
+          <CardContent>
 
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -902,26 +957,47 @@ export function ProductManagement({ user }: ProductManagementProps) {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)} disabled={isMutating}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdate} disabled={isMutating}>
-              {isMutating ? 'Updating...' : 'Update Product'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="flex gap-2 mt-4">
+              <Button variant="outline" onClick={() => {
+                setEditingProductId(null);
+                setSelectedProduct(null);
+                resetForm();
+              }} disabled={isMutating}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdate} disabled={isMutating}>
+                {isMutating ? 'Updating...' : 'Update Product'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Manage Product Dialog - Comprehensive management with tabs */}
-      <Dialog open={manageDialogOpen} onOpenChange={setManageDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Manage Product: {selectedProduct?.name}</DialogTitle>
-            <DialogDescription>
-              Manage company data, team members, founders, and pitch decks for this product.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Manage Product View - Inline (No Modal) */}
+      {managingProductId && selectedProduct && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Manage Product: {selectedProduct.name}</CardTitle>
+                <CardDescription>
+                  Manage company data, team members, founders, and pitch decks for this product.
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setManagingProductId(null);
+                  setSelectedProduct(null);
+                  setActiveTab('company');
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
 
           {/* Tabs */}
           <div className="flex border-b mb-4">
@@ -1302,253 +1378,60 @@ export function ProductManagement({ user }: ProductManagementProps) {
             )}
 
             {/* Pitch Decks Tab */}
-            {activeTab === 'documents' && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Pitch Decks</h3>
-                  {selectedProduct && canEdit(selectedProduct) && (
-                    <div>
-                      <input
-                        type="file"
-                        accept=".pdf"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file || !selectedProduct) return;
-                          
-                          // Security: Validate UUID
-                          if (!validateUuid(selectedProduct.id)) {
-                            toast.error('Invalid product ID');
-                            e.target.value = '';
-                            return;
-                          }
-
-                          // Security: Validate file before upload
-                          const validation = validatePitchDeckFile(file);
-                          if (!validation.isValid) {
-                            toast.error(validation.error || 'Invalid file');
-                            e.target.value = '';
-                            return;
-                          }
-                          
-                          try {
-                            setIsMutating(true);
-                            await productService.uploadPitchDeck(selectedProduct.id, file);
-                            await loadProductDetails(selectedProduct.id);
-                            toast.success('Pitch deck uploaded successfully!');
-                          } catch (err: any) {
-                            console.error('Failed to upload pitch deck:', err);
-                            toast.error(err.response?.data?.detail || err.message || 'Failed to upload pitch deck.');
-                          } finally {
-                            setIsMutating(false);
-                            e.target.value = ''; // Reset input
-                          }
-                        }}
-                        className="hidden"
-                        id="pitch-deck-upload"
-                        disabled={isMutating}
-                      />
-                      <Button
-                        size="sm"
-                        onClick={() => document.getElementById('pitch-deck-upload')?.click()}
-                        disabled={isMutating}
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        Upload Pitch Deck
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {isLoadingDetails ? (
-                  <div className="text-center py-8">Loading...</div>
-                ) : documents.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <p>No pitch decks uploaded yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {documents.map((doc) => (
-                      <Card key={doc.id}>
-                        <CardContent className="pt-4">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <h4 className="font-semibold">{doc.document_type === 'PITCH_DECK' ? 'Pitch Deck' : doc.document_type}</h4>
-                              <p className="text-sm text-gray-500">
-                                {(doc.file_size / 1024 / 1024).toFixed(2)} MB • Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            {selectedProduct && (
-                              <div className="flex gap-2">
-                                {/* View/Download buttons - available to product owner */}
-                                {doc.document_type === 'PITCH_DECK' && (
-                                  <>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={async () => {
-                                        // Security: Validate IDs
-                                        if (!validateUuid(selectedProduct.id) || !validateUuid(doc.id)) {
-                                          toast.error('Invalid product or document ID');
-                                          return;
-                                        }
-                                        try {
-                                          // Fetch pitch deck using authenticated API client and create blob URL
-                                          // This ensures the new tab has proper authentication via the blob URL
-                                          const blobUrl = await productService.viewPitchDeck(selectedProduct.id, doc.id);
-                                          const newWindow = window.open(blobUrl, '_blank', 'noopener,noreferrer');
-                                          
-                                          // Clean up blob URL after window is closed or after 1 hour (fallback)
-                                          if (newWindow) {
-                                            // Clean up blob URL when window is closed
-                                            const cleanup = () => {
-                                              URL.revokeObjectURL(blobUrl);
-                                            };
-                                            // Try to detect when window closes (not always reliable, so also use timeout)
-                                            const checkClosed = setInterval(() => {
-                                              if (newWindow.closed) {
-                                                cleanup();
-                                                clearInterval(checkClosed);
-                                              }
-                                            }, 1000);
-                                            // Fallback: cleanup after 1 hour
-                                            setTimeout(() => {
-                                              cleanup();
-                                              clearInterval(checkClosed);
-                                            }, 3600000);
-                                          } else {
-                                            // If popup was blocked, cleanup immediately
-                                            URL.revokeObjectURL(blobUrl);
-                                          }
-                                        } catch (err: any) {
-                                          console.error('Failed to view pitch deck:', err);
-                                          toast.error(err.message || 'Failed to view pitch deck');
-                                        }
-                                      }}
-                                    >
-                                      <Eye className="w-4 h-4 mr-2" />
-                                      View
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={async () => {
-                                        // Security: Validate IDs
-                                        if (!validateUuid(selectedProduct.id) || !validateUuid(doc.id)) {
-                                          toast.error('Invalid product or document ID');
-                                          return;
-                                        }
-                                        try {
-                                          const blob = await productService.downloadPitchDeck(selectedProduct.id, doc.id);
-                                          const url = window.URL.createObjectURL(blob);
-                                          const a = document.createElement('a');
-                                          a.href = url;
-                                          a.download = `pitch-deck-${doc.id}.pdf`;
-                                          document.body.appendChild(a);
-                                          a.click();
-                                          window.URL.revokeObjectURL(url);
-                                          document.body.removeChild(a);
-                                          toast.success('Pitch deck downloaded');
-                                        } catch (err: any) {
-                                          console.error('Failed to download pitch deck:', err);
-                                          toast.error(err.message || 'Failed to download pitch deck');
-                                        }
-                                      }}
-                                    >
-                                      <Download className="w-4 h-4 mr-2" />
-                                      Download
-                                    </Button>
-                                    {canEdit(selectedProduct) && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => {
-                                            setSelectedDocumentId(doc.id);
-                                            loadPitchDeckData(selectedProduct.id, doc.id);
-                                          }}
-                                        >
-                                          <BarChart3 className="w-4 h-4 mr-2" />
-                                          Analytics
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => {
-                                            setSelectedDocumentId(doc.id);
-                                            setShowShareDialog(true);
-                                          }}
-                                        >
-                                          <Share2 className="w-4 h-4 mr-2" />
-                                          Share
-                                        </Button>
-                                      </>
-                                    )}
-                                  </>
-                                )}
-                                {canEdit(selectedProduct) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={async () => {
-                                      if (!selectedProduct || !confirm('Delete this pitch deck?')) return;
-                                      // Security: Validate IDs
-                                      if (!validateUuid(selectedProduct.id) || !validateUuid(doc.id)) {
-                                        toast.error('Invalid product or document ID');
-                                        return;
-                                      }
-                                      try {
-                                        setIsMutating(true);
-                                        await productService.deleteProductDocument(selectedProduct.id, doc.id);
-                                        await loadProductDetails(selectedProduct.id);
-                                        toast.success('Pitch deck deleted');
-                                      } catch (err: any) {
-                                        console.error('Failed to delete document:', err);
-                                        toast.error(err.response?.data?.detail || err.message || 'Failed to delete document.');
-                                      } finally {
-                                        setIsMutating(false);
-                                      }
-                                    }}
-                                    disabled={isMutating}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {activeTab === 'documents' && selectedProduct && (
+              <PitchDeckCRUD
+                productId={selectedProduct.id}
+                productStatus={selectedProduct.status}
+                onUpdate={() => {
+                  loadProductDetails(selectedProduct.id);
+                }}
+              />
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setManageDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="mt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setManagingProductId(null);
+                  setSelectedProduct(null);
+                  setActiveTab('company'); // Reset tab when closing
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Pitch Deck Analytics Dialog */}
-      {selectedDocumentId && selectedProduct && (
-        <Dialog open={!!selectedDocumentId && !showShareDialog} onOpenChange={(open) => {
-          if (!open) {
-            setSelectedDocumentId(null);
-            setPitchDeckAnalytics(null);
-          }
-        }}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Pitch Deck Analytics</DialogTitle>
-              <DialogDescription>
-                View analytics, access control, shares, and requests for this pitch deck
-              </DialogDescription>
-            </DialogHeader>
+      {/* Pitch Deck Analytics View - Inline (No Modal) */}
+      {selectedDocumentId && selectedProduct && !showShareForm && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Pitch Deck Analytics</CardTitle>
+                <CardDescription>
+                  View analytics, access control, shares, and requests for this pitch deck
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedDocumentId(null);
+                  setPitchDeckAnalytics(null);
+                  setPitchDeckAccess([]);
+                  setPitchDeckShares([]);
+                  setPitchDeckRequests([]);
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
             
             {isLoadingAnalytics ? (
               <div className="text-center py-8">Loading analytics...</div>
@@ -1733,19 +1616,35 @@ export function ProductManagement({ user }: ProductManagementProps) {
                 </div>
               </div>
             ) : null}
-          </DialogContent>
-        </Dialog>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Share Pitch Deck Dialog */}
-      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Share Pitch Deck</DialogTitle>
-            <DialogDescription>
-              Share this pitch deck with an investor
-            </DialogDescription>
-          </DialogHeader>
+      {/* Share Pitch Deck Form - Inline (No Modal) */}
+      {showShareForm && selectedProduct && selectedDocumentId && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Share Pitch Deck</CardTitle>
+                <CardDescription>
+                  Share this pitch deck with an investor
+                </CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowShareForm(false);
+                  setShareInvestorId('');
+                  setShareMessage('');
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
           <div className="space-y-4">
             <div>
               <Label htmlFor="investor-id">Investor ID</Label>
@@ -1778,20 +1677,21 @@ export function ProductManagement({ user }: ProductManagementProps) {
               </p>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setShowShareDialog(false);
-              setShareInvestorId('');
-              setShareMessage('');
-            }}>
-              Cancel
-            </Button>
-            <Button onClick={handleSharePitchDeck} disabled={!shareInvestorId || !validateUuid(shareInvestorId) || isMutating}>
-              Share
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="flex gap-2 mt-4">
+              <Button variant="outline" onClick={() => {
+                setShowShareForm(false);
+                setShareInvestorId('');
+                setShareMessage('');
+              }}>
+                Cancel
+              </Button>
+              <Button onClick={handleSharePitchDeck} disabled={!shareInvestorId || !validateUuid(shareInvestorId) || isMutating}>
+                Share
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

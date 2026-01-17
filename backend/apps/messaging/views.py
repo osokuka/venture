@@ -22,8 +22,11 @@ class ConversationListView(generics.ListCreateAPIView):
     
     GET /api/messages/conversations - List all user's conversations
     POST /api/messages/conversations - Create new conversation
+    
+    Note: All authenticated users can view their conversations. The create method
+    has business logic to check if the other user is visible/approved for messaging.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    permission_classes = [IsAuthenticated]  # Allow all authenticated users to view conversations
     serializer_class = ConversationSerializer
     
     def get_queryset(self):
@@ -204,8 +207,10 @@ class ConversationDetailView(generics.RetrieveAPIView):
     
     GET /api/messages/conversations/{id}
     Returns conversation with messages sorted chronologically (oldest first).
+    
+    Note: All authenticated users can view their own conversations.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    permission_classes = [IsAuthenticated]  # Allow all authenticated users to view their conversations
     serializer_class = ConversationDetailSerializer
     lookup_field = 'id'
     
