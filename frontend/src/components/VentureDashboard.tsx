@@ -98,6 +98,13 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   const [pitchDeckAnalytics, setPitchDeckAnalytics] = useState<any>(null);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
   
+  // State to track pitch deck shares (for showing breadcrumbs)
+  // Map of investor user ID to share info { shared: boolean, viewed: boolean, sharedAt: date }
+  const [pitchDeckShareStatus, setPitchDeckShareStatus] = useState<Record<string, { shared: boolean; viewed: boolean; sharedAt?: string }>>({});
+  
+  // State for recent activity feed
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  
   // Security: Sanitize search term
   const handleSearchChange = (value: string) => {
     const sanitized = sanitizeInput(value, 100);
@@ -111,6 +118,8 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   useEffect(() => {
     if (activeView === 'investors') {
       fetchInvestors();
+      // Also fetch pitch deck share status
+      fetchPitchDeckShareStatus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, searchTerm, filterStage]);
@@ -247,6 +256,143 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     fetchAnalytics();
   }, [activeView, products]);
 
+  // Fetch recent activity for overview - MUST BE BEFORE EARLY RETURNS
+  useEffect(() => {
+    const fetchRecentActivity = async () => {
+      if (activeView !== 'overview') {
+        setRecentActivity([]);
+        return;
+      }
+
+      try {
+        const activities: any[] = [];
+        
+        // Get approved products to check for approval events
+        const approvedProducts = products.filter((p: any) => p.status === 'APPROVED' && p.is_active);
+        
+        // Add product approval activities
+        approvedProducts.forEach((product: any) => {
+          if (product.approved_at) {
+            const approvedDate = new Date(product.approved_at);
+            activities.push({
+              id: `approval-${product.id}`,
+              type: 'approval',
+              title: 'Pitch Deck Approved',
+              description: `Your pitch deck "${product.name || product.company_name}" was approved by admin`,
+              time: getTimeAgo(approvedDate),
+              timestamp: approvedDate,
+              icon: CheckCircle,
+              color: 'text-green-600',
+              bgColor: 'bg-green-100',
+            });
+          }
+        });
+        
+        // Get pitch deck shares and edits
+        if (approvedProducts.length > 0) {
+          const latestProduct = approvedProducts[0];
+          const pitchDeck = latestProduct?.documents?.find((doc: any) => doc.document_type === 'PITCH_DECK' && doc.is_active !== false);
+          
+          if (pitchDeck) {
+            // Add pitch deck edit activity if edited recently
+            if (pitchDeck.updated_at) {
+              const updatedDate = new Date(pitchDeck.updated_at);
+              const uploadedDate = pitchDeck.uploaded_at ? new Date(pitchDeck.uploaded_at) : null;
+              
+              // Only show edit activity if updated_at is different from uploaded_at (means it was edited)
+              if (!uploadedDate || updatedDate.getTime() !== uploadedDate.getTime()) {
+                activities.push({
+                  id: `edit-${pitchDeck.id}`,
+                  type: 'edit',
+                  title: 'Pitch Deck Updated',
+                  description: `You updated your pitch deck metadata`,
+                  time: getTimeAgo(updatedDate),
+                  timestamp: updatedDate,
+                  icon: FileText,
+                  color: 'text-purple-600',
+                  bgColor: 'bg-purple-100',
+                });
+              }
+            }
+            
+            // Get share activities
+            try {
+              const shares = await productService.listPitchDeckShares(latestProduct.id, pitchDeck.id);
+              
+              // Add share activities
+              shares.forEach((share: any) => {
+                const sharedDate = new Date(share.shared_at);
+                
+                activities.push({
+                  id: `share-${share.id}`,
+                  type: 'share',
+                  title: 'Pitch Deck Shared',
+                  description: `Shared with ${share.investor_name || share.investor_email || 'investor'}`,
+                  time: getTimeAgo(sharedDate),
+                  timestamp: sharedDate,
+                  icon: Send,
+                  color: 'text-blue-600',
+                  bgColor: 'bg-blue-100',
+                  viewed: !!share.viewed_at,
+                  viewedAt: share.viewed_at,
+                });
+                
+                // Add view activity if viewed
+                if (share.viewed_at) {
+                  const viewedDate = new Date(share.viewed_at);
+                  activities.push({
+                    id: `view-${share.id}`,
+                    type: 'view',
+                    title: 'Pitch Deck Viewed',
+                    description: `${share.investor_name || share.investor_email || 'Investor'} viewed your pitch deck`,
+                    time: getTimeAgo(viewedDate),
+                    timestamp: viewedDate,
+                    icon: Eye,
+                    color: 'text-green-600',
+                    bgColor: 'bg-green-100',
+                  });
+                }
+              });
+            } catch (err) {
+              console.error('Failed to fetch shares for activity:', err);
+            }
+          }
+        }
+        
+        // Sort activities by timestamp (most recent first)
+        activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+        
+        // Limit to 3 most recent activities
+        setRecentActivity(activities.slice(0, 3));
+      } catch (error) {
+        console.error('Failed to fetch recent activity:', error);
+        setRecentActivity([]);
+      }
+    };
+
+    fetchRecentActivity();
+  }, [activeView, products]);
+
+  // Helper function to calculate time ago
+  const getTimeAgo = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    if (diffDays < 30) {
+      const weeks = Math.floor(diffDays / 7);
+      return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+    }
+    const months = Math.floor(diffDays / 30);
+    return `${months} month${months > 1 ? 's' : ''} ago`;
+  };
+
   const fetchInvestors = async () => {
     setIsLoadingInvestors(true);
     try {
@@ -296,6 +442,59 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
       setProducts([]);
     } finally {
       setIsLoadingProducts(false);
+    }
+  };
+
+  // Fetch pitch deck share status for all investors
+  const fetchPitchDeckShareStatus = async () => {
+    try {
+      // Get the active pitch deck (constraint: only one active pitch deck)
+      const productsList = Array.isArray(products) && products.length > 0 ? products : await productService.getMyProducts();
+      const productsArray = Array.isArray(productsList) ? productsList : [];
+      
+      const approvedProduct = productsArray.find((p: any) => 
+        p.status === 'APPROVED' && 
+        p.is_active && 
+        p.documents && 
+        Array.isArray(p.documents) && 
+        p.documents.length > 0
+      );
+      
+      if (!approvedProduct) {
+        setPitchDeckShareStatus({});
+        return;
+      }
+      
+      // Find the active pitch deck
+      const pitchDeck = approvedProduct.documents.find((doc: any) => 
+        doc.document_type === 'PITCH_DECK' && doc.is_active !== false
+      );
+      
+      if (!pitchDeck) {
+        setPitchDeckShareStatus({});
+        return;
+      }
+      
+      // Fetch shares for this pitch deck
+      const shares = await productService.listPitchDeckShares(approvedProduct.id, pitchDeck.id);
+      
+      // Build a map of investor user ID to share status
+      const statusMap: Record<string, { shared: boolean; viewed: boolean; sharedAt?: string }> = {};
+      shares.forEach((share: any) => {
+        const investorUserId = share.investor || share.investor_id;
+        if (investorUserId) {
+          statusMap[investorUserId] = {
+            shared: true,
+            viewed: !!share.viewed_at,
+            sharedAt: share.shared_at,
+          };
+        }
+      });
+      
+      setPitchDeckShareStatus(statusMap);
+    } catch (error) {
+      console.error('Failed to fetch pitch deck share status:', error);
+      setPitchDeckShareStatus({});
     }
   };
 
@@ -450,9 +649,6 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     products: products.length,
   };
 
-  // Recent activity - would need activity feed API (not implemented yet)
-  const recentActivity: any[] = [];
-  
   // Current mentors - would need mentoring relationships API (not implemented yet)
   const currentMentors: any[] = [];
   
@@ -546,8 +742,10 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
       return;
     }
 
-    // Find the investor to check their status
+    // Find the investor to check their status and get their name
     const investor = investors.find((inv: InvestorProfile) => (inv.user || inv.id) === investorId);
+    const investorName = investor ? (investor.full_name || investor.user_name || 'investor') : 'investor';
+    
     if (investor) {
       const investorCheck = canContactInvestor(investor);
       if (!investorCheck.canContact) {
@@ -559,6 +757,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     // If productId and docId not provided, try to get from products
     let targetProductId = productId;
     let targetDocId = docId;
+    let productName = '';
 
     if (!targetProductId || !targetDocId) {
       // Ensure products is an array and fetch if needed
@@ -577,11 +776,25 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         }
       }
       
-      // Find first approved product with pitch deck
-      const approvedProduct = productsList.find((p: any) => p.status === 'APPROVED' && p.is_active && p.documents && Array.isArray(p.documents) && p.documents.length > 0);
+      // CONSTRAINT: Only find ACTIVE pitch decks from approved products
+      // A venture can only share their ONE active pitch deck
+      const approvedProduct = productsList.find((p: any) => 
+        p.status === 'APPROVED' && 
+        p.is_active && 
+        p.documents && 
+        Array.isArray(p.documents) && 
+        p.documents.length > 0
+      );
+      
       if (approvedProduct) {
         targetProductId = approvedProduct.id;
-        const pitchDeck = approvedProduct.documents.find((doc: any) => doc.document_type === 'PITCH_DECK');
+        productName = approvedProduct.company_name || approvedProduct.product_name || 'your product';
+        
+        // Only find ACTIVE pitch decks (not inactive ones)
+        const pitchDeck = approvedProduct.documents.find((doc: any) => 
+          doc.document_type === 'PITCH_DECK' && doc.is_active !== false
+        );
+        
         if (pitchDeck) {
           targetDocId = pitchDeck.id;
         }
@@ -589,7 +802,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     }
 
     if (!targetProductId || !targetDocId) {
-      toast.error("No pitch deck available to share");
+      toast.error("No active pitch deck available to share. Please ensure your product is approved and has an active pitch deck.");
       return;
     }
 
@@ -600,8 +813,22 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     }
 
     try {
+      // Show loading toast
+      const loadingToast = toast.loading(`Sharing pitch deck with ${investorName}...`);
+      
       await productService.sharePitchDeck(targetProductId, targetDocId, investorId);
-      toast.success("Pitch deck shared with investor!");
+      
+      // Dismiss loading toast and show success
+      toast.dismiss(loadingToast);
+      toast.success(`✓ Pitch deck successfully shared with ${investorName}!`, {
+        description: productName ? `They now have access to "${productName}"` : 'They can now view and download your pitch deck',
+        duration: 5000,
+      });
+      
+      // Refresh products and investors to update share status indicators
+      fetchProducts();
+      fetchInvestors();
+      fetchPitchDeckShareStatus(); // Refresh share status breadcrumbs
     } catch (err: any) {
       console.error('Failed to share pitch deck:', err);
       toast.error(err.message || 'Failed to share pitch deck');
@@ -1020,11 +1247,6 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
 
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold">Find Investors</h2>
-          <p className="text-muted-foreground">Discover investors that match your startup profile</p>
-        </div>
-
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
@@ -1145,6 +1367,45 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                       </div>
                     </div>
 
+                    {/* Share Status Breadcrumb */}
+                    {(() => {
+                      const investorUserId = investor.user || investor.id;
+                      const shareStatus = pitchDeckShareStatus[investorUserId];
+                      
+                      if (shareStatus?.shared) {
+                        return (
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle className="w-4 h-4 text-blue-600" />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-blue-900">Pitch Deck Shared</p>
+                                <div className="flex items-center space-x-3 mt-1">
+                                  <p className="text-xs text-blue-700">
+                                    {shareStatus.sharedAt 
+                                      ? new Date(shareStatus.sharedAt).toLocaleDateString()
+                                      : 'Recently'}
+                                  </p>
+                                  {shareStatus.viewed && (
+                                    <div className="flex items-center space-x-1">
+                                      <Eye className="w-3 h-3 text-green-600" />
+                                      <span className="text-xs font-medium text-green-700">Viewed</span>
+                                    </div>
+                                  )}
+                                  {!shareStatus.viewed && (
+                                    <div className="flex items-center space-x-1">
+                                      <Clock className="w-3 h-3 text-amber-600" />
+                                      <span className="text-xs text-amber-700">Not viewed yet</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     {/* Actions */}
                     <div className="flex flex-col space-y-2">
                       {/* Breadcrumb message if contact is disabled */}
@@ -1223,294 +1484,13 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   };
 
   const renderPitch = () => {
-    // Get the current pitch deck from products
-    const approvedProducts = products.filter((p: any) => p.status === 'APPROVED' && p.is_active);
-    const latestProduct = approvedProducts.length > 0 ? approvedProducts[0] : null;
-    const pitchDeck = latestProduct?.documents?.find((doc: any) => doc.document_type === 'PITCH_DECK');
-    
-    const handleViewPitchDeck = async () => {
-      if (!latestProduct || !pitchDeck) {
-        toast.error('No pitch deck available');
-        return;
-      }
-      try {
-        const blobUrl = await productService.viewPitchDeck(latestProduct.id, pitchDeck.id);
-        window.open(blobUrl, '_blank');
-        // Clean up blob URL after a delay
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      } catch (error: any) {
-        toast.error(error.message || 'Failed to view pitch deck');
-      }
-    };
-
-    const handleDownloadPitchDeck = async () => {
-      if (!latestProduct || !pitchDeck) {
-        toast.error('No pitch deck available');
-        return;
-      }
-      try {
-        const blob = await productService.downloadPitchDeck(latestProduct.id, pitchDeck.id);
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = pitchDeck.file?.split('/').pop() || 'pitch-deck.pdf';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        toast.success('Pitch deck downloaded');
-      } catch (error: any) {
-        toast.error(error.message || 'Failed to download pitch deck');
-      }
-    };
-
-    // Format file size
-    const formatFileSize = (bytes: number) => {
-      if (!bytes) return 'Unknown size';
-      if (bytes < 1024) return bytes + ' B';
-      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    };
-
+    // Show all pitch decks using ProductManagement component
+    // This allows users to view, manage, and track ALL their pitch decks in one place
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Pitch Deck</h2>
-            <p className="text-gray-600">Manage and share your pitch deck with investors</p>
-            <p className="text-sm text-gray-600 mt-2">
-              Go to Pitch Decks section to upload and manage pitch decks for your products
-            </p>
-          </div>
-          <button 
-            className="btn-chrome-primary"
-            onClick={() => onViewChange?.('products')}
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Manage Pitch Decks
-          </button>
-        </div>
-
-        {/* Current Pitch Deck */}
-        {!pitchDeck ? (
-          <Card>
-            <CardContent className="p-12 text-center">
-              <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2 text-gray-900">No Pitch Deck Available</h3>
-              <p className="text-gray-600 mb-4">
-                Upload a pitch deck for your approved product to get started.
-              </p>
-              <button 
-                className="btn-chrome-primary"
-                onClick={() => onViewChange?.('products')}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Go to Pitch Decks
-              </button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Pitch Deck</CardTitle>
-              <CardDescription>Last updated {pitchDeckMetrics.lastUpdated}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <Eye className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                  {isLoadingAnalytics ? (
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                  ) : (
-                    <p className="text-2xl font-bold">{pitchDeckMetrics.views}</p>
-                  )}
-                  <p className="text-sm text-muted-foreground">Total Views</p>
-                </div>
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <Download className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                  {isLoadingAnalytics ? (
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                  ) : (
-                    <p className="text-2xl font-bold">{pitchDeckMetrics.downloads}</p>
-                  )}
-                  <p className="text-sm text-muted-foreground">Downloads</p>
-                </div>
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <Users className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                  {isLoadingAnalytics ? (
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                  ) : (
-                    <p className="text-2xl font-bold">{pitchDeckMetrics.uniqueViewers}</p>
-                  )}
-                  <p className="text-sm text-muted-foreground">Unique Viewers</p>
-                </div>
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <Clock className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-                  <p className="text-2xl font-bold">{pitchDeckMetrics.averageViewTime}</p>
-                  <p className="text-sm text-muted-foreground">Avg. View Time</p>
-                  <p className="text-xs text-muted-foreground mt-1">Analytics coming soon</p>
-                </div>
-                <div className="text-center p-4 bg-muted/50 rounded-lg">
-                  <Users className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-                  <p className="text-2xl font-bold">{interestedInvestors.length}</p>
-                  <p className="text-sm text-muted-foreground">Shared With</p>
-                  <p className="text-xs text-muted-foreground mt-1">Investors with access</p>
-                </div>
-              </div>
-
-              <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center">
-                <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium mb-2">
-                  {latestProduct.name} - Pitch Deck
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  {pitchDeck.file_size ? formatFileSize(pitchDeck.file_size) : 'Unknown size'} • {pitchDeck.mime_type || 'PDF'}
-                </p>
-                {pitchDeck.funding_amount && (
-                  <p className="text-sm font-medium mb-4">
-                    Seeking: {pitchDeck.funding_amount} • {pitchDeck.funding_stage || 'Funding Stage'}
-                  </p>
-                )}
-                <div className="flex justify-center space-x-3">
-                  <button 
-                    className="btn-chrome-secondary"
-                    onClick={handleViewPitchDeck}
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Preview
-                  </button>
-                  <button 
-                    className="btn-chrome-secondary"
-                    onClick={handleDownloadPitchDeck}
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </button>
-                  <button 
-                    className="btn-chrome-primary"
-                    onClick={() => onViewChange?.('investors')}
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    Share with Investor
-                  </button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Pitch Deck Analytics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Shared With Investors</CardTitle>
-              <CardDescription>Investors who have access to your pitch deck</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoadingInterestedInvestors ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-muted-foreground">Loading...</span>
-                </div>
-              ) : interestedInvestors.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-sm">No investors have been shared with yet</p>
-                  <p className="text-xs mt-1">Share your pitch deck with investors to see them here</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {interestedInvestors.slice(0, 5).map((investor) => (
-                    <div key={investor.id} className="flex items-center space-x-4 p-3 border rounded-lg">
-                      <Avatar className="w-10 h-10">
-                        <AvatarFallback>{(investor.name || 'I')[0].toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm">{investor.name}</p>
-                        <p className="text-sm text-muted-foreground">{investor.firm}</p>
-                        <p className="text-xs text-muted-foreground">Shared {investor.lastContact}</p>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant="secondary" className="text-xs">
-                          {investor.status?.replace('_', ' ') || 'Shared'}
-                        </Badge>
-                        {investor.pitchViewed && (
-                          <p className="text-xs text-muted-foreground mt-1">Viewed</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {interestedInvestors.length > 5 && (
-                    <p className="text-xs text-center text-muted-foreground">
-                      +{interestedInvestors.length - 5} more investors
-                    </p>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Pitch Deck Information</CardTitle>
-              <CardDescription>Details about your current pitch deck</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {pitchDeck ? (
-                <div className="space-y-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Product</span>
-                    <span className="font-medium">{latestProduct?.name}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Status</span>
-                    <Badge variant={latestProduct?.status === 'APPROVED' ? 'default' : 'secondary'}>
-                      {latestProduct?.status}
-                    </Badge>
-                  </div>
-                  {pitchDeck.funding_amount && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Seeking</span>
-                      <span className="font-medium">{pitchDeck.funding_amount}</span>
-                    </div>
-                  )}
-                  {pitchDeck.funding_stage && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Stage</span>
-                      <span className="font-medium">{pitchDeck.funding_stage}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Last Updated</span>
-                    <span className="font-medium">{pitchDeckMetrics.lastUpdated}</span>
-                  </div>
-                  <div className="pt-4 border-t">
-                    <button 
-                      className="btn-chrome-secondary w-full text-sm"
-                      onClick={() => onViewChange?.('products')}
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Manage Pitch Decks
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-sm">No pitch deck uploaded</p>
-                  <p className="text-xs mt-1">Upload a pitch deck in the Pitch Decks section</p>
-                  <button 
-                    className="btn-chrome-primary mt-4"
-                    onClick={() => onViewChange?.('products')}
-                  >
-                    Go to Pitch Decks
-                  </button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <ProductManagement 
+        user={user} 
+        defaultTab='documents'
+      />
     );
   };
 

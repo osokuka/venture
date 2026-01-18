@@ -17,6 +17,7 @@ import { InvestorDashboard } from "./components/InvestorDashboard";
 import { MentorDashboard } from "./components/MentorDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { PitchDeckDetails } from "./components/PitchDeckDetails";
+import { PitchDeckReview } from "./components/PitchDeckReview";
 import { PortfolioDetails } from "./components/PortfolioDetails";
 import { PortfolioReports } from "./components/PortfolioReports";
 import { PortfolioExitPlan } from "./components/PortfolioExitPlan";
@@ -330,9 +331,23 @@ function AppRoutes() {
         }
       />
 
-      {/* Pitch Deck Details Route */}
+      {/* Pitch Deck Details Route - Investor View */}
       <Route
         path="/dashboard/investor/pitch-deck/:productId/:docId?"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <PitchDeckDetails />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Pitch Deck Details Route - Venture View */}
+      <Route
+        path="/dashboard/venture/pitch-deck/:productId/:docId?"
         element={
           user ? (
             <ModernDashboardLayout user={user}>
@@ -366,6 +381,18 @@ function AppRoutes() {
             <ModernDashboardLayout user={user}>
               <CreatePitchDeck />
             </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Admin Pitch Deck Review Route (NO_MODALS_RULE - opens in new tab) */}
+      <Route
+        path="/dashboard/admin/pitch-deck-review"
+        element={
+          user ? (
+            <PitchDeckReview />
           ) : (
             <Navigate to="/login" replace />
           )

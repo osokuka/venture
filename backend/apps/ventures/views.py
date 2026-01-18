@@ -69,36 +69,26 @@ class ProductListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return VentureProductCreateSerializer
         return VentureProductSerializer
+    
+    def perform_create(self, serializer):
+        """
+        Create product and associate with current user.
+        Sets user and initial status to DRAFT.
+        """
+        serializer.save(user=self.request.user, status='DRAFT', is_active=True)
 
 
 class ProductDetailView(generics.RetrieveUpdateAPIView):
     """
-    Get, update, or delete a single product.
-    
-    GET /api/ventures/products/{id} - Get product details
-    PATCH /api/ventures/products/{id} - Update product (only if DRAFT or REJECTED)
-    """
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """Return only products owned by the current user with all related data."""
-        return VentureProduct.objects.filter(
-            user=self.request.user
-        ).prefetch_related(
-            'documents',  # Prefetch pitch deck documents
-            'founders',   # Prefetch founders
-            'team_members',  # Prefetch team members
-            'needs'       # Prefetch venture needs
-        ).select_related('user')
-    """
     Retrieve or update a product.
     
-    GET /api/ventures/products/{id} - Get product details
-    PATCH /api/ventures/products/{id} - Update product (only if DRAFT/REJECTED)
+    GET /api/ventures/products/{product_id} - Get product details
+    PATCH /api/ventures/products/{product_id} - Update product (only if DRAFT/REJECTED)
     """
     permission_classes = [IsAuthenticated]
     serializer_class = VentureProductUpdateSerializer
-    lookup_field = 'id'
+    lookup_field = 'id'  # Model field name
+    lookup_url_kwarg = 'product_id'  # URL parameter name
     
     def get_queryset(self):
         """Return products owned by the current user with all related data."""
@@ -148,14 +138,219 @@ def activate_product(request, product_id):
     )
 
 
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_product(request, product_id):
+    """
+    Delete a product.
+    - Regular users: DRAFT or REJECTED status only
+    - Admins: Any status (for moderation/cleanup)
+    
+    DELETE /api/ventures/products/{id}
+    
+    Regular users can only delete products in DRAFT or REJECTED status.
+    Admins can delete any product for moderation purposes.
+    """
+    # Check if user is admin
+    is_admin = request.user.is_staff or request.user.groups.filter(name__in=['Admin', 'Reviewer']).exists()
+    
+    # Try to get product - admins can access any product, users only their own
+    try:
+        if is_admin:
+            product = VentureProduct.objects.get(id=product_id)
+        else:
+            product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Security: Regular users can only delete DRAFT or REJECTED
+    # Admins can delete any status (for moderation)
+    if not is_admin and product.status not in ['DRAFT', 'REJECTED']:
+        return Response(
+            {
+                'detail': f'Cannot delete product with status {product.status}. Only DRAFT or REJECTED products can be deleted. For SUBMITTED or APPROVED products, please request deletion.',
+                'status': product.status,
+                'action_required': 'request_deletion'
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Store product name for response
+    product_name = product.name
+    
+    # Delete associated files (pitch decks)
+    documents = VentureDocument.objects.filter(product=product)
+    for doc in documents:
+        if doc.file:
+            try:
+                doc.file.delete(save=False)
+            except Exception:
+                pass  # Continue deletion even if file doesn't exist
+    
+    # Delete product (cascades to related models via CASCADE)
+    product.delete()
+    
+    return Response(
+        {'detail': f'Product "{product_name}" deleted successfully.'},
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def request_product_deletion(request, product_id):
+    """
+    Request deletion of a SUBMITTED or APPROVED product.
+    
+    POST /api/ventures/products/{id}/request-deletion
+    Body: { "reason": "Optional reason for deletion request" }
+    
+    Creates a deletion request that requires admin approval.
+    Only for products in SUBMITTED or APPROVED status.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Validation: Only SUBMITTED or APPROVED products require deletion request
+    if product.status in ['DRAFT', 'REJECTED']:
+        return Response(
+            {
+                'detail': f'Product with status {product.status} can be deleted directly. Use DELETE /api/ventures/products/{{id}} instead.',
+                'status': product.status,
+                'action_required': 'direct_delete'
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if product.status not in ['SUBMITTED', 'APPROVED']:
+        return Response(
+            {'detail': f'Cannot request deletion for product with status {product.status}.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if there's already a pending deletion request
+    content_type = ContentType.objects.get_for_model(VentureProduct)
+    existing_request = ReviewRequest.objects.filter(
+        content_type=content_type,
+        object_id=product.id,
+        status='SUBMITTED',
+        # Check if this is a deletion request (we'll add a deletion_request field or use notes)
+    ).exists()
+    
+    if existing_request:
+        return Response(
+            {'detail': 'A deletion request for this product is already pending review.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get reason from request body
+    reason = request.data.get('reason', '').strip()
+    if len(reason) > 1000:
+        return Response(
+            {'detail': 'Reason must be 1000 characters or less.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Create deletion request (using ReviewRequest model)
+    # Note: We'll add a note or flag to indicate this is a deletion request
+    review_request = ReviewRequest.objects.create(
+        content_type=content_type,
+        object_id=product.id,
+        submitted_by=request.user,
+        status='SUBMITTED',
+        # Store deletion request info in admin_notes or add a new field
+    )
+    
+    # Add reason as a note if provided
+    if reason:
+        review_request.admin_notes = f"DELETION REQUEST: {reason}"
+        review_request.save(update_fields=['admin_notes'])
+    
+    return Response(
+        {
+            'detail': f'Deletion request for "{product.name}" submitted successfully. Admin will review your request.',
+            'review_id': str(review_request.id),
+            'reason': reason or None
+        },
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reopen_product(request, product_id):
+    """
+    Reopen an APPROVED or SUBMITTED product for editing.
+    Changes status back to DRAFT so user can make updates and resubmit.
+    
+    POST /api/ventures/products/{id}/reopen
+    
+    Requirements:
+    - Product must be in APPROVED or SUBMITTED status
+    - User must be the product owner
+    
+    Use case: User wants to update an approved product with new information.
+    After reopening, they can edit and resubmit for approval.
+    """
+    try:
+        product = VentureProduct.objects.get(id=product_id, user=request.user)
+    except VentureProduct.DoesNotExist:
+        return Response(
+            {'detail': 'Product not found or you do not have permission.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Only APPROVED or SUBMITTED products can be reopened
+    if product.status not in ['APPROVED', 'SUBMITTED']:
+        return Response(
+            {
+                'detail': f'Cannot reopen product with status {product.status}. Only APPROVED or SUBMITTED products can be reopened.',
+                'current_status': product.status
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Store previous status for response
+    previous_status = product.status
+    
+    # Change status back to DRAFT
+    product.status = 'DRAFT'
+    product.save(update_fields=['status', 'updated_at'])
+    
+    return Response(
+        {
+            'detail': f'Product "{product.name}" reopened for editing. Status changed from {previous_status} to DRAFT.',
+            'product_id': str(product.id),
+            'previous_status': previous_status,
+            'new_status': 'DRAFT'
+        },
+        status=status.HTTP_200_OK
+    )
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def submit_product(request, product_id):
     """
-    Submit a product for admin approval.
+    Submit a complete product package (product + pitch deck) for admin approval.
     
     POST /api/ventures/products/{id}/submit
-    Creates a ReviewRequest for the product.
+    
+    Requirements:
+    - Product must be in DRAFT or REJECTED status
+    - Product must have at least ONE pitch deck document uploaded
+    - Creates a ReviewRequest for the complete package (product + pitch deck)
+    
+    Note: This is a SINGLE submission for the complete package.
+    Admin reviews everything together in one sitting.
     """
     try:
         product = VentureProduct.objects.get(id=product_id, user=request.user)
@@ -169,6 +364,21 @@ def submit_product(request, product_id):
     if product.status not in ['DRAFT', 'REJECTED']:
         return Response(
             {'detail': f'Product with status {product.status} cannot be submitted.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Validation: Product must have at least ONE pitch deck document
+    has_pitch_deck = VentureDocument.objects.filter(
+        product=product,
+        document_type='PITCH_DECK'
+    ).exists()
+    
+    if not has_pitch_deck:
+        return Response(
+            {
+                'detail': 'Cannot submit product without a pitch deck. Please upload a pitch deck first.',
+                'missing': 'pitch_deck'
+            },
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -186,7 +396,7 @@ def submit_product(request, product_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Create review request
+    # Create review request for the complete package (product + pitch deck)
     review_request = ReviewRequest.objects.create(
         content_type=content_type,
         object_id=product.id,
@@ -200,7 +410,10 @@ def submit_product(request, product_id):
     product.save(update_fields=['status', 'submitted_at'])
     
     return Response(
-        {'detail': 'Product submitted for approval.', 'review_id': str(review_request.id)},
+        {
+            'detail': 'Complete package (product + pitch deck) submitted for approval.',
+            'review_id': str(review_request.id)
+        },
         status=status.HTTP_200_OK
     )
 

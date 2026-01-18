@@ -36,6 +36,7 @@ export interface AdminUserUpsertPayload {
 }
 
 export interface ApprovalItem {
+  // User fields
   id: string;
   user_id: string;
   user_email: string;
@@ -45,6 +46,25 @@ export interface ApprovalItem {
   submitted_at: string;
   reviewed_at?: string;
   rejection_reason?: string;
+  
+  // Product/Pitch deck fields (for VENTURE submissions)
+  product_id?: string;
+  product_name?: string;
+  product_industry?: string;
+  product_website?: string;
+  product_short_description?: string;
+  product_created_at?: string;
+  
+  // Pitch deck document fields
+  pitch_deck_file_url?: string;
+  pitch_deck_file_name?: string;
+  pitch_deck_problem_statement?: string;
+  pitch_deck_solution_description?: string;
+  pitch_deck_target_market?: string;
+  pitch_deck_funding_amount?: string;
+  pitch_deck_funding_stage?: string;
+  pitch_deck_traction_metrics?: any;
+  pitch_deck_use_of_funds?: string;
 }
 
 export const adminService = {

@@ -217,9 +217,11 @@ class VentureProductCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = VentureProduct
         fields = (
-            'name', 'industry_sector', 'website', 'linkedin_url', 'address',
-            'year_founded', 'employees_count', 'short_description'
+            'id', 'name', 'industry_sector', 'website', 'linkedin_url', 'address',
+            'year_founded', 'employees_count', 'short_description',
+            'status', 'is_active', 'created_at', 'updated_at'
         )
+        read_only_fields = ('id', 'status', 'is_active', 'created_at', 'updated_at')
     
     def validate(self, attrs):
         """Validate that user hasn't reached product limit."""
@@ -234,6 +236,14 @@ class VentureProductCreateSerializer(serializers.ModelSerializer):
             )
         
         return attrs
+    
+    def create(self, validated_data):
+        """
+        Create product and return it with full details including ID.
+        """
+        # User is automatically set by the view
+        product = VentureProduct.objects.create(**validated_data)
+        return product
     
     def create(self, validated_data):
         """Create product and associate with user."""

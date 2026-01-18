@@ -62,6 +62,9 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
   // Use override if provided (for portfolio details), otherwise use URL param
   const productId = productIdOverride || productIdParam;
   
+  // Detect user type from URL path
+  const isVentureView = window.location.pathname.includes('/dashboard/venture/');
+  
   const [product, setProduct] = useState<VentureProduct | null>(null);
   const [pitchDeck, setPitchDeck] = useState<PitchDeckDocument | null>(null);
   const [allDocuments, setAllDocuments] = useState<PitchDeckDocument[]>([]);
@@ -87,16 +90,22 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
     
     setIsLoading(true);
     try {
-      // Fetch product details using the public venture endpoint
-      // This endpoint returns the product with all documents included
-      const foundProduct = await ventureService.getVentureById(productId);
+      // Fetch product details
+      // For venture view, use their own products; for investor view, use public endpoint
+      let foundProduct;
+      if (isVentureView) {
+        foundProduct = await productService.getProduct(productId);
+      } else {
+        foundProduct = await ventureService.getVentureById(productId);
+      }
       
       if (!foundProduct) {
         toast.error('Product not found');
+        const backPath = isVentureView ? '/dashboard/venture/pitch' : '/dashboard/investor/discover';
         if (productIdOverride) {
           navigate('/dashboard/investor/portfolio');
         } else {
-          navigate('/dashboard/investor/discover');
+          navigate(backPath);
         }
         return;
       }
@@ -119,7 +128,8 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
 
       if (!selectedPitchDeck) {
         toast.error('Pitch deck not found');
-        navigate('/dashboard/investor/discover');
+        const backPath = isVentureView ? '/dashboard/venture/pitch' : '/dashboard/investor/discover';
+        navigate(backPath);
         return;
       }
 
@@ -127,10 +137,11 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
     } catch (error: any) {
       console.error('Failed to fetch pitch deck details:', error);
       toast.error(error.message || 'Failed to load pitch deck details');
+      const backPath = isVentureView ? '/dashboard/venture/pitch' : '/dashboard/investor/discover';
       if (productIdOverride) {
         navigate('/dashboard/investor/portfolio');
       } else {
-        navigate('/dashboard/investor/discover');
+        navigate(backPath);
       }
     } finally {
       setIsLoading(false);
@@ -253,11 +264,12 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
               if (productIdOverride) {
                 navigate('/dashboard/investor/portfolio');
               } else {
-                navigate('/dashboard/investor/discover');
+                const backPath = isVentureView ? '/dashboard/venture/pitch' : '/dashboard/investor/discover';
+                navigate(backPath);
               }
             }} className="mt-4">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              {productIdOverride ? 'Back to Portfolio' : 'Back to Discover'}
+              {productIdOverride ? 'Back to Portfolio' : isVentureView ? 'Back to My Pitch Decks' : 'Back to Discover'}
             </Button>
           </CardContent>
         </Card>
@@ -270,9 +282,12 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => navigate('/dashboard/investor/discover')}>
+          <Button variant="ghost" onClick={() => {
+            const backPath = isVentureView ? '/dashboard/venture/pitch' : '/dashboard/investor/discover';
+            navigate(backPath);
+          }}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Discover
+            {isVentureView ? 'Back to My Pitch Decks' : 'Back to Discover'}
           </Button>
           <div>
             <h1 className="text-3xl font-bold">{safeDisplayText(product.name)}</h1>
@@ -299,6 +314,68 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
         </div>
       </div>
 
+      {/* Creator & Status Information */}
+      <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Users className="w-5 h-5 text-blue-700" />
+            <span>Submission Information</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Creator Info */}
+            <div className="bg-white p-4 rounded-lg shadow-sm">
+              <p className="text-xs font-semibold text-gray-600 mb-2">Created By</p>
+              <p className="text-sm font-semibold text-gray-900">{safeDisplayText((product as any).user_name || 'N/A')}</p>
+              <p className="text-xs text-gray-600 mt-1">{safeDisplayText((product as any).user_email || 'N/A')}</p>
+            </div>
+
+            {/* Status */}
+            <div className="bg-white p-4 rounded-lg shadow-sm">
+              <p className="text-xs font-semibold text-gray-600 mb-2">Status</p>
+              <Badge 
+                variant={
+                  product.status === 'APPROVED' ? 'default' : 
+                  product.status === 'SUBMITTED' ? 'secondary' : 
+                  product.status === 'REJECTED' ? 'destructive' : 
+                  'outline'
+                }
+                className="text-sm"
+              >
+                {product.status}
+              </Badge>
+              <p className="text-xs text-gray-600 mt-2">
+                Active: {product.is_active ? 'Yes' : 'No'}
+              </p>
+            </div>
+
+            {/* Timeline */}
+            <div className="bg-white p-4 rounded-lg shadow-sm">
+              <p className="text-xs font-semibold text-gray-600 mb-2">Timeline</p>
+              <div className="space-y-1">
+                <div className="flex items-center text-xs text-gray-600">
+                  <Calendar className="w-3 h-3 mr-1" />
+                  <span>Created: {new Date(product.created_at).toLocaleDateString()}</span>
+                </div>
+                {(product as any).submitted_at && (
+                  <div className="flex items-center text-xs text-gray-600">
+                    <Calendar className="w-3 h-3 mr-1" />
+                    <span>Submitted: {new Date((product as any).submitted_at).toLocaleDateString()}</span>
+                  </div>
+                )}
+                {(product as any).approved_at && (
+                  <div className="flex items-center text-xs text-green-700 font-semibold">
+                    <Calendar className="w-3 h-3 mr-1" />
+                    <span>Approved: {new Date((product as any).approved_at).toLocaleDateString()}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Company Overview */}
       <Card>
         <CardHeader>
@@ -323,6 +400,20 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
                   className="text-sm text-primary hover:underline flex items-center space-x-1"
                 >
                   <span>{safeDisplayText(product.website)}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+            {(product as any).linkedin_url && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">LinkedIn</p>
+                <a 
+                  href={(product as any).linkedin_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-sm text-primary hover:underline flex items-center space-x-1"
+                >
+                  <span>{safeDisplayText((product as any).linkedin_url)}</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
@@ -354,6 +445,44 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
                 </p>
               </div>
             )}
+            {(product as any).industry_sector && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Industry</p>
+                <Badge variant="secondary">{safeDisplayText((product as any).industry_sector)}</Badge>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pitch Deck Document Info */}
+      <Card className="border-2 border-blue-200 bg-blue-50">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <FileText className="w-5 h-5 text-blue-700" />
+            <span>Pitch Deck Document</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1">Document Type</p>
+              <p className="text-sm font-medium">{pitchDeck.document_type}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1">File Size</p>
+              <p className="text-sm font-medium">{(pitchDeck.file_size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-1">Uploaded</p>
+              <p className="text-sm font-medium">{new Date(pitchDeck.uploaded_at).toLocaleString()}</p>
+            </div>
+            {(pitchDeck as any).updated_at && (
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-1">Last Updated</p>
+                <p className="text-sm font-medium">{new Date((pitchDeck as any).updated_at).toLocaleString()}</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -368,7 +497,7 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm whitespace-pre-wrap">{safeDisplayText(pitchDeck.problem_statement)}</p>
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{safeDisplayText(pitchDeck.problem_statement)}</p>
           </CardContent>
         </Card>
       )}
@@ -383,7 +512,7 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm whitespace-pre-wrap">{safeDisplayText(pitchDeck.solution_description)}</p>
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{safeDisplayText(pitchDeck.solution_description)}</p>
           </CardContent>
         </Card>
       )}
@@ -393,12 +522,12 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Users className="w-5 h-5" />
+              <TrendingUp className="w-5 h-5" />
               <span>Target Market</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm whitespace-pre-wrap">{safeDisplayText(pitchDeck.target_market)}</p>
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">{safeDisplayText(pitchDeck.target_market)}</p>
           </CardContent>
         </Card>
       )}
@@ -422,30 +551,34 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
 
       {/* Funding Details */}
       {(pitchDeck.funding_amount || pitchDeck.funding_stage || pitchDeck.use_of_funds) && (
-        <Card>
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-100 border-green-200">
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <DollarSign className="w-5 h-5" />
+              <DollarSign className="w-5 h-5 text-green-700" />
               <span>Funding Details</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {pitchDeck.funding_amount && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Funding Amount</p>
-                <p className="text-lg font-semibold">{safeDisplayText(pitchDeck.funding_amount)}</p>
-              </div>
-            )}
-            {pitchDeck.funding_stage && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Funding Stage</p>
-                <Badge variant="secondary">{safeDisplayText(pitchDeck.funding_stage.replace('_', ' '))}</Badge>
-              </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pitchDeck.funding_amount && (
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Funding Amount Sought</p>
+                  <p className="text-2xl font-bold text-green-700">{safeDisplayText(pitchDeck.funding_amount)}</p>
+                </div>
+              )}
+              {pitchDeck.funding_stage && (
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Funding Stage</p>
+                  <Badge variant="secondary" className="text-sm font-semibold">
+                    {safeDisplayText(pitchDeck.funding_stage.replace(/_/g, ' '))}
+                  </Badge>
+                </div>
+              )}
+            </div>
             {pitchDeck.use_of_funds && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Use of Funds</p>
-                <p className="text-sm whitespace-pre-wrap">{safeDisplayText(pitchDeck.use_of_funds)}</p>
+              <div className="bg-white p-4 rounded-lg shadow-sm">
+                <p className="text-xs font-semibold text-gray-600 mb-2">Use of Funds</p>
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{safeDisplayText(pitchDeck.use_of_funds)}</p>
               </div>
             )}
           </CardContent>
@@ -482,7 +615,10 @@ export function PitchDeckDetails({ productIdOverride }: PitchDeckDetailsProps = 
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => navigate(`/dashboard/investor/pitch-deck/${productId}/${doc.id}`)}
+                      onClick={() => {
+                        const basePath = isVentureView ? '/dashboard/venture' : '/dashboard/investor';
+                        navigate(`${basePath}/pitch-deck/${productId}/${doc.id}`);
+                      }}
                     >
                       View
                     </Button>

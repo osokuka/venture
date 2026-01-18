@@ -959,6 +959,7 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                                       onClick={handleSaveEdit}
                                       disabled={isUpdatingMessage || !editMessageText.trim()}
                                       className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700"
+                                      style={{ backgroundColor: (isUpdatingMessage || !editMessageText.trim()) ? '#1e40af' : '#2563EB' }} // Force blue background - fixes transparent bg issue
                                     >
                                       {isUpdatingMessage ? (
                                         <Loader2 className="w-3 h-3 mr-1 animate-spin" />

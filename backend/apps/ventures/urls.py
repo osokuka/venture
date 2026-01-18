@@ -7,6 +7,9 @@ from .views import (
     ProductDetailView,
     activate_product,
     submit_product,
+    reopen_product,
+    delete_product,
+    request_product_deletion,
     PublicProductListView,
     PublicProductDetailView,
     AdminProductListView,
@@ -43,6 +46,9 @@ urlpatterns = [
     path('products/<uuid:product_id>', ProductDetailView.as_view(), name='product_detail'),
     path('products/<uuid:product_id>/activate', activate_product, name='product_activate'),
     path('products/<uuid:product_id>/submit', submit_product, name='product_submit'),
+    path('products/<uuid:product_id>/reopen', reopen_product, name='reopen_product'),
+    path('products/<uuid:product_id>/delete', delete_product, name='delete_product'),
+    path('products/<uuid:product_id>/request-deletion', request_product_deletion, name='request_product_deletion'),
     
     # Document management (pitch deck CRUD)
     path('products/<uuid:product_id>/documents/pitch-deck', upload_pitch_deck, name='upload_pitch_deck'),

@@ -27,6 +27,8 @@ import {
   Search,
   Filter,
   AlertCircle,
+  FileText,
+  ExternalLink,
 } from 'lucide-react';
 import { adminService, type ApprovalItem, type AdminStats } from '../services/adminService';
 import { Alert, AlertDescription } from './ui/alert';
@@ -238,6 +240,119 @@ export function ApprovalsManagementTab({ stats }: ApprovalsManagementTabProps) {
             <div className="space-y-4">
               {filteredApprovals.map((approval) => {
                 const RoleIcon = getRoleIcon(approval.role);
+                const isPitchDeck = approval.product_id && approval.product_name;
+                
+                // Handle pitch deck approval - prominent display per user request
+                if (isPitchDeck) {
+                  const openPitchDeckDetails = () => {
+                    const params = new URLSearchParams({
+                      reviewId: approval.id,
+                      productId: approval.product_id!,
+                      productName: approval.product_name!,
+                      userName: approval.user_name,
+                      userEmail: approval.user_email,
+                    });
+                    // Open in new tab per NO_MODALS_RULE.md
+                    window.open(`/dashboard/admin/pitch-deck-review?${params.toString()}`, '_blank', 'noopener,noreferrer');
+                  };
+
+                  return (
+                    <Card key={approval.id} className="hover:shadow-lg transition-shadow border-l-4 border-l-blue-500">
+                      <CardContent className="p-6">
+                        {/* PITCH DECK NAME - PROMINENT */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <FileText className="w-6 h-6 text-blue-600" />
+                          <h2 className="text-2xl font-bold text-gray-900">{approval.product_name}</h2>
+                          <Badge className="bg-blue-100 text-blue-800">
+                            {approval.product_industry}
+                          </Badge>
+                        </div>
+                        
+                        {/* FUNDING INFO */}
+                        {(approval.pitch_deck_funding_amount || approval.pitch_deck_funding_stage) && (
+                          <div className="flex gap-4 text-sm text-gray-600 mb-3">
+                            {approval.pitch_deck_funding_amount && (
+                              <span className="font-medium">💰 {approval.pitch_deck_funding_amount}</span>
+                            )}
+                            {approval.pitch_deck_funding_stage && (
+                              <span className="font-medium">📈 {approval.pitch_deck_funding_stage.replace('_', ' ')}</span>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* BRIEF PROBLEM STATEMENT */}
+                        {approval.pitch_deck_problem_statement && (
+                          <p className="text-sm text-gray-700 mb-4 line-clamp-2">
+                            <span className="font-medium text-gray-900">Problem:</span> {approval.pitch_deck_problem_statement}
+                          </p>
+                        )}
+                        
+                        {/* USER INFO - UNDERNEATH */}
+                        <div className="border-t pt-3 mb-4">
+                          <p className="text-xs text-gray-500 mb-2">Submitted by:</p>
+                          <div className="flex items-center gap-2">
+                            <Building className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium text-sm">{approval.user_name}</span>
+                            <span className="text-sm text-gray-500">({approval.user_email})</span>
+                          </div>
+                        </div>
+                        
+                        {/* DATES */}
+                        <div className="flex gap-4 text-xs text-gray-500 mb-4">
+                          {approval.product_created_at && (
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>Created: {formatDate(approval.product_created_at)}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>Submitted: {formatDate(approval.submitted_at)}</span>
+                          </div>
+                        </div>
+                        
+                        {/* ACTIONS */}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={openPitchDeckDetails}
+                            disabled={isProcessing}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            View Details in New Tab
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleApprove(approval.id)}
+                            disabled={isProcessing}
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedApproval(approval);
+                              setRejectDialogOpen(true);
+                            }}
+                            disabled={isProcessing}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          >
+                            <XCircle className="w-4 h-4 mr-2" />
+                            Reject
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                
+                // Fallback for profile approvals
                 return (
                   <Card key={approval.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-6">
@@ -301,9 +416,11 @@ export function ApprovalsManagementTab({ stats }: ApprovalsManagementTabProps) {
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Profile</DialogTitle>
+            <DialogTitle>
+              Reject {selectedApproval?.product_name ? `Pitch Deck: ${selectedApproval.product_name}` : `Profile: ${selectedApproval?.user_name}`}
+            </DialogTitle>
             <DialogDescription>
-              Please provide a reason for rejecting {selectedApproval?.user_name}'s profile.
+              Please provide a detailed reason for rejection. {selectedApproval?.product_name ? 'The venture' : selectedApproval?.user_name} will receive this feedback.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

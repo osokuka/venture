@@ -4,7 +4,7 @@
  * NO MODALS - This is a dedicated page per user requirements
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
@@ -33,6 +33,9 @@ const CreatePitchDeck: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const productId = searchParams.get('productId'); // Optional: if editing existing product
+  
+  // Ref for file input to programmatically trigger click
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [isMutating, setIsMutating] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
@@ -98,22 +101,36 @@ const CreatePitchDeck: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('=== Form Submit Started ===');
+    console.log('Product Data:', productData);
+    console.log('Pitch Deck Data:', { ...pitchDeckData, file: pitchDeckData.file ? `File: ${pitchDeckData.file.name}` : 'No file' });
 
     // Validate product fields
     if (!productData.name || !productData.industry_sector || !productData.website || !productData.linkedin_url || !productData.short_description) {
+      console.log('❌ Validation failed: Missing required product fields');
+      console.log('Missing fields:', {
+        name: !productData.name,
+        industry_sector: !productData.industry_sector,
+        website: !productData.website,
+        linkedin_url: !productData.linkedin_url,
+        short_description: !productData.short_description
+      });
       toast.error('Please fill in all required product fields');
       return;
     }
 
     // Validate pitch deck file
     if (!pitchDeckData.file) {
-      toast.error('Please select a pitch deck PDF file');
+      console.log('❌ Validation failed: No file selected');
+      toast.error('Please select a pitch deck file (PDF or PowerPoint)');
       return;
     }
 
     // Validate file
     const validation = validatePitchDeckFile(pitchDeckData.file);
     if (!validation.isValid) {
+      console.log('❌ File validation failed:', validation.error);
       toast.error(validation.error || 'Invalid file');
       return;
     }
@@ -122,9 +139,14 @@ const CreatePitchDeck: React.FC = () => {
     const websiteUrl = validateAndSanitizeUrl(productData.website);
     const linkedinUrl = validateAndSanitizeUrl(productData.linkedin_url);
     if (!websiteUrl || !linkedinUrl) {
+      console.log('❌ URL validation failed');
+      console.log('Website URL:', productData.website, '→', websiteUrl);
+      console.log('LinkedIn URL:', productData.linkedin_url, '→', linkedinUrl);
       toast.error('Please enter valid URLs for website and LinkedIn');
       return;
     }
+
+    console.log('✅ All validations passed, starting submission...');
 
     try {
       setIsMutating(true);
@@ -133,6 +155,7 @@ const CreatePitchDeck: React.FC = () => {
       let targetProductId = selectedProductId;
       
       if (!targetProductId) {
+        console.log('📝 Creating new product...');
         // Create new product
         const sanitizedProductData = {
           name: sanitizeInput(productData.name, 255),
@@ -147,15 +170,20 @@ const CreatePitchDeck: React.FC = () => {
 
         const newProduct = await productService.createProduct(sanitizedProductData);
         targetProductId = newProduct.id;
+        console.log('✅ Product created:', targetProductId);
+      } else {
+        console.log('📦 Using existing product:', targetProductId);
       }
 
       // Security: Validate UUID
       if (!validateUuid(targetProductId)) {
+        console.log('❌ Invalid product UUID:', targetProductId);
         toast.error('Invalid product ID');
         return;
       }
 
       // Step 2: Prepare pitch deck metadata
+      console.log('📊 Preparing metadata...');
       const metadata: any = {};
       
       if (pitchDeckData.problem_statement.trim()) {
@@ -202,15 +230,21 @@ const CreatePitchDeck: React.FC = () => {
       }
 
       // Step 3: Upload pitch deck with metadata
+      console.log('📤 Uploading pitch deck...');
+      console.log('Metadata:', metadata);
+      console.log('File:', pitchDeckData.file.name, pitchDeckData.file.size, 'bytes');
+      
       await productService.uploadPitchDeck(
         targetProductId,
         pitchDeckData.file,
         Object.keys(metadata).length > 0 ? metadata : undefined
       );
 
+      console.log('✅ Pitch deck uploaded successfully!');
       toast.success('Pitch deck created successfully!');
       navigate('/dashboard/venture/products');
     } catch (err: any) {
+      console.error('❌ Error during submission:', err);
       console.error('Failed to create pitch deck:', err);
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to create pitch deck.';
       if (errorMsg.includes('maximum limit')) {
@@ -301,7 +335,7 @@ const CreatePitchDeck: React.FC = () => {
                 </Label>
                 <Input
                   value={productData.name}
-                  onChange={(e) => setProductData({ ...productData, name: sanitizeInput(e.target.value, 255) })}
+                  onChange={(e) => setProductData({ ...productData, name: e.target.value })}
                   placeholder="Enter company or product name"
                   disabled={!!selectedProductId}
                   className="h-10"
@@ -340,10 +374,7 @@ const CreatePitchDeck: React.FC = () => {
                 </Label>
                 <Input
                   value={productData.website}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value, 2048);
-                    setProductData({ ...productData, website: sanitized });
-                  }}
+                  onChange={(e) => setProductData({ ...productData, website: e.target.value })}
                   placeholder="https://yourcompany.com"
                   disabled={!!selectedProductId}
                   className="h-10"
@@ -355,10 +386,7 @@ const CreatePitchDeck: React.FC = () => {
                 </Label>
                 <Input
                   value={productData.linkedin_url}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value, 2048);
-                    setProductData({ ...productData, linkedin_url: sanitized });
-                  }}
+                  onChange={(e) => setProductData({ ...productData, linkedin_url: e.target.value })}
                   placeholder="https://linkedin.com/company/yourcompany"
                   disabled={!!selectedProductId}
                   className="h-10"
@@ -372,7 +400,7 @@ const CreatePitchDeck: React.FC = () => {
               </Label>
               <Textarea
                 value={productData.short_description}
-                onChange={(e) => setProductData({ ...productData, short_description: sanitizeInput(e.target.value, 1000) })}
+                onChange={(e) => setProductData({ ...productData, short_description: e.target.value })}
                 placeholder="Brief description of your product (2-3 sentences)"
                 rows={3}
                 disabled={!!selectedProductId}
@@ -391,16 +419,18 @@ const CreatePitchDeck: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6 space-y-5">
-            {/* Pitch Deck File - LinkedIn Style */}
+            {/* Pitch Deck File - LinkedIn Style with Custom Button */}
             <div className="space-y-2">
               <Label htmlFor="file" className="text-sm font-medium text-gray-700">
-                Pitch Deck PDF <span className="text-red-500">*</span>
+                Pitch Deck File <span className="text-red-500">*</span>
               </Label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                <Input
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
                   id="file"
                   type="file"
-                  accept=".pdf"
+                  accept=".pdf,.ppt,.pptx"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -408,18 +438,46 @@ const CreatePitchDeck: React.FC = () => {
                     }
                   }}
                   disabled={isMutating}
-                  className="cursor-pointer"
+                  style={{ display: 'none' }}
                 />
+                {/* Custom upload button */}
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <Button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      // Trigger the hidden file input using ref
+                      fileInputRef.current?.click();
+                    }}
+                    disabled={isMutating}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    style={{ backgroundColor: isMutating ? '#1e40af' : '#2563EB' }}
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Choose File
+                  </Button>
+                  {pitchDeckData.file && (
+                    <p className="text-sm text-green-600 text-center">
+                      ✓ Selected: {pitchDeckData.file.name} ({(pitchDeckData.file.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                  )}
+                  {!pitchDeckData.file && (
+                    <p className="text-sm text-gray-500 text-center">
+                      No file selected
+                    </p>
+                  )}
+                </div>
               </div>
               <p className="text-xs text-gray-500">
-                PDF files only, maximum 10MB
+                PDF or PowerPoint files (.pdf, .ppt, .pptx), maximum 10MB
               </p>
             </div>
 
             {/* Problem Statement - LinkedIn Style */}
             <div className="space-y-2">
               <Label htmlFor="problem_statement" className="text-sm font-medium text-gray-700">
-                Problem Statement <span className="text-red-500">*</span>
+                Problem Statement
               </Label>
               <Textarea
                 id="problem_statement"
@@ -427,7 +485,7 @@ const CreatePitchDeck: React.FC = () => {
                 onChange={(e) =>
                   setPitchDeckData({
                     ...pitchDeckData,
-                    problem_statement: sanitizeInput(e.target.value, 10000),
+                    problem_statement: e.target.value,
                   })
                 }
                 placeholder="What problem does your product solve? Describe the pain points your target customers face."
@@ -440,7 +498,7 @@ const CreatePitchDeck: React.FC = () => {
             {/* Solution Description - LinkedIn Style */}
             <div className="space-y-2">
               <Label htmlFor="solution_description" className="text-sm font-medium text-gray-700">
-                Solution Description <span className="text-red-500">*</span>
+                Solution Description
               </Label>
               <Textarea
                 id="solution_description"
@@ -448,7 +506,7 @@ const CreatePitchDeck: React.FC = () => {
                 onChange={(e) =>
                   setPitchDeckData({
                     ...pitchDeckData,
-                    solution_description: sanitizeInput(e.target.value, 10000),
+                    solution_description: e.target.value,
                   })
                 }
                 placeholder="How does your product solve this problem? Explain your unique approach and value proposition."
@@ -461,7 +519,7 @@ const CreatePitchDeck: React.FC = () => {
             {/* Target Market / Market Size - LinkedIn Style */}
             <div className="space-y-2">
               <Label htmlFor="target_market" className="text-sm font-medium text-gray-700">
-                Target Market / Market Size <span className="text-red-500">*</span>
+                Target Market / Market Size
               </Label>
               <Textarea
                 id="target_market"
@@ -469,7 +527,7 @@ const CreatePitchDeck: React.FC = () => {
                 onChange={(e) =>
                   setPitchDeckData({
                     ...pitchDeckData,
-                    target_market: sanitizeInput(e.target.value, 10000),
+                    target_market: e.target.value,
                   })
                 }
                 placeholder="Describe your target market, customer segments, and total addressable market size."
@@ -483,7 +541,7 @@ const CreatePitchDeck: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label htmlFor="funding_amount" className="text-sm font-medium text-gray-700">
-                  Investment Size <span className="text-red-500">*</span>
+                  Investment Size
                 </Label>
                 <Input
                   id="funding_amount"
@@ -491,7 +549,7 @@ const CreatePitchDeck: React.FC = () => {
                   onChange={(e) =>
                     setPitchDeckData({
                       ...pitchDeckData,
-                      funding_amount: sanitizeInput(e.target.value, 50),
+                      funding_amount: e.target.value,
                     })
                   }
                   placeholder="e.g., $2M, $500K"
@@ -501,7 +559,7 @@ const CreatePitchDeck: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="funding_stage" className="text-sm font-medium text-gray-700">
-                  Funding Stage <span className="text-red-500">*</span>
+                  Funding Stage
                 </Label>
                 <Select
                   value={pitchDeckData.funding_stage}
@@ -528,7 +586,7 @@ const CreatePitchDeck: React.FC = () => {
             {/* Use of Funds - LinkedIn Style */}
             <div className="space-y-2">
               <Label htmlFor="use_of_funds" className="text-sm font-medium text-gray-700">
-                Use of Funds <span className="text-red-500">*</span>
+                Use of Funds
               </Label>
               <Textarea
                 id="use_of_funds"
@@ -536,7 +594,7 @@ const CreatePitchDeck: React.FC = () => {
                 onChange={(e) =>
                   setPitchDeckData({
                     ...pitchDeckData,
-                    use_of_funds: sanitizeInput(e.target.value, 10000),
+                    use_of_funds: e.target.value,
                   })
                 }
                 placeholder="How will the funds be used? (e.g., 40% product development, 30% marketing, 20% team expansion, 10% operations)"
@@ -550,7 +608,7 @@ const CreatePitchDeck: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm font-medium text-gray-700">
-                  Traction Metrics <span className="text-red-500">*</span>
+                  Traction Metrics <span className="text-xs text-gray-500">(Optional)</span>
                 </Label>
                 <p className="text-xs text-gray-500 mt-1 mb-4">
                   Share your key metrics and achievements
@@ -568,7 +626,7 @@ const CreatePitchDeck: React.FC = () => {
                     onChange={(e) =>
                       setPitchDeckData({
                         ...pitchDeckData,
-                        traction_users: sanitizeInput(e.target.value, 100),
+                        traction_users: e.target.value,
                       })
                     }
                     placeholder="e.g., 10,000 active users"
@@ -587,7 +645,7 @@ const CreatePitchDeck: React.FC = () => {
                     onChange={(e) =>
                       setPitchDeckData({
                         ...pitchDeckData,
-                        traction_revenue: sanitizeInput(e.target.value, 100),
+                        traction_revenue: e.target.value,
                       })
                     }
                     placeholder="e.g., $50K/month, $1M ARR"
@@ -606,7 +664,7 @@ const CreatePitchDeck: React.FC = () => {
                     onChange={(e) =>
                       setPitchDeckData({
                         ...pitchDeckData,
-                        traction_growth: sanitizeInput(e.target.value, 100),
+                        traction_growth: e.target.value,
                       })
                     }
                     placeholder="e.g., 20% MoM, 300% YoY"
@@ -625,7 +683,7 @@ const CreatePitchDeck: React.FC = () => {
                     onChange={(e) =>
                       setPitchDeckData({
                         ...pitchDeckData,
-                        traction_custom: sanitizeInput(e.target.value, 500),
+                        traction_custom: e.target.value,
                       })
                     }
                     placeholder="e.g., 50 enterprise clients, 95% retention"
@@ -653,6 +711,7 @@ const CreatePitchDeck: React.FC = () => {
             type="submit"
             disabled={isMutating}
             className="px-6 h-10 font-medium bg-blue-600 hover:bg-blue-700 text-white"
+            style={{ backgroundColor: isMutating ? '#1e40af' : '#2563EB' }} // Force blue background - fixes transparent bg issue
           >
             {isMutating ? (
               <>

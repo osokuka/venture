@@ -147,6 +147,33 @@ export const productService = {
   },
 
   /**
+   * Reopen an APPROVED or SUBMITTED product for editing
+   * Changes status back to DRAFT
+   */
+  async reopenProduct(productId: string): Promise<{ detail: string; previous_status: string; new_status: string }> {
+    const response = await apiClient.post(`/ventures/products/${productId}/reopen`);
+    return response.data;
+  },
+
+  /**
+   * Delete a product (DRAFT/REJECTED only)
+   */
+  async deleteProduct(productId: string): Promise<{ detail: string }> {
+    const response = await apiClient.delete(`/ventures/products/${productId}/delete`);
+    return response.data;
+  },
+
+  /**
+   * Request deletion of a SUBMITTED or APPROVED product
+   */
+  async requestProductDeletion(productId: string, reason?: string): Promise<{ detail: string; review_id: string }> {
+    const response = await apiClient.post(`/ventures/products/${productId}/request-deletion`, {
+      reason: reason || ''
+    });
+    return response.data;
+  },
+
+  /**
    * Get public products (approved and active)
    */
   async getPublicProducts(): Promise<VentureProduct[]> {

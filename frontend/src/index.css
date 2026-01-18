@@ -1826,6 +1826,14 @@
     background-color: var(--color-blue-500);
   }
 
+  .bg-blue-600 {
+    background-color: #2563EB;
+  }
+
+  .bg-blue-700 {
+    background-color: #1d4ed8;
+  }
+
   .bg-border {
     background-color: var(--border);
   }
@@ -3156,6 +3164,18 @@
       .hover\:bg-destructive\/90:hover {
         background-color: color-mix(in oklab, var(--destructive) 90%, transparent);
       }
+    }
+  }
+
+  @media (hover: hover) {
+    .hover\:bg-blue-600:hover {
+      background-color: #2563EB;
+    }
+  }
+
+  @media (hover: hover) {
+    .hover\:bg-blue-700:hover {
+      background-color: #1d4ed8;
     }
   }
 

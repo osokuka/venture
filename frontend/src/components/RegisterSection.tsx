@@ -77,6 +77,7 @@ export function RegisterSection({ onRegister }: RegisterSectionProps) {
               <Button 
                 className="w-full bg-blue-600 hover:bg-blue-700 group"
                 onClick={() => onRegister('venture')}
+                style={{ backgroundColor: '#2563EB' }} // Force blue background - fixes transparent bg issue
               >
                 Start Your Journey
                 <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
