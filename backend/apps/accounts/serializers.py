@@ -159,3 +159,47 @@ class EmailVerificationSerializer(serializers.Serializer):
             return value
         except EmailVerificationToken.DoesNotExist:
             raise serializers.ValidationError('Invalid verification token.')
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer for password reset request."""
+    email = serializers.EmailField(required=True, max_length=254)
+    
+    def validate_email(self, value):
+        """Security: Validate email format and length."""
+        if not value:
+            raise serializers.ValidationError("Email is required.")
+        if len(value) > 254:
+            raise serializers.ValidationError("Email must be 254 characters or less.")
+        validator = EmailValidator()
+        try:
+            validator(value)
+        except ValidationError:
+            raise serializers.ValidationError("Please enter a valid email address.")
+        return value.strip().lower()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for password reset confirmation."""
+    token = serializers.CharField(required=True, max_length=255)
+    new_password = serializers.CharField(required=True, write_only=True, validators=[validate_password], max_length=128)
+    new_password_confirm = serializers.CharField(required=True, write_only=True, max_length=128)
+    
+    def validate_token(self, value):
+        """Validate token exists and is valid."""
+        try:
+            from .models import PasswordResetToken
+            token_obj = PasswordResetToken.objects.get(token=value)
+            if not token_obj.is_valid():
+                raise serializers.ValidationError('Token is invalid or expired.')
+            return value
+        except PasswordResetToken.DoesNotExist:
+            raise serializers.ValidationError('Invalid password reset token.')
+    
+    def validate(self, attrs):
+        """Security: Validate passwords match."""
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError({
+                'new_password_confirm': 'Passwords do not match.'
+            })
+        return attrs

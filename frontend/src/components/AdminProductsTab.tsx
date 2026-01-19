@@ -26,6 +26,8 @@ import {
   AlertCircle,
   Power,
   PowerOff,
+  Eye,
+  ExternalLink,
 } from 'lucide-react';
 import apiClient from '../services/api';
 import { Alert, AlertDescription } from './ui/alert';
@@ -39,6 +41,11 @@ interface ProductListItem {
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   is_active: boolean;
   created_at: string;
+  documents?: Array<{
+    id: string;
+    document_type: string;
+    is_active?: boolean;
+  }>;
 }
 
 interface AdminProductsTabProps {
@@ -94,7 +101,7 @@ export function AdminProductsTab({ stats }: AdminProductsTabProps) {
   };
 
   const handleDelete = async (product: ProductListItem) => {
-    if (!confirm(`Delete product "${product.name}"? This action cannot be undone.`)) {
+    if (!confirm(`Delete pitch deck "${product.name}"? This action cannot be undone.`)) {
       return;
     }
 
@@ -103,12 +110,24 @@ export function AdminProductsTab({ stats }: AdminProductsTabProps) {
       await apiClient.delete(`/admin/products/${product.id}`);
       setProducts((prev) => prev.filter((p) => p.id !== product.id));
       setTotalCount((c) => Math.max(0, c - 1));
-      alert('Product deleted successfully.');
+      alert('Pitch deck deleted successfully.');
     } catch (err: any) {
       console.error('Failed to delete product:', err);
-      alert('Failed to delete product. Please try again.');
+      alert('Failed to delete pitch deck. Please try again.');
     } finally {
       setIsMutating(false);
+    }
+  };
+
+  const handleViewPitchDeck = (product: ProductListItem) => {
+    // Find the pitch deck document
+    const pitchDeck = product.documents?.find((doc) => doc.document_type === 'PITCH_DECK');
+    
+    if (pitchDeck) {
+      // Open pitch deck details in new tab (admin view)
+      window.open(`/dashboard/admin/pitch-deck/${product.id}/${pitchDeck.id}`, '_blank');
+    } else {
+      alert('No pitch deck found for this product.');
     }
   };
 
@@ -140,9 +159,9 @@ export function AdminProductsTab({ stats }: AdminProductsTabProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Product Management</CardTitle>
+          <CardTitle>Pitch Deck Management</CardTitle>
           <CardDescription>
-            Manage all venture products. Admin can delete products.
+            Manage all venture pitch decks. Admin can view and delete pitch decks.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -151,7 +170,7 @@ export function AdminProductsTab({ stats }: AdminProductsTabProps) {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search by product name or user email..."
+                placeholder="Search by pitch deck name or user email..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -208,21 +227,21 @@ export function AdminProductsTab({ stats }: AdminProductsTabProps) {
           ) : products.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Building className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-lg font-medium">No products found</p>
+              <p className="text-lg font-medium">No pitch decks found</p>
               <p className="text-sm mt-2">
                 {searchQuery || filterStatus !== 'ALL' || filterActive !== 'ALL'
                   ? 'Try adjusting your search or filters'
-                  : 'No products created yet'}
+                  : 'No pitch decks created yet'}
               </p>
             </div>
           ) : (
             <>
-              {/* Products Table */}
+              {/* Pitch Decks Table */}
               <div className="border rounded-lg overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product</TableHead>
+                      <TableHead>Pitch Deck</TableHead>
                       <TableHead>Owner</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Active</TableHead>
@@ -265,16 +284,29 @@ export function AdminProductsTab({ stats }: AdminProductsTabProps) {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isMutating}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDelete(product)}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </Button>
+                          <div className="flex gap-2">
+                            {product.documents?.find((doc) => doc.document_type === 'PITCH_DECK') && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={() => handleViewPitchDeck(product)}
+                              >
+                                <Eye className="w-4 h-4 mr-2" />
+                                View
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={isMutating}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDelete(product)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

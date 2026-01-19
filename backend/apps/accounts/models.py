@@ -106,3 +106,58 @@ class EmailVerificationToken(models.Model):
             token=token,
             expires_at=expires_at
         )
+
+
+class PasswordResetToken(models.Model):
+    """
+    Model for password reset tokens.
+    Security: Tokens expire after 1 hour, single-use only.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token = models.CharField(max_length=255, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True, help_text="IP address of request")
+    
+    class Meta:
+        db_table = 'password_reset_tokens'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['token', 'used_at']),
+            models.Index(fields=['user', 'used_at']),
+        ]
+    
+    def __str__(self):
+        return f"Password reset token for {self.user.email}"
+    
+    def is_valid(self):
+        """Check if token is valid and not expired."""
+        return (
+            self.used_at is None and
+            timezone.now() < self.expires_at
+        )
+    
+    @classmethod
+    def create_for_user(cls, user, ip_address=None):
+        """
+        Create a new password reset token for a user.
+        Security: Invalidates any existing unused tokens to prevent token reuse.
+        """
+        # Invalidate any existing unused tokens
+        cls.objects.filter(user=user, used_at__isnull=True).update(used_at=timezone.now())
+        
+        token = generate_verification_token()
+        expires_at = get_token_expiry(hours=1)  # 1 hour expiry for security
+        return cls.objects.create(
+            user=user,
+            token=token,
+            expires_at=expires_at,
+            ip_address=ip_address
+        )
+    
+    def mark_as_used(self):
+        """Mark token as used (single-use security)."""
+        self.used_at = timezone.now()
+        self.save(update_fields=['used_at'])

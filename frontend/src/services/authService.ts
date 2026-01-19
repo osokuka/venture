@@ -96,6 +96,32 @@ export const authService = {
   },
 
   /**
+   * Request password reset
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    try {
+      await apiClient.post('/auth/password-reset-request', { email });
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Confirm password reset with token
+   */
+  async confirmPasswordReset(token: string, newPassword: string, newPasswordConfirm: string): Promise<void> {
+    try {
+      await apiClient.post('/auth/password-reset-confirm', {
+        token,
+        new_password: newPassword,
+        new_password_confirm: newPasswordConfirm,
+      });
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {

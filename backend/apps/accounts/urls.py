@@ -10,6 +10,8 @@ from .views import (
     resend_verification,
     get_current_user,
     change_password,
+    password_reset_request,
+    password_reset_confirm,
     AdminUserListView,
     admin_stats
 )
@@ -20,6 +22,8 @@ urlpatterns = [
     path('refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('verify-email', verify_email, name='verify_email'),
     path('resend-verification', resend_verification, name='resend_verification'),
+    path('password-reset-request', password_reset_request, name='password_reset_request'),
+    path('password-reset-confirm', password_reset_confirm, name='password_reset_confirm'),
     path('me', get_current_user, name='current_user'),
     path('change-password', change_password, name='change_password'),
 ]

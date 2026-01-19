@@ -5,12 +5,16 @@ from celery import shared_task
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from django.urls import reverse
+from django.utils import timezone
 from .models import EmailVerificationToken
 
 
 def get_email_base_html(title, content, button_text=None, button_url=None, footer_note=None):
     """Generate base HTML template for emails."""
-    frontend_url = settings.FRONTEND_URL or 'http://localhost:3000'
+    # Use FRONTEND_URL from settings (should be set via environment variable)
+    frontend_url = settings.FRONTEND_URL
+    if not frontend_url:
+        raise ValueError("FRONTEND_URL must be set in Django settings")
     
     button_html = ""
     if button_text and button_url:
@@ -109,7 +113,10 @@ def send_verification_email(user_id, token):
         user = User.objects.get(id=user_id)
         
         # Create verification URL
-        verification_url = f"{settings.FRONTEND_URL or 'http://localhost:3000'}/verify-email?token={token}"
+        frontend_url = settings.FRONTEND_URL
+        if not frontend_url:
+            raise ValueError("FRONTEND_URL must be set in Django settings")
+        verification_url = f"{frontend_url}/verify-email?token={token}"
         
         subject = 'Verify your VentureUP Link account'
         
@@ -183,7 +190,9 @@ def send_approval_notification(user_id, approved=True, rejection_reason=None):
     
     try:
         user = User.objects.get(id=user_id)
-        frontend_url = settings.FRONTEND_URL or 'http://localhost:3000'
+        frontend_url = settings.FRONTEND_URL
+        if not frontend_url:
+            raise ValueError("FRONTEND_URL must be set in Django settings")
         login_url = f"{frontend_url}/login"
         
         if approved:
@@ -314,3 +323,219 @@ The VentureUP Link Team
         return f"User with id {user_id} not found"
     except Exception as e:
         return f"Error sending email: {str(e)}"
+
+
+@shared_task
+def send_deletion_notification(user_id, product_name, product_status, deleted_by_admin=False):
+    """
+    Send email notification when a pitch deck is deleted.
+    
+    Args:
+        user_id: User ID (owner of the deleted product)
+        product_name: Name of the deleted product
+        product_status: Status of the product before deletion
+        deleted_by_admin: True if deleted by admin, False if deleted by user
+    """
+    from .models import User
+    
+    try:
+        user = User.objects.get(id=user_id)
+        frontend_url = settings.FRONTEND_URL
+        if not frontend_url:
+            raise ValueError("FRONTEND_URL must be set in Django settings")
+        dashboard_url = f"{frontend_url}/dashboard/venture/pitch"
+        
+        subject = 'Your pitch deck has been deleted'
+        
+        # Determine deletion context
+        if deleted_by_admin:
+            deletion_context = "deleted by an administrator"
+            action_context = "If you believe this was done in error, please contact our support team."
+        else:
+            deletion_context = "successfully deleted"
+            action_context = "If you need to create a new pitch deck, you can do so from your dashboard."
+        
+        # HTML content
+        html_content = get_email_base_html(
+            title=subject,
+            content=f"""
+            <div style="text-align: center; margin-bottom: 24px;">
+                <div style="display: inline-block; width: 64px; height: 64px; background-color: #6b7280; border-radius: 50%; margin-bottom: 16px;">
+                    <div style="color: #ffffff; font-size: 36px; text-align: center; line-height: 64px;">🗑️</div>
+                </div>
+            </div>
+            <h2 style="margin: 0 0 16px 0; color: #111827; font-size: 24px; font-weight: 600; text-align: center;">
+                Pitch Deck Deleted
+            </h2>
+            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
+                Hello {user.full_name or 'there'},
+            </p>
+            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
+                This email confirms that your pitch deck <strong style="color: #111827;">"{product_name}"</strong> has been {deletion_context}.
+            </p>
+            <div style="background-color: #f9fafb; border-left: 4px solid #6b7280; padding: 16px; margin: 24px 0; border-radius: 4px;">
+                <p style="margin: 0 0 8px 0; color: #374151; font-size: 15px; font-weight: 600;">
+                    Deletion Details:
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #6b7280; font-size: 15px; line-height: 1.8;">
+                    <li><strong>Pitch Deck:</strong> {product_name}</li>
+                    <li><strong>Previous Status:</strong> {product_status}</li>
+                    <li><strong>Deleted:</strong> {timezone.now().strftime('%B %d, %Y at %I:%M %p')}</li>
+                </ul>
+            </div>
+            <p style="margin: 24px 0 0 0; color: #374151; font-size: 16px;">
+                {action_context}
+            </p>
+            """,
+            button_text="Go to Dashboard",
+            button_url=dashboard_url,
+            footer_note="This action cannot be undone. All associated data, files, and documents have been permanently removed."
+        )
+        
+        # Plain text content
+        text_content = f"""
+Hello {user.full_name or 'there'},
+
+This email confirms that your pitch deck "{product_name}" has been {deletion_context}.
+
+Deletion Details:
+- Pitch Deck: {product_name}
+- Previous Status: {product_status}
+- Deleted: {timezone.now().strftime('%B %d, %Y at %I:%M %p')}
+
+{action_context}
+
+Visit your dashboard: {dashboard_url}
+
+This action cannot be undone. All associated data, files, and documents have been permanently removed.
+
+Best regards,
+The VentureUP Link Team
+        """
+        
+        # Send email with both HTML and plain text
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[user.email]
+        )
+        msg.attach_alternative(html_content, "text/html")
+        msg.send(fail_silently=False)
+        
+        return f"Deletion notification email sent to {user.email}"
+    except User.DoesNotExist:
+        return f"User with id {user_id} not found"
+    except Exception as e:
+        return f"Error sending email: {str(e)}"
+
+
+@shared_task
+def send_password_reset_email(user_id, token):
+    """
+    Send password reset email to user.
+    
+    Args:
+        user_id: User ID
+        token: Password reset token
+    """
+    from .models import User
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Create password reset URL
+        frontend_url = settings.FRONTEND_URL
+        if not frontend_url:
+            raise ValueError("FRONTEND_URL must be set in Django settings")
+        reset_url = f"{frontend_url}/reset-password?token={token}"
+        
+        subject = 'Reset your VentureUP Link password'
+        
+        # HTML content
+        html_content = get_email_base_html(
+            title=subject,
+            content=f"""
+            <div style="text-align: center; margin-bottom: 24px;">
+                <div style="display: inline-block; width: 64px; height: 64px; background-color: #3b82f6; border-radius: 50%; margin-bottom: 16px;">
+                    <div style="color: #ffffff; font-size: 36px; text-align: center; line-height: 64px;">🔒</div>
+                </div>
+            </div>
+            <h2 style="margin: 0 0 16px 0; color: #111827; font-size: 24px; font-weight: 600; text-align: center;">
+                Password Reset Request
+            </h2>
+            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
+                Hello {user.full_name or 'there'},
+            </p>
+            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
+                We received a request to reset your password for your VentureUP Link account.
+            </p>
+            <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
+                Click the button below to reset your password. This link will expire in <strong>1 hour</strong> for security.
+            </p>
+            <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 24px 0; border-radius: 4px;">
+                <p style="margin: 0 0 8px 0; color: #1e40af; font-size: 15px; font-weight: 600;">
+                    Security Notice:
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #1e3a8a; font-size: 15px; line-height: 1.8;">
+                    <li>This link can only be used once</li>
+                    <li>It will expire in 1 hour</li>
+                    <li>If you didn't request this, please ignore this email</li>
+                </ul>
+            </div>
+            """,
+            button_text="Reset Password",
+            button_url=reset_url,
+            footer_note="If you didn't request a password reset, please ignore this email. Your password will remain unchanged."
+        )
+        
+        # Plain text content
+        text_content = f"""
+Hello {user.full_name or 'there'},
+
+We received a request to reset your password for your VentureUP Link account.
+
+Click the link below to reset your password:
+{reset_url}
+
+This link will expire in 1 hour and can only be used once.
+
+Security Notice:
+- This link can only be used once
+- It will expire in 1 hour
+- If you didn't request this, please ignore this email
+
+If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
+
+Best regards,
+The VentureUP Link Team
+        """
+        
+        # Send email with both HTML and plain text
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[user.email]
+        )
+        msg.attach_alternative(html_content, "text/html")
+        
+        # Send email and log any errors
+        try:
+            msg.send(fail_silently=False)
+            return f"Password reset email sent to {user.email}"
+        except Exception as email_error:
+            # Log the actual SMTP error for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to send password reset email to {user.email}: {str(email_error)}")
+            # Re-raise to let Celery know the task failed
+            raise Exception(f"Failed to send password reset email: {str(email_error)}")
+    except User.DoesNotExist:
+        return f"User with id {user_id} not found"
+    except Exception as e:
+        # Log and re-raise to mark task as failed
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Password reset email task error: {str(e)}")
+        raise

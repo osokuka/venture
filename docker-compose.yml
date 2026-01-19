@@ -45,7 +45,7 @@ services:
       - DB_HOST=db
       - REDIS_URL=redis://redis:6379/0
       - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000,http://ventureuplink.com,https://ventureuplink.com,http://www.ventureuplink.com,https://www.ventureuplink.com,http://backend.ventureuplink.com,https://backend.ventureuplink.com
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=https://ventureuplink.com
       - EMAIL_HOST=mail.prosolutions-ks.com
       - EMAIL_PORT=465
       - EMAIL_USE_SSL=True
@@ -112,7 +112,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_URL=redis://redis:6379/0
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=https://ventureuplink.com
       - EMAIL_HOST=mail.prosolutions-ks.com
       - EMAIL_PORT=465
       - EMAIL_USE_SSL=True
@@ -140,7 +140,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_URL=redis://redis:6379/0
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=https://ventureuplink.com
       - EMAIL_HOST=mail.prosolutions-ks.com
       - EMAIL_PORT=465
       - EMAIL_USE_SSL=True

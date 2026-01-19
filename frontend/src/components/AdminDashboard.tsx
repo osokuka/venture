@@ -211,7 +211,7 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
           {[
             { id: 'overview', label: 'Overview', icon: BarChart3 },
             { id: 'users', label: 'Users', icon: Users },
-            { id: 'products', label: 'Products', icon: Building },
+            { id: 'products', label: 'Pitch Decks', icon: Building },
             { id: 'approvals', label: 'Approvals', icon: CheckCircle },
             { id: 'analytics', label: 'Analytics', icon: Activity },
           ].map((tab) => (

@@ -2,10 +2,12 @@
 Views for accounts app.
 """
 from rest_framework import status, generics
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from shared.throttles import PasswordResetRateThrottle
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.pagination import PageNumberPagination
@@ -14,14 +16,16 @@ from django.db.models import Q, Count
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.contenttypes.models import ContentType
-from .models import User, EmailVerificationToken
+from .models import User, EmailVerificationToken, PasswordResetToken
 from .serializers import (
     UserRegistrationSerializer,
     UserSerializer,
     EmailVerificationSerializer,
-    AdminUserUpsertSerializer
+    AdminUserUpsertSerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer
 )
-from .tasks import send_verification_email
+from .tasks import send_verification_email, send_password_reset_email
 from shared.permissions import IsAdminOrReviewer
 
 
@@ -59,7 +63,10 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     """
     Custom login view that updates last_login.
     POST /api/auth/login
+    
+    Security: Rate limited to prevent brute force attacks.
     """
+    throttle_classes = [AnonRateThrottle]  # Rate limit: 10/hour for anonymous users
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         
@@ -101,6 +108,7 @@ def verify_email(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])  # Rate limit: 100/hour for authenticated users
 def resend_verification(request):
     """
     Resend verification email.
@@ -251,10 +259,129 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().perform_destroy(instance)
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PasswordResetRateThrottle])  # Rate limit: 1/hour per email address
+def password_reset_request(request):
+    """
+    Request password reset.
+    POST /api/auth/password-reset-request
+    Body: { "email": "user@example.com" }
+    
+    Security: 
+    - Always returns success message to prevent email enumeration
+    - Rate limited to 1 request per hour per email address
+    - Additional check: Prevents multiple requests within 1 hour even if throttle is bypassed
+    """
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    
+    email = serializer.validated_data['email']
+    
+    # Security: Always return success to prevent email enumeration
+    # Don't reveal if email exists in system
+    try:
+        user = User.objects.get(email=email, is_active=True)
+        
+        # Additional security: Check if a reset was requested recently (within last hour)
+        # This provides defense-in-depth even if throttle is bypassed
+        # Note: The throttle handles rate limiting, but this check prevents multiple emails
+        # if someone bypasses the throttle or if throttle cache is cleared
+        recent_reset = PasswordResetToken.objects.filter(
+            user=user,
+            created_at__gte=timezone.now() - timedelta(hours=1)
+        ).exists()
+        
+        if recent_reset:
+            # Rate limit exceeded - but don't reveal this to prevent enumeration
+            # Just silently ignore the request (throttle should have caught this, but defense-in-depth)
+            pass
+        else:
+            # Get client IP for security tracking
+            ip_address = request.META.get('REMOTE_ADDR') or request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+            
+            # Create password reset token
+            reset_token = PasswordResetToken.create_for_user(user, ip_address=ip_address)
+            
+            # Send password reset email via Celery
+            send_password_reset_email.delay(str(user.id), reset_token.token)
+        
+    except User.DoesNotExist:
+        # Security: Don't reveal if user exists
+        pass
+    
+    # Always return success message (security best practice)
+    return Response({
+        'message': 'If an account exists with this email, a password reset link has been sent.'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_confirm(request):
+    """
+    Confirm password reset with token.
+    POST /api/auth/password-reset-confirm
+    Body: {
+        "token": "...",
+        "new_password": "...",
+        "new_password_confirm": "..."
+    }
+    
+    Security: Token is single-use and expires after 1 hour.
+    """
+    # Log request data for debugging (without sensitive info)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Password reset confirm - token present: {'token' in request.data}, password present: {'new_password' in request.data}")
+    
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    if not serializer.is_valid():
+        # Log validation errors for debugging
+        logger.warning(f"Password reset confirm validation failed: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    token = serializer.validated_data['token']
+    new_password = serializer.validated_data['new_password']
+    
+    # Get token object
+    try:
+        token_obj = PasswordResetToken.objects.get(token=token)
+        
+        # Security: Verify token is still valid
+        if not token_obj.is_valid():
+            return Response(
+                {'detail': 'Token is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update user password
+        user = token_obj.user
+        user.set_password(new_password)
+        user.save()
+        
+        # Security: Mark token as used (single-use)
+        token_obj.mark_as_used()
+        
+        # Security: Invalidate all user sessions by updating password
+        # JWT tokens will remain valid until expiry, but password change
+        # ensures old sessions can't be used
+        
+        return Response({
+            'message': 'Password reset successfully. Please log in with your new password.'
+        }, status=status.HTTP_200_OK)
+        
+    except PasswordResetToken.DoesNotExist:
+        return Response(
+            {'detail': 'Invalid password reset token.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def change_password(request):
     """
-    Change user password.
+    Change user password (authenticated users).
     POST /api/auth/change-password
     Body: {
         "current_password": "...",

@@ -24,6 +24,8 @@ import { PortfolioExitPlan } from "./components/PortfolioExitPlan";
 import { MeetingScheduler } from "./components/MeetingScheduler";
 import CreatePitchDeck from "./components/CreatePitchDeck";
 import { LoginForm } from "./components/LoginForm";
+import { PasswordResetRequest } from "./components/PasswordResetRequest";
+import { PasswordResetConfirm } from "./components/PasswordResetConfirm";
 import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
 import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
@@ -268,6 +270,8 @@ function AppRoutes() {
       {/* Public Routes */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginForm />} />
+      <Route path="/reset-password" element={<PasswordResetConfirm />} />
+      <Route path="/forgot-password" element={<PasswordResetRequest />} />
       <Route path="/register/venture" element={<VentureRegistration />} />
       <Route path="/register/investor" element={<InvestorRegistration />} />
       <Route path="/register/mentor" element={<MentorRegistration />} />
@@ -348,6 +352,20 @@ function AppRoutes() {
       {/* Pitch Deck Details Route - Venture View */}
       <Route
         path="/dashboard/venture/pitch-deck/:productId/:docId?"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <PitchDeckDetails />
+            </ModernDashboardLayout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Pitch Deck Details Route - Admin View */}
+      <Route
+        path="/dashboard/admin/pitch-deck/:productId/:docId?"
         element={
           user ? (
             <ModernDashboardLayout user={user}>

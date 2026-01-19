@@ -17,8 +17,11 @@ INSTALLED_APPS += [
 # Development-specific settings
 CORS_ALLOW_ALL_ORIGINS = True  # Only for development
 
-# Email backend for development (console)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# Email backend for development
+# Use SMTP backend to actually send emails (inherits from base.py)
+# If you want to test without sending real emails, change this to:
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 # Disable security features for development
 SECURE_SSL_REDIRECT = False

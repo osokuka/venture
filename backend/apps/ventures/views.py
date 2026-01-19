@@ -178,8 +178,10 @@ def delete_product(request, product_id):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Store product name for response
+    # Store product information for email notification (before deletion)
     product_name = product.name
+    product_status = product.status
+    product_owner_id = product.user.id
     
     # Delete associated files (pitch decks)
     documents = VentureDocument.objects.filter(product=product)
@@ -192,6 +194,21 @@ def delete_product(request, product_id):
     
     # Delete product (cascades to related models via CASCADE)
     product.delete()
+    
+    # Send email notification to the product owner (async via Celery)
+    try:
+        from apps.accounts.tasks import send_deletion_notification
+        send_deletion_notification.delay(
+            user_id=product_owner_id,
+            product_name=product_name,
+            product_status=product_status,
+            deleted_by_admin=is_admin and request.user.id != product_owner_id
+        )
+    except Exception as e:
+        # Log error but don't fail the deletion if email fails
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to send deletion notification email: {str(e)}")
     
     return Response(
         {'detail': f'Product "{product_name}" deleted successfully.'},

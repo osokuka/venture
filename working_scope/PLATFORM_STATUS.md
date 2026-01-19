@@ -1,5 +1,129 @@
 # VentureUPLink Platform Status
 
+## ✅ PASSWORD RESET & SECURITY ENHANCEMENTS (Jan 19, 2026)
+
+### Frontend Password Reset UI
+**Status**: ✅ **FULLY IMPLEMENTED**
+
+**Pages:**
+- ✅ `/forgot-password` - Password reset request form
+- ✅ `/reset-password?token=...` - Password reset confirmation form
+- ✅ "Forgot your password?" link added to login page
+
+**Components:**
+- ✅ `PasswordResetRequest.tsx` - Request form with email validation
+- ✅ `PasswordResetConfirm.tsx` - Password reset form with token validation
+- ✅ Real-time password strength validation
+- ✅ Security: Input sanitization and validation
+- ✅ User-friendly error messages and success states
+
+**Integration:**
+- ✅ `authService.requestPasswordReset()` - API integration
+- ✅ `authService.confirmPasswordReset()` - API integration
+- ✅ Routes configured in `AppWithRouter.tsx`
+- ✅ Links to production domain (`https://ventureuplink.com`)
+
+**User Flow:**
+1. User clicks "Forgot your password?" on login page
+2. Enters email on `/forgot-password`
+3. Receives email with reset link
+4. Clicks link → Opens `/reset-password?token=...`
+5. Sets new password with validation
+6. Auto-redirects to login page
+
+---
+
+## ✅ PASSWORD RESET & SECURITY ENHANCEMENTS (Jan 19, 2026)
+
+### Password Reset Functionality
+**Status**: ✅ **FULLY IMPLEMENTED**
+
+**Endpoints:**
+- ✅ `POST /api/auth/password-reset-request` - Request password reset (sends email)
+- ✅ `POST /api/auth/password-reset-confirm` - Confirm password reset with token
+
+**Security Features:**
+- ✅ **Email Enumeration Prevention**: Always returns success message (doesn't reveal if email exists)
+- ✅ **Single-Use Tokens**: Tokens are marked as used after password reset
+- ✅ **Short Expiry**: Tokens expire in 1 hour (vs 24 hours for email verification)
+- ✅ **IP Address Tracking**: Records IP address of reset request for security audit
+- ✅ **Token Invalidation**: Existing unused tokens are invalidated when new one is created
+- ✅ **Rate Limited**: 10 requests/hour for anonymous users to prevent abuse
+
+**Email Security:**
+- ✅ Professional HTML email template with security notices
+- ✅ Clear expiration and single-use warnings
+- ✅ Plain text fallback included
+- ✅ Uses production domain (`https://ventureuplink.com`)
+
+**Database Model:**
+- ✅ `PasswordResetToken` model with indexes for performance
+- ✅ Tracks `used_at`, `expires_at`, `ip_address` for security audit
+- ✅ Migration created: `0002_passwordresettoken.py`
+
+### Rate Limiting Implementation
+**Status**: ✅ **FULLY IMPLEMENTED**
+
+**Configuration:**
+- ✅ Django REST Framework throttling enabled globally
+- ✅ Anonymous users: **10 requests/hour**
+- ✅ Authenticated users: **100 requests/hour**
+
+**Protected Endpoints:**
+- ✅ `/api/auth/register` - Prevents spam registrations
+- ✅ `/api/auth/login` - Prevents brute force attacks
+- ✅ `/api/auth/password-reset-request` - Prevents email spam
+- ✅ `/api/auth/password-reset-confirm` - Prevents token brute forcing
+- ✅ `/api/auth/resend-verification` - Prevents verification email spam
+
+**Implementation:**
+- ✅ Uses DRF's built-in `AnonRateThrottle` and `UserRateThrottle`
+- ✅ Configured in `REST_FRAMEWORK` settings
+- ✅ Applied via `@throttle_classes` decorator on sensitive endpoints
+
+### Enhanced Email Security Practices
+**Status**: ✅ **FULLY IMPLEMENTED**
+
+**Token Security:**
+- ✅ **Secure Token Generation**: Uses `secrets.token_urlsafe(32)` (cryptographically secure)
+- ✅ **Token Expiration**: All tokens have expiration times
+  - Email verification: 24 hours
+  - Password reset: 1 hour (more sensitive)
+- ✅ **Single-Use Tokens**: Password reset tokens are single-use only
+- ✅ **Token Invalidation**: Old unused tokens are invalidated when new ones are created
+
+**Email Delivery Security:**
+- ✅ **SMTP with SSL**: All emails sent via secure SMTP (port 465, SSL)
+- ✅ **No Localhost Fallbacks**: All email links use production domain
+- ✅ **Error Handling**: Email failures don't block critical operations
+- ✅ **Async Processing**: All emails sent via Celery (non-blocking)
+
+**Email Content Security:**
+- ✅ **No Information Disclosure**: Password reset doesn't reveal if email exists
+- ✅ **Clear Security Warnings**: All emails include security notices
+- ✅ **HTTPS Links**: All email links use HTTPS
+- ✅ **Expiration Notices**: Users informed of token expiration times
+
+### Registration Email Verification
+**Status**: ✅ **VERIFIED & WORKING**
+
+**Flow:**
+1. User registers → `POST /api/auth/register`
+2. Verification token created → `EmailVerificationToken.create_for_user()`
+3. Email sent via Celery → `send_verification_email.delay()`
+4. User clicks link → `POST /api/auth/verify-email`
+5. Email verified → User can access platform
+
+**Security:**
+- ✅ Tokens expire in 24 hours
+- ✅ Old tokens invalidated when new ones created
+- ✅ Rate limited to prevent abuse
+- ✅ Email sent asynchronously (non-blocking)
+
+---
+
+# VentureUPLink Platform Status
+
 ## ✅ PITCH DECK SHARING WITH INVESTORS (Jan 18, 2026)
 
 ### Enhanced Investor Tab - Share Pitch Deck Directly
@@ -1346,6 +1470,41 @@ try {
   - ✅ Both templates include responsive design and plain text fallback
 - **Configuration**: Uses `FRONTEND_URL` from settings for login links
 - **Integration**: ✅ Connected to approval/rejection views in `apps.approvals.views`
+
+#### ✅ **Deletion Notification Task** (`apps.accounts.tasks.send_deletion_notification`)
+- **Status**: ✅ **NEW - Implemented (Jan 18, 2026)**
+- **Purpose**: Sends email notification when a pitch deck is deleted
+- **Trigger**: Automatically called when a product/pitch deck is deleted via `/api/ventures/products/{id}/delete`
+- **Email Template**: 
+  - ✅ HTML-styled notification email with deletion icon
+  - ✅ Shows product name, previous status, and deletion timestamp
+  - ✅ Different messaging for user-initiated vs admin-initiated deletions
+  - ✅ Includes dashboard link and helpful context
+  - ✅ Plain text fallback included
+- **Configuration**: Uses `FRONTEND_URL` from settings for dashboard links
+- **Integration**: ✅ Connected to `delete_product` view in `apps.ventures.views`
+- **Features**:
+  - ✅ Detects if deletion was done by admin vs user
+  - ✅ Includes product status before deletion
+  - ✅ Error handling: Email failures don't block deletion
+  - ✅ Async execution via Celery (non-blocking)
+
+#### ✅ **Password Reset Email Task** (`apps.accounts.tasks.send_password_reset_email`)
+- **Status**: ✅ **NEW - Implemented (Jan 19, 2026)**
+- **Purpose**: Sends password reset link when user requests password reset
+- **Trigger**: Automatically called when user requests password reset via `/api/auth/password-reset-request`
+- **Email Template**: 
+  - ✅ HTML-styled email with security icon
+  - ✅ Clear security notices (single-use, 1-hour expiry)
+  - ✅ Professional styling with reset button
+  - ✅ Plain text fallback included
+- **Configuration**: Uses `FRONTEND_URL` from settings for reset link
+- **Integration**: ✅ Connected to `password_reset_request` view in `apps.accounts.views`
+- **Security Features**:
+  - ✅ Token expires in 1 hour (shorter than verification tokens)
+  - ✅ Single-use tokens (marked as used after password reset)
+  - ✅ IP address tracking for security audit
+  - ✅ Email enumeration prevention (always returns success)
 
 ### Task Configuration
 - **Celery App**: Configured in `backend/config/celery.py`

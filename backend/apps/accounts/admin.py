@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, EmailVerificationToken
+from .models import User, EmailVerificationToken, PasswordResetToken
 
 
 @admin.register(User)
@@ -16,3 +16,12 @@ class EmailVerificationTokenAdmin(admin.ModelAdmin):
     list_filter = ('used_at', 'expires_at')
     search_fields = ('user__email', 'token')
     readonly_fields = ('id', 'created_at')
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'token', 'expires_at', 'used_at', 'ip_address', 'created_at')
+    list_filter = ('used_at', 'expires_at', 'created_at')
+    search_fields = ('user__email', 'token', 'ip_address')
+    readonly_fields = ('id', 'created_at')
+    ordering = ['-created_at']

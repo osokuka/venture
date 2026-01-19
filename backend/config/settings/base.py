@@ -140,6 +140,16 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ),
+    # Security: Rate limiting for authentication endpoints
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/hour',  # Anonymous users: 10 requests per hour
+        'user': '100/hour',  # Authenticated users: 100 requests per hour
+        'password_reset': '1/hour',  # Password reset: 1 request per hour per email
+    },
 }
 
 # JWT Settings
@@ -177,7 +187,8 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'ventures@prosolutions-ks.com')
 
 # Frontend URL for email links
-FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+# Default to production URL, can be overridden via environment variable
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://ventureuplink.com')
 
 # Celery Configuration
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
