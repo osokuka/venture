@@ -13,6 +13,22 @@ python manage.py makemigrations --noinput || true
 echo "Running migrations..."
 python manage.py migrate --noinput
 
+# Copy and resize logo file for email templates (if not already present or if too large)
+echo "Checking for logo file..."
+LOGO_SIZE=$(stat -f%z "/app/static/logos/ventureuplink.png" 2>/dev/null || stat -c%s "/app/static/logos/ventureuplink.png" 2>/dev/null || echo "0")
+MAX_LOGO_SIZE=500000  # 500KB - if larger, re-process to resize
+
+if [ ! -f "/app/static/logos/ventureuplink.png" ] || [ "$LOGO_SIZE" -gt "$MAX_LOGO_SIZE" ]; then
+    if [ "$LOGO_SIZE" -gt "$MAX_LOGO_SIZE" ]; then
+        echo "Logo file is too large (${LOGO_SIZE} bytes), re-processing to resize..."
+    else
+        echo "Logo not found, attempting to copy/download and resize..."
+    fi
+    python manage.py copy_logo || echo "Warning: Could not copy logo, emails will use URL fallback"
+else
+    echo "Logo file already exists and is optimized (${LOGO_SIZE} bytes)."
+fi
+
 echo "Collecting static files..."
 python manage.py collectstatic --noinput || true
 
@@ -37,10 +53,6 @@ if not User.objects.filter(email=admin_email).exists():
 else:
     print(f"Superuser {admin_email} already exists.")
 EOF
-
-# Seed comprehensive demo data (users, products, profiles, conversations, messages)
-echo "Seeding demo data..."
-python manage.py seed_demo_data --noinput || true
 
 echo "Starting server..."
 exec "$@"

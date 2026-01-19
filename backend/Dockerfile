@@ -35,7 +35,14 @@ ENV PATH=/root/.local/bin:$PATH
 COPY . .
 
 # Create directories for media and static files
-RUN mkdir -p /app/media /app/staticfiles
+RUN mkdir -p /app/media /app/staticfiles /app/static/logos
+
+# Copy logo files if they exist in static/logos (should be pre-resized)
+# The logo files should be copied to backend/static/logos/ before building
+# Using shell to copy if exists, otherwise skip (logo will be downloaded on startup via entrypoint.sh)
+RUN mkdir -p /app/static/logos && \
+    if [ -f static/logos/ventureuplink.webp ]; then cp static/logos/ventureuplink.webp /app/static/logos/; fi && \
+    if [ -f static/logos/ventureuplink.png ]; then cp static/logos/ventureuplink.png /app/static/logos/; fi || true
 
 # Copy entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh

@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./components/AuthContext";
-import logoImage from './assets/logos/ventureuplink.png';
+import logoImage from './assets/logos/ventureuplink.webp';
 import { HeroSection } from "./components/HeroSection";
 import { FeaturesSection } from "./components/FeaturesSection";
 import { ServicesSection } from "./components/ServicesSection";
@@ -233,7 +233,7 @@ function LandingPage() {
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
               <div className="w-10 h-10 flex items-center justify-center">
                 <img 
-                  src="/logos/ventureuplink.png" 
+                  src="/logos/ventureuplink.webp" 
                   alt="VentureUP Link" 
                   className="w-10 h-10 object-contain"
                 />

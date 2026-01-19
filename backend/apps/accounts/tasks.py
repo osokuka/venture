@@ -1,12 +1,137 @@
 """
 Celery tasks for accounts app.
 """
+import base64
+import os
+from pathlib import Path
 from celery import shared_task
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 from .models import EmailVerificationToken
+
+# Load logo for email templates (prefers WebP for smaller size, falls back to SVG/PNG)
+# Cache the logo to avoid reading file on every email
+_logo_cache = None
+
+def get_logo_for_email():
+    """Load logo file and return as inline SVG or base64 data URI (WebP/PNG) for email templates.
+    Prioritizes WebP format for optimal file size and quality."""
+    global _logo_cache
+    
+    # Return cached version if available
+    if _logo_cache is not None:
+        return _logo_cache
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Use BASE_DIR from Django settings for reliable path resolution
+        from django.conf import settings as django_settings
+        base_dir = Path(django_settings.BASE_DIR)
+        
+        # Try multiple possible locations for the logo file (prefer WebP, then SVG, then PNG)
+        possible_paths = [
+            # Option 1: WebP logo (preferred - smaller file size, good quality)
+            base_dir / 'static' / 'logos' / 'ventureuplink.webp',
+            base_dir / 'staticfiles' / 'logos' / 'ventureuplink.webp',
+            base_dir.parent / 'frontend' / 'public' / 'logos' / 'ventureuplink.webp',
+            base_dir.parent / 'frontend' / 'src' / 'assets' / 'logos' / 'ventureuplink.webp',
+            # Option 2: SVG logo (fallback - scalable)
+            base_dir / 'static' / 'logos' / 'ventureuplink.svg',
+            base_dir.parent / 'frontend' / 'public' / 'logos' / 'ventureuplink.svg',
+            # Option 3: PNG logo (final fallback)
+            base_dir / 'static' / 'logos' / 'ventureuplink.png',
+            base_dir / 'staticfiles' / 'logos' / 'ventureuplink.png',
+            base_dir.parent / 'frontend' / 'public' / 'logos' / 'ventureuplink.png',
+            base_dir.parent / 'frontend' / 'src' / 'assets' / 'logos' / 'ventureuplink.png',
+        ]
+        
+        for logo_path in possible_paths:
+            if logo_path.exists():
+                try:
+                    file_ext = logo_path.suffix.lower()
+                    if file_ext == '.svg':
+                        # Read SVG as text and embed directly (smaller and better quality)
+                        with open(logo_path, 'r', encoding='utf-8') as f:
+                            svg_content = f.read()
+                            # Inline SVG for email (most modern email clients support it)
+                            _logo_cache = svg_content
+                            logger.info(f"Successfully loaded SVG logo from {logo_path} ({len(svg_content)} bytes)")
+                            return _logo_cache
+                    elif file_ext == '.webp':
+                        # WebP - convert to base64 (WebP has better compression than PNG)
+                        with open(logo_path, 'rb') as f:
+                            logo_data = f.read()
+                            if len(logo_data) > 0:
+                                logo_base64 = base64.b64encode(logo_data).decode('utf-8')
+                                _logo_cache = f'data:image/webp;base64,{logo_base64}'
+                                logger.info(f"Successfully loaded WebP logo from {logo_path} ({len(logo_data)} bytes)")
+                                return _logo_cache
+                    else:
+                        # PNG - convert to base64
+                        with open(logo_path, 'rb') as f:
+                            logo_data = f.read()
+                            if len(logo_data) > 0:
+                                logo_base64 = base64.b64encode(logo_data).decode('utf-8')
+                                _logo_cache = f'data:image/png;base64,{logo_base64}'
+                                logger.info(f"Successfully loaded PNG logo from {logo_path} ({len(logo_data)} bytes)")
+                                return _logo_cache
+                except Exception as e:
+                    logger.warning(f"Failed to read logo from {logo_path}: {str(e)}")
+                    continue
+        
+        # If file not found, use inline SVG as fallback (embedded in code)
+        logger.warning("Logo file not found. Using embedded SVG fallback.")
+        _logo_cache = """<svg viewBox="0 0 800 800" width="200" height="200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mainGradient" x1="150" y1="550" x2="650" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0052D4" />
+      <stop offset="50%" stop-color="#22C1C3" />
+      <stop offset="100%" stop-color="#76E32D" />
+    </linearGradient>
+    <linearGradient id="orangeGradient" x1="550" y1="650" x2="650" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F2994A" />
+      <stop offset="100%" stop-color="#F2C94C" />
+    </linearGradient>
+  </defs>
+  <path d="M175 515 L400 340 L400 550" stroke="url(#mainGradient)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M500 450 L600 550 L640 300" stroke="url(#orangeGradient)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M400 340 L620 150" stroke="url(#mainGradient)" stroke-width="60" stroke-linecap="round" />
+  <path d="M580 120 L680 150 L620 250 Z" fill="#76E32D" />
+  <circle cx="175" cy="515" r="35" stroke="#0052D4" stroke-width="15" fill="white" />
+  <circle cx="400" cy="340" r="35" stroke="#22C1C3" stroke-width="15" fill="white" />
+  <circle cx="600" cy="550" r="35" stroke="#F2994A" stroke-width="15" fill="white" />
+</svg>"""
+        return _logo_cache
+        
+    except Exception as e:
+        # Log error for debugging but don't fail email sending
+        logger.error(f"Failed to load logo for email: {str(e)}", exc_info=True)
+        # Fallback: use embedded SVG
+        _logo_cache = """<svg viewBox="0 0 800 800" width="200" height="200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mainGradient" x1="150" y1="550" x2="650" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0052D4" />
+      <stop offset="50%" stop-color="#22C1C3" />
+      <stop offset="100%" stop-color="#76E32D" />
+    </linearGradient>
+    <linearGradient id="orangeGradient" x1="550" y1="650" x2="650" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F2994A" />
+      <stop offset="100%" stop-color="#F2C94C" />
+    </linearGradient>
+  </defs>
+  <path d="M175 515 L400 340 L400 550" stroke="url(#mainGradient)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M500 450 L600 550 L640 300" stroke="url(#orangeGradient)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M400 340 L620 150" stroke="url(#mainGradient)" stroke-width="60" stroke-linecap="round" />
+  <path d="M580 120 L680 150 L620 250 Z" fill="#76E32D" />
+  <circle cx="175" cy="515" r="35" stroke="#0052D4" stroke-width="15" fill="white" />
+  <circle cx="400" cy="340" r="35" stroke="#22C1C3" stroke-width="15" fill="white" />
+  <circle cx="600" cy="550" r="35" stroke="#F2994A" stroke-width="15" fill="white" />
+</svg>"""
+        return _logo_cache
 
 
 def get_email_base_html(title, content, button_text=None, button_url=None, footer_note=None):
@@ -57,9 +182,6 @@ def get_email_base_html(title, content, button_text=None, button_url=None, foote
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
                                     <td align="center">
-                                        <div style="display: inline-block; width: 48px; height: 48px; background-color: #374151; border-radius: 12px; margin-bottom: 16px;">
-                                            <div style="color: #ffffff; font-size: 24px; font-weight: bold; text-align: center; line-height: 48px;">↑</div>
-                                        </div>
                                         <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
                                             VentureUP Link
                                         </h1>

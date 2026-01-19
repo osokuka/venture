@@ -213,12 +213,13 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
           if (formData.target_market !== undefined && formData.target_market !== null) {
             pitchDeckData.target_market = sanitizeInput(formData.target_market, 2000);
           }
-          // Build traction_metrics object from fields
+          // Build traction_metrics object from fields (sanitize on save)
           if (tractionMetricsFields.length > 0) {
             const metricsObj: any = {};
             tractionMetricsFields.forEach(field => {
               if (field.key.trim() && field.value.trim()) {
-                metricsObj[field.key.trim()] = field.value.trim();
+                // Sanitize traction metric key and value when saving
+                metricsObj[sanitizeInput(field.key.trim(), 100)] = sanitizeInput(field.value.trim(), 200);
               }
             });
             if (Object.keys(metricsObj).length > 0) {
@@ -885,7 +886,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
                 <Label>Company Name *</Label>
                 <Input
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: sanitizeInput(e.target.value, 255) })}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="Your company name"
                 />
               </div>
@@ -917,10 +918,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
                 <Label>Website *</Label>
                 <Input
                   value={formData.website}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value, 2048);
-                    setFormData({ ...formData, website: sanitized });
-                  }}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
                   placeholder="https://yourcompany.com"
                 />
               </div>
@@ -928,10 +926,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
                 <Label>LinkedIn URL *</Label>
                 <Input
                   value={formData.linkedin_url}
-                  onChange={(e) => {
-                    const sanitized = sanitizeInput(e.target.value, 2048);
-                    setFormData({ ...formData, linkedin_url: sanitized });
-                  }}
+                  onChange={(e) => setFormData({ ...formData, linkedin_url: e.target.value })}
                   placeholder="https://linkedin.com/company/yourcompany"
                 />
               </div>
@@ -941,7 +936,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
               <Label>Short Description *</Label>
               <Textarea
                 value={formData.short_description}
-                onChange={(e) => setFormData({ ...formData, short_description: sanitizeInput(e.target.value, 1000) })}
+                onChange={(e) => setFormData({ ...formData, short_description: e.target.value })}
                 rows={2}
                 placeholder="Brief description of your company"
               />
@@ -955,7 +950,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
               <Label>Problem Statement *</Label>
               <Textarea
                 value={formData.problem_statement || ''}
-                onChange={(e) => setFormData({ ...formData, problem_statement: sanitizeInput(e.target.value, 5000) })}
+                onChange={(e) => setFormData({ ...formData, problem_statement: e.target.value })}
                 rows={3}
                 placeholder="What problem are you solving?"
               />
@@ -965,7 +960,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
               <Label>Solution Description *</Label>
               <Textarea
                 value={formData.solution_description || ''}
-                onChange={(e) => setFormData({ ...formData, solution_description: sanitizeInput(e.target.value, 5000) })}
+                onChange={(e) => setFormData({ ...formData, solution_description: e.target.value })}
                 rows={3}
                 placeholder="How does your solution work?"
               />
@@ -975,7 +970,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
               <Label>Target Market *</Label>
               <Textarea
                 value={formData.target_market || ''}
-                onChange={(e) => setFormData({ ...formData, target_market: sanitizeInput(e.target.value, 2000) })}
+                onChange={(e) => setFormData({ ...formData, target_market: e.target.value })}
                 rows={2}
                 placeholder="Who are your target customers?"
               />
@@ -1009,7 +1004,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
                       <Input
                         placeholder="Metric name (e.g., users, revenue)"
                         value={field.key}
-                        onChange={(e) => updateTractionMetric(index, 'key', sanitizeInput(e.target.value, 100))}
+                        onChange={(e) => updateTractionMetric(index, 'key', e.target.value)}
                         disabled={isMutating}
                       />
                     </div>
@@ -1017,7 +1012,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
                       <Input
                         placeholder="Value (e.g., 500, $2M monthly)"
                         value={field.value}
-                        onChange={(e) => updateTractionMetric(index, 'value', sanitizeInput(e.target.value, 200))}
+                        onChange={(e) => updateTractionMetric(index, 'value', e.target.value)}
                         disabled={isMutating}
                       />
                     </div>
@@ -1066,7 +1061,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
                 <Label>Funding Amount Sought</Label>
                 <Input
                   value={formData.funding_amount || ''}
-                  onChange={(e) => setFormData({ ...formData, funding_amount: sanitizeInput(e.target.value, 50) })}
+                  onChange={(e) => setFormData({ ...formData, funding_amount: e.target.value })}
                   placeholder="e.g., $500K, $2M"
                 />
               </div>
@@ -1076,7 +1071,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
               <Label>Use of Funds</Label>
               <Textarea
                 value={formData.use_of_funds || ''}
-                onChange={(e) => setFormData({ ...formData, use_of_funds: sanitizeInput(e.target.value, 2000) })}
+                onChange={(e) => setFormData({ ...formData, use_of_funds: e.target.value })}
                 rows={2}
                 placeholder="How will you use the funding?"
               />

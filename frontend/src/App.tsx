@@ -18,7 +18,7 @@ import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
 import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
 import { useState, useEffect } from "react";
-import logoImage from './assets/logos/ventureuplink.png';
+import logoImage from './assets/logos/ventureuplink.webp';
 
 // Dashboard wrapper component that receives props from ModernDashboardLayout
 function DashboardContent({ user, activeView, onViewChange, onProfileUpdate }: any) {

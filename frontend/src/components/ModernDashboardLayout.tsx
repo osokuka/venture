@@ -31,7 +31,7 @@ import {
 import { type FrontendUser } from '../types';
 import { messagingService } from '../services/messagingService';
 import { useAuth } from './AuthContext';
-import logoImage from '../assets/logos/ventureuplink.png';
+import logoImage from '../assets/logos/ventureuplink.webp';
 
 interface ModernDashboardLayoutProps {
   children: React.ReactElement;
