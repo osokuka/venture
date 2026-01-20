@@ -54,7 +54,10 @@ export function ApprovalsManagementTab({ stats }: ApprovalsManagementTabProps) {
       try {
         setIsLoading(true);
         setError(null);
-        const data = await adminService.getPendingApprovals();
+        // Fetch server-filtered approvals when a role filter is selected
+        const typeParam =
+          filterRole === 'ALL' ? undefined : (filterRole as 'VENTURE' | 'INVESTOR' | 'MENTOR');
+        const data = await adminService.getPendingApprovals(typeParam ? { type: typeParam } : undefined);
         setApprovals(data);
       } catch (err) {
         console.error('Failed to fetch approvals:', err);
@@ -66,7 +69,7 @@ export function ApprovalsManagementTab({ stats }: ApprovalsManagementTabProps) {
     };
 
     fetchApprovals();
-  }, []);
+  }, [filterRole]);
 
   // Filter approvals based on search and role filter
   const filteredApprovals = approvals.filter((approval) => {
@@ -378,6 +381,19 @@ export function ApprovalsManagementTab({ stats }: ApprovalsManagementTabProps) {
                           </div>
                         </div>
                         <div className="flex gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const params = new URLSearchParams({ reviewId: approval.id });
+                              window.open(`/dashboard/admin/profile-review?${params.toString()}`, '_blank', 'noopener,noreferrer');
+                            }}
+                            disabled={isProcessing}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            View Details in New Tab
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"

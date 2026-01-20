@@ -65,6 +65,39 @@ export interface ApprovalItem {
   pitch_deck_funding_stage?: string;
   pitch_deck_traction_metrics?: any;
   pitch_deck_use_of_funds?: string;
+
+  // Investor/Mentor profile fields (only populated for profile reviews)
+  profile_id?: string | null;
+  profile_type?: 'INVESTOR' | 'MENTOR' | null;
+  profile_full_name?: string | null;
+  profile_linkedin_or_website?: string | null;
+  profile_phone?: string | null;
+  profile_visible_to_ventures?: boolean | null;
+  profile_status?: string | null;
+  profile_submitted_at?: string | null;
+  profile_approved_at?: string | null;
+
+  // Investor-specific
+  investor_organization_name?: string | null;
+  investor_email?: string | null;
+  investor_investment_experience_years?: number | null;
+  investor_deals_count?: number | null;
+  investor_stage_preferences?: string[] | null;
+  investor_industry_preferences?: string[] | null;
+  investor_average_ticket_size?: string | null;
+
+  // Mentor-specific
+  mentor_job_title?: string | null;
+  mentor_company?: string | null;
+  mentor_contact_email?: string | null;
+  mentor_expertise_fields?: string[] | null;
+  mentor_experience_overview?: string | null;
+  mentor_industries_of_interest?: string[] | null;
+  mentor_engagement_type?: string | null;
+  mentor_paid_rate_type?: string | null;
+  mentor_paid_rate_amount?: string | null;
+  mentor_availability_types?: string[] | null;
+  mentor_preferred_engagement?: string | null;
 }
 
 export const adminService = {
@@ -143,6 +176,14 @@ export const adminService = {
   },
 
   /**
+   * Get user detail (admin only)
+   */
+  async getUserDetail(userId: string): Promise<UserListItem> {
+    const response = await apiClient.get(`/admin/users/${userId}`);
+    return response.data;
+  },
+
+  /**
    * Delete a user (admin only)
    */
   async deleteUser(userId: string): Promise<void> {
@@ -153,9 +194,9 @@ export const adminService = {
    * Get pending approvals
    * Uses /api/reviews/pending endpoint (as per project scope)
    */
-  async getPendingApprovals(): Promise<ApprovalItem[]> {
+  async getPendingApprovals(params?: { type?: 'VENTURE' | 'INVESTOR' | 'MENTOR' }): Promise<ApprovalItem[]> {
     try {
-      const response = await apiClient.get('/reviews/pending');
+      const response = await apiClient.get('/reviews/pending', { params });
       // Transform response if needed
       return Array.isArray(response.data) ? response.data : response.data.results || [];
     } catch (error: any) {
@@ -167,6 +208,15 @@ export const adminService = {
       }
       return [];
     }
+  },
+
+  /**
+   * Get approval/review details by ID
+   * GET /api/reviews/<id>
+   */
+  async getReviewDetail(reviewId: string): Promise<ApprovalItem> {
+    const response = await apiClient.get(`/reviews/${reviewId}`);
+    return response.data;
   },
 
   /**

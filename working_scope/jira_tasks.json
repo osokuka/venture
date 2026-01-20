@@ -2707,6 +2707,112 @@
         }
       ],
       "status": "Pending"
+    },
+    {
+      "key": "VL-839",
+      "summary": "Tech Debt: Venture Investors List Shows Mock Users / Misses Registered Investors",
+      "description": "On `/dashboard/venture/investors` in production, ventures see demo/mock investors but not newly registered investors. Backend `GET /api/investors/public` currently filters InvestorProfile to `status in (APPROVED, SUBMITTED)` and (for venture users) further restricts results to `visible_to_ventures=True` OR `InvestorVisibleToVenture` grants. This means real registered investors will not appear if they remain `DRAFT` (never submitted) and/or default `visible_to_ventures` is false. Separately, `frontend/src/components/MockData.ts` still contains `mockInvestors` and may be leaking into the prod UI through an unintended fallback path; this needs an audit so production never renders mock users.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Production `/dashboard/venture/investors` shows only real investors returned from API (no MockData fallback)",
+        "Registered investors are visible when expected (document and enforce the visibility rules: SUBMITTED/APPROVED + visibility flags)",
+        "Clear UX guidance exists for investors if they must submit profile and/or opt into visibility before appearing to ventures",
+        "Backend and frontend behavior is consistent and documented"
+      ],
+      "tasks": [
+        {
+          "summary": "Audit venture investors UI for any MockData fallback",
+          "description": "Trace the `/dashboard/venture/investors` route/component tree and verify that no code path imports/uses `mockInvestors` (or demo login users) in production. Remove/guard any fallback to MockData so prod always depends on API results.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Confirm investor registration workflow sets correct visibility + status transitions",
+          "description": "Verify defaults for `InvestorProfile.visible_to_ventures` and how/when `InvestorProfile.status` transitions from DRAFT → SUBMITTED (via `/api/investors/profile/submit`) and SUBMITTED → APPROVED. Document why registered investors might not appear to ventures and add UI prompts if submission/visibility is required.",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Backend: document/adjust `/api/investors/public` visibility rules",
+          "description": "Review `backend/apps/investors/views.py` `PublicInvestorListView.get_queryset()` filtering: status in (APPROVED,SUBMITTED) + venture-only `visible_to_ventures` or `InvestorVisibleToVenture` grants. Decide intended product behavior (e.g., should SUBMITTED be visible? should DRAFT ever be visible? should default `visible_to_ventures` be true?) and implement + document accordingly.",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-840",
+      "summary": "Tech Debt: Missing Admin Operations for Investor/Mentor Profile Approvals (separate from pitch deck approvals)",
+      "description": "Admin needs a first-class workflow to approve/reject INVESTOR and MENTOR profiles. Today, the admin dashboard’s approvals experience is heavily optimized for venture pitch deck/product reviews (separate workflow) and does not provide an explicit, reviewable investor/mentor profile approval surface (profile data to review + dedicated review screen). Backend already has a generic `ReviewRequest` workflow and `/api/reviews/pending|<id>|<id>/approve|<id>/reject` that can handle investor and mentor profiles when their profile status is SUBMITTED, but the frontend does not expose a clear investor/mentor profile review UX, and the approvals serializer payload is pitch-deck-centric (no investor/mentor profile fields), so admins can’t meaningfully approve/reject those profiles from the UI.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Admin can view pending INVESTOR profile submissions with relevant profile fields (not just name/email) and approve/reject them",
+        "Admin can view pending MENTOR profile submissions with relevant profile fields (not just name/email) and approve/reject them",
+        "Pitch deck/product approvals remain intact and clearly separated from user profile approvals (no conflation in UX or labels)",
+        "Approvals list supports filtering by type/role and is backed by `/api/reviews/pending?type=INVESTOR|MENTOR|VENTURE`"
+      ],
+      "tasks": [
+        {
+          "summary": "Backend: extend approvals serializer to include investor/mentor profile review fields",
+          "description": "Update `backend/apps/approvals/serializers.py` `ApprovalItemSerializer` to include relevant fields when `ReviewRequest.content_object` is an `InvestorProfile` or `MentorProfile` (e.g., full_name, organization_name, linkedin/website, email/phone, experience, preferences, visible_to_ventures, submitted_at). This is required so admin can make a decision based on actual profile content.",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Frontend: add dedicated profile review screen for investor/mentor submissions (no modals)",
+          "description": "Create a new admin route/screen similar to pitch deck review (opens in a new tab) for INVESTOR/MENTOR profile reviews. Display all profile fields from the approvals payload and provide Approve/Reject actions (with rejection reason). Ensure this is not confused with pitch deck approvals.",
+          "type": "Task",
+          "estimate": "5h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Frontend: update ApprovalsManagementTab to route investor/mentor items to the profile review screen",
+          "description": "In `frontend/src/components/ApprovalsManagementTab.tsx`, keep the pitch deck special-case, but for INVESTOR/MENTOR approvals add a \"View Details\" action that opens the new profile review screen in a new tab with `reviewId` + `userId` params. Keep inline approve/reject if desired, but ensure admins can always inspect the full profile before deciding.",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Frontend: support approvals filtering via `type` query param",
+          "description": "Update `frontend/src/services/adminService.ts` `getPendingApprovals()` to accept an optional `type` (VENTURE/INVESTOR/MENTOR) and call `/api/reviews/pending?type=...`. Use this to power clearer filters/sections so user profile approvals don’t get buried under pitch deck approvals.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Frontend: unify admin approvals view for all pending items",
+          "description": "Ensure `/dashboard/admin/approvals` lists all pending ReviewRequests (ventures/pitch decks, investors, mentors) without requiring separate navigation. Users can open each approval into the dedicated review pages (pitch deck review or profile review) from this list.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Frontend: add admin user detail view + tab sync",
+          "description": "Add `/dashboard/admin/user-view?userId=...` to inspect user accounts (email, role, status, verification). Replace table 'Review Profile' with a generic eye 'View' action for all users. Keep profile approval (investor/mentor) flows in approvals screens.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Backend: auto-submit investor/mentor profiles on creation",
+          "description": "Update `InvestorProfileCreateUpdateView.create()` and `MentorProfileCreateUpdateView.create()` to automatically set `status='SUBMITTED'`, set `submitted_at`, and create a `ReviewRequest` when a profile is created. This ensures all new investor/mentor profiles immediately appear in `/dashboard/admin/approvals` without requiring users to manually click 'Submit for approval'. Also update serializer validation to allow updates to SUBMITTED profiles (so users can fix issues before admin reviews).",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        }
+      ],
+      "status": "Pending"
     }
   ],
   "bugs": [],

@@ -237,6 +237,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // After successful registration and login, try to create profile based on role
       // Note: This happens before email verification, but user is authenticated
+      // IMPORTANT: Profile creation automatically sets status='SUBMITTED' and creates ReviewRequest
+      // on the backend, so profiles appear in /dashboard/admin/approvals immediately.
+      // No manual "Submit for approval" step is required.
       let profileCreated = false;
       let profileError: Error | null = null;
 
@@ -244,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (roleToUseLower === 'investor') {
           // Map investor registration form data to API payload
           // Note: Investor form doesn't collect experience_years or deals_count, so we use defaults
+          // Backend automatically sets status='SUBMITTED' and creates ReviewRequest on profile creation
           const investorPayload: InvestorProfileCreatePayload = {
             full_name: userData.name || registeredUser.full_name || '',
             // Backend requires organization_name.
@@ -259,10 +263,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             visible_to_ventures: userData.isVisible !== false, // Default to true
           };
           
+          // This call automatically submits the profile for admin approval (status='SUBMITTED')
           await investorService.createProfile(investorPayload);
           profileCreated = true;
         } else if (roleToUseLower === 'mentor') {
           // Map mentor registration form data to API payload
+          // Backend automatically sets status='SUBMITTED' and creates ReviewRequest on profile creation
           // Determine engagement type from form data
           let engagementType: 'PAID' | 'PRO_BONO' | 'BOTH' = 'PRO_BONO';
           if (userData.availabilityType && Array.isArray(userData.availabilityType)) {
@@ -320,11 +326,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             visible_to_ventures: userData.isVisible !== false, // Default to true
           };
           
+          // This call automatically submits the profile for admin approval (status='SUBMITTED')
           await mentorService.createProfile(mentorPayload);
           profileCreated = true;
         }
         // Note: Ventures don't create products during registration
         // They only create account, then create products from dashboard after email verification
+        // Investors and Mentors: Profiles are automatically SUBMITTED and appear in admin approvals
       } catch (error: any) {
         // Profile creation failed - log but don't block registration
         // User can create profile manually after email verification

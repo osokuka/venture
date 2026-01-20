@@ -51,6 +51,14 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'products' | 'approvals' | 'analytics'>('overview');
 
+  // Keep AdminDashboard tabs in sync with the URL view (e.g. /dashboard/admin/users)
+  useEffect(() => {
+    const allowedTabs: Array<typeof activeTab> = ['overview', 'users', 'products', 'approvals', 'analytics'];
+    if (allowedTabs.includes(activeView as any)) {
+      setActiveTab(activeView as any);
+    }
+  }, [activeView]);
+
   // Helper function to get Django admin URL from API base URL
   // Extracts the base URL (protocol + host + port) and appends /admin
   const getAdminUrl = (): string => {
@@ -183,11 +191,10 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header (single title; main title comes from layout) */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admin Portal</h1>
-          <p className="text-gray-600 mt-1">Manage users, approvals, and platform settings</p>
+          <p className="text-gray-700 mt-1">Manage users, approvals, and platform settings</p>
         </div>
         <div className="flex items-center space-x-3">
           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -217,7 +224,11 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                // Update URL so refresh/deep-links preserve selected tab
+                onViewChange?.(tab.id);
+              }}
               className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === tab.id
                   ? 'border-blue-600 text-blue-600'
@@ -291,7 +302,10 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
                 <Button 
                   variant="outline" 
                   className="h-auto flex-col items-start p-4 hover:bg-blue-50 hover:border-blue-200 transition-colors"
-                  onClick={() => setActiveTab('approvals')}
+                  onClick={() => {
+                    setActiveTab('approvals');
+                    onViewChange?.('approvals');
+                  }}
                 >
                   <UserCheck className="w-5 h-5 mb-2 text-blue-600" />
                   <span className="font-medium">Review Approvals</span>
@@ -300,7 +314,10 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
                 <Button 
                   variant="outline" 
                   className="h-auto flex-col items-start p-4 hover:bg-green-50 hover:border-green-200 transition-colors"
-                  onClick={() => setActiveTab('users')}
+                  onClick={() => {
+                    setActiveTab('users');
+                    onViewChange?.('users');
+                  }}
                 >
                   <Users className="w-5 h-5 mb-2 text-green-600" />
                   <span className="font-medium">Manage Users</span>
@@ -309,7 +326,10 @@ export function AdminDashboard({ user, activeView = 'overview', onViewChange, on
                 <Button 
                   variant="outline" 
                   className="h-auto flex-col items-start p-4 hover:bg-purple-50 hover:border-purple-200 transition-colors"
-                  onClick={() => setActiveTab('analytics')}
+                  onClick={() => {
+                    setActiveTab('analytics');
+                    onViewChange?.('analytics');
+                  }}
                 >
                   <BarChart3 className="w-5 h-5 mb-2 text-purple-600" />
                   <span className="font-medium">View Analytics</span>

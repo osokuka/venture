@@ -190,11 +190,13 @@ class MentorProfileUpdateSerializer(serializers.ModelSerializer):
         """Validate that profile can be updated."""
         instance = self.instance
         
-        # Only allow updates if profile is in DRAFT or REJECTED status
-        if instance.status not in ['DRAFT', 'REJECTED']:
+        # Allow updates if profile is in DRAFT, REJECTED, or SUBMITTED status
+        # SUBMITTED is allowed so users can fix issues before admin approval
+        # APPROVED profiles cannot be updated (must be rejected first)
+        if instance.status not in ['DRAFT', 'REJECTED', 'SUBMITTED']:
             raise serializers.ValidationError(
                 f"Cannot update profile with status '{instance.status}'. "
-                "Only DRAFT or REJECTED profiles can be updated."
+                "Only DRAFT, REJECTED, or SUBMITTED profiles can be updated."
             )
         
         return attrs

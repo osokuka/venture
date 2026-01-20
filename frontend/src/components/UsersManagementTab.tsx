@@ -28,8 +28,9 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Eye,
 } from 'lucide-react';
-import { adminService, type UserListItem } from '../services/adminService';
+import { adminService, type UserListItem, type ApprovalItem } from '../services/adminService';
 import { Alert, AlertDescription } from './ui/alert';
 import {
   Dialog,
@@ -62,6 +63,9 @@ export function UsersManagementTab({ stats }: UsersManagementTabProps) {
   const [hasNext, setHasNext] = useState(false);
   const [hasPrevious, setHasPrevious] = useState(false);
   const pageSize = 20;
+  
+  // Map of user_id -> pending profile review (INVESTOR/MENTOR)
+  const [pendingProfileReviewByUserId, setPendingProfileReviewByUserId] = useState<Record<string, ApprovalItem>>({});
 
   // CRUD dialogs/state
   const [createOpen, setCreateOpen] = useState(false);
@@ -105,6 +109,46 @@ export function UsersManagementTab({ stats }: UsersManagementTabProps) {
 
     fetchUsers();
   }, [currentPage, filterRole, searchQuery]);
+
+  // Fetch pending profile reviews (investor + mentor) to power "Approve/Reject profile" entrypoints in Users table.
+  useEffect(() => {
+    const fetchPendingProfileReviews = async () => {
+      try {
+        // Only needed when there are users displayed
+        if (!users.length) {
+          setPendingProfileReviewByUserId({});
+          return;
+        }
+
+        // If currently filtered to a single role, only fetch that role to reduce payload.
+        const typesToFetch: Array<'INVESTOR' | 'MENTOR'> =
+          filterRole === 'INVESTOR' ? ['INVESTOR']
+          : filterRole === 'MENTOR' ? ['MENTOR']
+          : ['INVESTOR', 'MENTOR'];
+
+        const results = await Promise.all(
+          typesToFetch.map((type) => adminService.getPendingApprovals({ type }))
+        );
+        const approvals = results.flat();
+
+        const map: Record<string, ApprovalItem> = {};
+        approvals.forEach((a) => {
+          // Only map investor/mentor profile approvals (NOT venture pitch deck/product approvals)
+          const isProfileApproval = (a.role === 'INVESTOR' || a.role === 'MENTOR') && !a.product_id;
+          if (!isProfileApproval) return;
+          if (a.user_id) map[a.user_id] = a;
+        });
+
+        setPendingProfileReviewByUserId(map);
+      } catch (e) {
+        // Non-fatal: users table should still work even if approvals endpoint fails.
+        console.error('Failed to fetch pending profile approvals:', e);
+        setPendingProfileReviewByUserId({});
+      }
+    };
+
+    fetchPendingProfileReviews();
+  }, [users, filterRole]);
 
   const refresh = async () => {
     // Minimal refresh helper (re-triggers effect by re-setting current page)
@@ -369,6 +413,25 @@ export function UsersManagementTab({ stats }: UsersManagementTabProps) {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
+                              {/* Open user view (all roles) */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isMutating}
+                                onClick={() => {
+                                  const params = new URLSearchParams({ userId: user.id });
+                                  window.open(
+                                    `/dashboard/admin/user-view?${params.toString()}`,
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  );
+                                }}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                title="View user details"
+                              >
+                                <Eye className="w-4 h-4 mr-2" />
+                                View
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"

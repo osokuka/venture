@@ -20,6 +20,8 @@ import { MentorDashboard } from "./components/MentorDashboard";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { PitchDeckDetails } from "./components/PitchDeckDetails";
 import { PitchDeckReview } from "./components/PitchDeckReview";
+import { AdminProfileReview } from "./components/AdminProfileReview";
+import { AdminUserView } from "./components/AdminUserView";
 import { PortfolioDetails } from "./components/PortfolioDetails";
 import { PortfolioReports } from "./components/PortfolioReports";
 import { PortfolioExitPlan } from "./components/PortfolioExitPlan";
@@ -416,6 +418,32 @@ function AppRoutes() {
         element={
           user ? (
             <PitchDeckReview />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Admin Profile Review Route (NO_MODALS_RULE - opens in new tab) */}
+      <Route
+        path="/dashboard/admin/profile-review"
+        element={
+          user ? (
+            <AdminProfileReview />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Admin User View Route (NO_MODALS_RULE - opens in new tab) */}
+      <Route
+        path="/dashboard/admin/user-view"
+        element={
+          user ? (
+            <ModernDashboardLayout user={user}>
+              <AdminUserView />
+            </ModernDashboardLayout>
           ) : (
             <Navigate to="/login" replace />
           )
