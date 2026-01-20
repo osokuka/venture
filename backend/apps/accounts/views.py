@@ -22,6 +22,7 @@ from .serializers import (
     UserSerializer,
     EmailVerificationSerializer,
     AdminUserUpsertSerializer,
+    AdminUserDetailSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer
 )
@@ -250,7 +251,24 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated, IsAdminOrReviewer]
-    serializer_class = AdminUserUpsertSerializer
+
+    def get_serializer_class(self):
+        """
+        Use a rich detail serializer for GET (includes role-specific profiles),
+        and the upsert serializer for write operations (PATCH/DELETE).
+        """
+        if self.request.method == 'GET':
+            return AdminUserDetailSerializer
+        return AdminUserUpsertSerializer
+
+    def get_serializer_context(self):
+        """
+        Ensure request context is passed to serializer so nested serializers
+        can build absolute URLs and access request.user if needed.
+        """
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
 
     def perform_destroy(self, instance):
         # Prevent admins from deleting themselves by accident.

@@ -146,6 +146,165 @@ class AdminUserUpsertSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
+
+class AdminUserDetailSerializer(serializers.ModelSerializer):
+    """
+    Rich admin user detail serializer.
+
+    Includes:
+    - Base user fields (email, role, status, verification, dates)
+    - Role-specific profile summaries:
+      - venture_profile: VentureProfile (company, sector, needs, etc.)
+      - investor_profile: InvestorProfile (organization, preferences, ticket size, visibility, status)
+      - mentor_profile: MentorProfile (job title, expertise, industries, availability, visibility, status)
+    """
+
+    venture_profile = serializers.SerializerMethodField()
+    investor_profile = serializers.SerializerMethodField()
+    mentor_profile = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            'id',
+            'email',
+            'full_name',
+            'role',
+            'is_email_verified',
+            'is_active',
+            'date_joined',
+            'venture_profile',
+            'investor_profile',
+            'mentor_profile',
+        )
+        read_only_fields = (
+            'id',
+            'email',
+            'role',
+            'date_joined',
+        )
+
+    def _get_venture_profile(self, obj):
+        """
+        Internal helper: fetch VentureProfile for a user (if it exists).
+
+        We intentionally do NOT gate strictly on role here so that if a user
+        happens to have a VentureProfile row, admin can still see it.
+        """
+        try:
+            from apps.ventures.models import VentureProfile
+            from apps.ventures.serializers import VentureProfileSerializer
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f'Failed to import venture models/serializers: {e}')
+            return None
+
+        try:
+            profile = VentureProfile.objects.get(user=obj)
+        except VentureProfile.DoesNotExist:
+            return None
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error fetching VentureProfile for user {obj.id}: {e}')
+            return None
+
+        try:
+            serializer = VentureProfileSerializer(profile, context=self.context)
+            return serializer.data
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error serializing VentureProfile {profile.id}: {e}')
+            return None
+
+    def _get_investor_profile(self, obj):
+        """
+        Internal helper: fetch InvestorProfile for a user (if it exists).
+
+        This allows admin to see investor data even if role/state drifted.
+        """
+        try:
+            from apps.investors.models import InvestorProfile
+            from apps.investors.serializers import InvestorProfileSerializer
+        except Exception as e:
+            # Log import errors for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f'Failed to import investor models/serializers: {e}')
+            return None
+
+        try:
+            profile = InvestorProfile.objects.get(user=obj)
+        except InvestorProfile.DoesNotExist:
+            # Profile doesn't exist - return None (this is expected if user hasn't created profile yet)
+            return None
+        except Exception as e:
+            # Log any other errors (database issues, etc.)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error fetching InvestorProfile for user {obj.id}: {e}')
+            return None
+
+        try:
+            # Pass request context so serializer can build absolute URLs if needed
+            serializer = InvestorProfileSerializer(profile, context=self.context)
+            return serializer.data
+        except Exception as e:
+            # Log serialization errors
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error serializing InvestorProfile {profile.id}: {e}')
+            return None
+
+    def _get_mentor_profile(self, obj):
+        """
+        Internal helper: fetch MentorProfile for a user (if it exists).
+
+        This allows admin to see mentor data even if role/state drifted.
+        """
+        try:
+            from apps.mentors.models import MentorProfile
+            from apps.mentors.serializers import MentorProfileSerializer
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f'Failed to import mentor models/serializers: {e}')
+            return None
+
+        try:
+            profile = MentorProfile.objects.get(user=obj)
+        except MentorProfile.DoesNotExist:
+            return None
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error fetching MentorProfile for user {obj.id}: {e}')
+            return None
+
+        try:
+            # Pass request context so serializer can build absolute URLs if needed
+            serializer = MentorProfileSerializer(profile, context=self.context)
+            return serializer.data
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f'Error serializing MentorProfile {profile.id}: {e}')
+            return None
+
+    def get_venture_profile(self, obj):
+        """Public getter for venture_profile field."""
+        return self._get_venture_profile(obj)
+
+    def get_investor_profile(self, obj):
+        """Public getter for investor_profile field."""
+        return self._get_investor_profile(obj)
+
+    def get_mentor_profile(self, obj):
+        """Public getter for mentor_profile field."""
+        return self._get_mentor_profile(obj)
+
 class EmailVerificationSerializer(serializers.Serializer):
     """Serializer for email verification."""
     token = serializers.CharField(required=True)

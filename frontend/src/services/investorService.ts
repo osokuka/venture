@@ -27,15 +27,27 @@ export interface InvestorProfile {
   user_name: string;
   full_name: string;
   organization_name: string;
-  linkedin_or_website: string;
+  linkedin_or_website?: string; // Legacy field
+  website?: string; // Company/personal website URL
+  linkedin_url?: string; // LinkedIn profile URL
   email: string;
   phone?: string;
+  investor_type?: 'INDIVIDUAL' | 'FIRM' | 'CORPORATE' | 'FAMILY_OFFICE'; // Investor type classification
+  bio?: string; // Professional bio
+  investment_experience?: string; // Detailed investment experience description
+  investment_philosophy?: string; // Investment philosophy and what you look for
+  notable_investments?: string; // Notable investments and portfolio companies
+  address?: string; // Location/address
   investment_experience_years: number;
   deals_count?: number;
   stage_preferences: string[];
   industry_preferences: string[];
+  geographic_focus?: string[]; // Geographic regions of interest
   average_ticket_size: string;
+  min_investment?: string; // Minimum investment amount
+  max_investment?: string; // Maximum investment amount
   visible_to_ventures: boolean;
+  allow_direct_contact?: boolean; // Allow ventures to contact directly
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   submitted_at?: string;
   approved_at?: string;
@@ -46,15 +58,27 @@ export interface InvestorProfile {
 export interface InvestorProfileCreatePayload {
   full_name: string;
   organization_name: string;
-  linkedin_or_website: string;
+  linkedin_or_website?: string; // Legacy field, optional if website/linkedin_url provided
+  website?: string; // Company/personal website URL
+  linkedin_url?: string; // LinkedIn profile URL
   email: string;
   phone?: string;
+  investor_type?: 'INDIVIDUAL' | 'FIRM' | 'CORPORATE' | 'FAMILY_OFFICE';
+  bio?: string; // Professional bio
+  investment_experience?: string; // Detailed investment experience description
+  investment_philosophy?: string; // Investment philosophy
+  notable_investments?: string; // Notable investments
+  address?: string; // Location/address
   investment_experience_years: number;
   deals_count?: number;
   stage_preferences: string[];
   industry_preferences: string[];
+  geographic_focus?: string[]; // Geographic regions
   average_ticket_size: string;
+  min_investment?: string; // Minimum investment
+  max_investment?: string; // Maximum investment
   visible_to_ventures?: boolean;
+  allow_direct_contact?: boolean; // Allow direct contact
 }
 
 export interface InvestorProfileUpdatePayload extends Partial<InvestorProfileCreatePayload> {}

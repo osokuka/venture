@@ -167,12 +167,18 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   
-  // Fetch profile data from API for venture users on mount
+  // Fetch profile data from API on mount for venture/investor users
   useEffect(() => {
-    if (user.role === 'venture') {
-      const fetchProfile = async () => {
-        try {
-          setIsLoadingProfile(true);
+    // Only fetch for roles that have backend profiles wired
+    if (user.role !== 'venture' && user.role !== 'investor') {
+      return;
+    }
+
+    const fetchProfile = async () => {
+      try {
+        setIsLoadingProfile(true);
+
+        if (user.role === 'venture') {
           const { ventureService } = await import('../services/ventureService');
           const profile = await ventureService.getMyProfile();
           
@@ -203,16 +209,54 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
               setProfileImage(profile.logo_url_display || profile.logo_url);
             }
           }
-        } catch (error) {
-          console.error('Failed to fetch venture profile:', error);
-          // Profile might not exist yet, that's okay - use default form data
-        } finally {
-          setIsLoadingProfile(false);
+        } else if (user.role === 'investor') {
+          const { investorService } = await import('../services/investorService');
+          const profile = await investorService.getMyProfile();
+          
+          if (profile) {
+            // Map investor_type from backend (INDIVIDUAL, FIRM, etc.) to frontend (individual, firm, etc.)
+            const investorTypeMap: Record<string, string> = {
+              'INDIVIDUAL': 'individual',
+              'FIRM': 'firm',
+              'CORPORATE': 'corporate',
+              'FAMILY_OFFICE': 'family-office',
+            };
+            
+            // Update form data with API profile data
+            setFormData(prev => ({
+              ...prev,
+              name: profile.full_name || prev.name || '',
+              investorType: profile.investor_type ? investorTypeMap[profile.investor_type] || 'individual' : prev.investorType || 'individual',
+              organizationName: profile.organization_name || prev.organizationName || '',
+              bio: profile.bio || prev.bio || '',
+              investmentExperience: profile.investment_experience || prev.investmentExperience || '',
+              investmentPhilosophy: profile.investment_philosophy || prev.investmentPhilosophy || '',
+              notableInvestments: profile.notable_investments || prev.notableInvestments || '',
+              address: profile.address || prev.address || '',
+              email: profile.email || prev.email || user.email || '',
+              phone: profile.phone || prev.phone || '',
+              linkedinUrl: profile.linkedin_url || profile.linkedin_or_website || prev.linkedinUrl || '',
+              website: profile.website || profile.linkedin_or_website || prev.website || '',
+              minInvestment: profile.min_investment || prev.minInvestment || '',
+              maxInvestment: profile.max_investment || prev.maxInvestment || '',
+              investmentStages: profile.stage_preferences || prev.investmentStages || [],
+              industries: profile.industry_preferences || prev.industries || [],
+              geographicFocus: profile.geographic_focus || prev.geographicFocus || [],
+              ticketSize: profile.average_ticket_size || prev.ticketSize || '',
+              isVisible: profile.visible_to_ventures !== false,
+              allowDirectContact: profile.allow_direct_contact !== false,
+            }));
+          }
         }
-      };
-      
-      fetchProfile();
-    }
+      } catch (error) {
+        console.error('Failed to fetch profile:', error);
+        // Profile might not exist yet, that's okay - use default form data
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+    
+    fetchProfile();
   }, [user.role, user.id]);
 
   const handleInputChange = (field: string, value: string | string[] | boolean) => {
@@ -417,16 +461,43 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
         const { investorService } = await import('../services/investorService');
         
         // Map form data to investor profile update payload
+        // Note: email is required by backend serializer (both create and update)
+        // investment_experience_years must be a number (not null) - default to 0 if not provided
+        // Note: The form doesn't have a field for investment_experience_years (years as integer),
+        // only investmentExperience (textarea for description), so we default to 0
+        
+        // Map investor_type from frontend (individual, firm, etc.) to backend (INDIVIDUAL, FIRM, etc.)
+        const investorTypeMap: Record<string, string> = {
+          'individual': 'INDIVIDUAL',
+          'firm': 'FIRM',
+          'corporate': 'CORPORATE',
+          'family-office': 'FAMILY_OFFICE',
+        };
+        
         const investorUpdateData: any = {
           full_name: formData.name || formData.full_name || user.full_name,
           organization_name: formData.organizationName || '',
-          linkedin_or_website: formData.linkedinUrl || formData.website || '',
+          // Use separate website and linkedin_url fields, fallback to linkedin_or_website for backward compatibility
+          website: formData.website || undefined,
+          linkedin_url: formData.linkedinUrl || undefined,
+          linkedin_or_website: (!formData.website && !formData.linkedinUrl) ? (formData.linkedinUrl || formData.website || '') : undefined,
+          email: formData.email || user.email, // Required field - use formData.email or fallback to user.email
           phone: formData.phone || undefined,
-          investment_experience_years: formData.investmentExperience ? parseInt(formData.investmentExperience) : 0,
+          investor_type: formData.investorType ? investorTypeMap[formData.investorType] || undefined : undefined,
+          bio: formData.bio || undefined, // Professional bio
+          investment_experience: formData.investmentExperience || undefined, // Detailed investment experience description
+          investment_philosophy: formData.investmentPhilosophy || undefined, // Investment philosophy
+          notable_investments: formData.notableInvestments || undefined, // Notable investments
+          address: formData.address || undefined, // Location/address
+          investment_experience_years: 0, // Default to 0 - form doesn't collect this field (only text description)
           stage_preferences: formData.investmentStages || [],
           industry_preferences: formData.industries || [],
+          geographic_focus: formData.geographicFocus || [],
           average_ticket_size: formData.ticketSize || '',
+          min_investment: formData.minInvestment || undefined,
+          max_investment: formData.maxInvestment || undefined,
           visible_to_ventures: formData.isVisible !== false,
+          allow_direct_contact: formData.allowDirectContact !== false,
         };
         
         // Update investor profile via API
@@ -457,11 +528,13 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
         const { mentorService } = await import('../services/mentorService');
         
         // Map form data to mentor profile update payload
+        // Note: contact_email is required by backend serializer (both create and update)
         const mentorUpdateData: any = {
           full_name: formData.name || formData.full_name || user.full_name,
           job_title: formData.jobTitle || '',
           company: formData.company || '',
           linkedin_or_website: formData.linkedinUrl || '',
+          contact_email: formData.email || user.email, // Required field - use formData.email or fallback to user.email
           phone: formData.phone || undefined,
           expertise_fields: formData.expertise || [],
           experience_overview: formData.bio || '',

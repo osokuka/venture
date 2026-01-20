@@ -1,25 +1,33 @@
 "use client";
 
-import { useTheme } from "next-themes@0.4.6";
-import { Toaster as Sonner, ToasterProps } from 'sonner';
+import { Toaster as Sonner } from 'sonner';
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
-
+// Simple Toaster component without theme dependency
+// Note: If you need theme support, install next-themes and use the commented version below
+const Toaster = () => {
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
-      className="toaster group"
-      style={
-        {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-        } as React.CSSProperties
-      }
-      {...props}
+      position="top-right"
+      richColors
+      closeButton
     />
   );
 };
+
+// Alternative version with theme support (requires next-themes):
+// import { useTheme } from "next-themes";
+// const Toaster = ({ ...props }: ToasterProps) => {
+//   const { theme = "system" } = useTheme();
+//   return (
+//     <Sonner
+//       theme={theme as ToasterProps["theme"]}
+//       className="toaster group"
+//       position="top-right"
+//       richColors
+//       closeButton
+//       {...props}
+//     />
+//   );
+// };
 
 export { Toaster };

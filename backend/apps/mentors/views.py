@@ -182,16 +182,51 @@ class MentorProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveUpd
     
     def update(self, request, *args, **kwargs):
         """
-        Update own mentor profile.
+        Update own mentor profile (upsert pattern).
+        If profile doesn't exist, create it automatically.
         If profile was REJECTED, automatically resubmit for approval.
+        
+        This handles edge cases where profile creation failed during registration
+        (e.g., validation errors that were caught but didn't block account creation).
         """
         profile = self.get_object()
-        if not profile:
-            return Response(
-                {'detail': 'Mentor profile not found. Create one first.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
         
+        # If profile doesn't exist, create it (upsert pattern)
+        # This handles cases where profile creation failed during registration
+        if not profile:
+            # Use create serializer to validate and create the profile
+            create_serializer = MentorProfileCreateSerializer(
+                data=request.data,
+                context={'request': request}
+            )
+            create_serializer.is_valid(raise_exception=True)
+            profile = create_serializer.save()
+            
+            # Automatically submit the newly created profile for approval
+            content_type = ContentType.objects.get_for_model(MentorProfile)
+            existing_review = ReviewRequest.objects.filter(
+                content_type=content_type,
+                object_id=profile.id,
+                status='SUBMITTED'
+            ).exists()
+            
+            if not existing_review:
+                ReviewRequest.objects.create(
+                    content_type=content_type,
+                    object_id=profile.id,
+                    submitted_by=request.user,
+                    status='SUBMITTED'
+                )
+                
+                profile.status = 'SUBMITTED'
+                profile.submitted_at = timezone.now()
+                profile.save(update_fields=['status', 'submitted_at'])
+            
+            # Return the newly created profile
+            serializer = MentorProfileSerializer(profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        # Profile exists - proceed with normal update
         was_rejected = profile.status == 'REJECTED'
         
         serializer = self.get_serializer(profile, data=request.data, partial=True)
@@ -200,7 +235,7 @@ class MentorProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveUpd
         
         # Auto-resubmit if profile was REJECTED (user fixed issues and updated)
         if was_rejected:
-            from django.contrib.contenttypes.models import ContentType
+            # Use module-level ContentType import to avoid shadowing/local binding issues
             content_type = ContentType.objects.get_for_model(MentorProfile)
             
             # Check if there's already a pending review

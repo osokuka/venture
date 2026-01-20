@@ -545,12 +545,115 @@ export function UserProfile({
 
   const renderInvestorProfile = (investor: FrontendUser) => {
     const profile = investor.profile || {};
-    const name = profile.name || investor.full_name || investor.email;
-    const approvalStatus = profile.approvalStatus || profile.approval_status || 'pending';
-    const organizationName = profile.organizationName || profile.organization_name || '';
-    const bio = profile.bio || profile.experience_overview || '';
-    const investmentRange = profile.investmentRange || profile.average_ticket_size || '';
-    const location = profile.location || '';
+    
+    // For own profile, prioritize API profile data (ventureProfile) > user.profile (from EditProfile) > fallbacks
+    // For viewing others, use user.profile only
+    const apiProfile = isOwnProfile ? ventureProfile : null;
+    
+    // Map API response fields to display fields
+    const name = isOwnProfile
+      ? (apiProfile?.full_name || profile.name || investor.full_name || investor.email)
+      : (profile.name || investor.full_name || investor.email);
+    
+    const approvalStatus = isOwnProfile
+      ? (apiProfile?.status?.toLowerCase() || profile.approvalStatus || profile.approval_status || 'pending')
+      : (profile.approvalStatus || profile.approval_status || 'pending');
+    
+    const organizationName = isOwnProfile
+      ? (apiProfile?.organization_name || profile.organizationName || profile.organization_name || '')
+      : (profile.organizationName || profile.organization_name || '');
+    
+    // Get bio from API profile (now stored in backend) or fallback to profile
+    const bio = isOwnProfile
+      ? (apiProfile?.bio || profile.bio || profile.experience_overview || '')
+      : (profile.bio || profile.experience_overview || '');
+    
+    // Get investment experience description from API profile (now stored in backend)
+    const investmentExperience = isOwnProfile
+      ? (apiProfile?.investment_experience || profile.investmentExperience || '')
+      : (profile.investmentExperience || '');
+    
+    const investmentRange = isOwnProfile
+      ? (apiProfile?.average_ticket_size || profile.investmentRange || profile.average_ticket_size || '')
+      : (profile.investmentRange || profile.average_ticket_size || '');
+    
+    // Get address from API profile (now stored in backend) or fallback to location
+    const location = isOwnProfile
+      ? (apiProfile?.address || profile.address || profile.location || '')
+      : (profile.address || profile.location || '');
+    
+    // Get industry preferences from API or profile
+    const industryPreferences = isOwnProfile
+      ? (apiProfile?.industry_preferences || profile.industries || profile.industry_preferences || [])
+      : (profile.industries || profile.industry_preferences || []);
+    
+    // Get stage preferences from API or profile
+    const stagePreferences = isOwnProfile
+      ? (apiProfile?.stage_preferences || profile.investmentStages || profile.stage_preferences || [])
+      : (profile.investmentStages || profile.stage_preferences || []);
+    
+    // Get contact info from API or profile
+    const linkedinOrWebsite = isOwnProfile
+      ? (apiProfile?.linkedin_url || apiProfile?.linkedin_or_website || profile.linkedinUrl || profile.linkedin_or_website || '')
+      : (profile.linkedinUrl || profile.linkedin_or_website || '');
+
+    // Get website separately from API or profile
+    const website = isOwnProfile
+      ? (apiProfile?.website || profile.website || '')
+      : (profile.website || '');
+
+    const phone = isOwnProfile
+      ? (apiProfile?.phone || profile.phone || '')
+      : (profile.phone || '');
+
+    const email = isOwnProfile
+      ? (apiProfile?.email || investor.email || '')
+      : (investor.email || '');
+
+    // Get investor type from API or profile
+    const investorTypeBackend = isOwnProfile
+      ? (apiProfile?.investor_type || '')
+      : '';
+    const investorTypeMap: Record<string, string> = {
+      'INDIVIDUAL': 'Individual',
+      'FIRM': 'Firm',
+      'CORPORATE': 'Corporate',
+      'FAMILY_OFFICE': 'Family Office',
+    };
+    const investorType = investorTypeBackend 
+      ? investorTypeMap[investorTypeBackend] || investorTypeBackend
+      : (profile.investorType ? profile.investorType.charAt(0).toUpperCase() + profile.investorType.slice(1).replace('-', ' ') : '');
+
+    // Get min/max investment from API or profile
+    const minInvestment = isOwnProfile
+      ? (apiProfile?.min_investment || profile.minInvestment || '')
+      : (profile.minInvestment || '');
+    const maxInvestment = isOwnProfile
+      ? (apiProfile?.max_investment || profile.maxInvestment || '')
+      : (profile.maxInvestment || '');
+
+    // Get geographic focus from API or profile
+    const geographicFocus = isOwnProfile
+      ? (apiProfile?.geographic_focus || profile.geographicFocus || [])
+      : (profile.geographicFocus || []);
+
+    // Get investment philosophy and notable investments from API or profile
+    const investmentPhilosophy = isOwnProfile
+      ? (apiProfile?.investment_philosophy || profile.investmentPhilosophy || '')
+      : (profile.investmentPhilosophy || '');
+    const notableInvestments = isOwnProfile
+      ? (apiProfile?.notable_investments || profile.notableInvestments || '')
+      : (profile.notableInvestments || '');
+
+    // Get investment experience years
+    const investmentExperienceYears = isOwnProfile
+      ? (apiProfile?.investment_experience_years || (profile.investmentExperience && typeof profile.investmentExperience === 'number' ? profile.investmentExperience : null))
+      : (profile.investmentExperience && typeof profile.investmentExperience === 'number' ? profile.investmentExperience : null);
+
+    // Get deals count
+    const dealsCount = isOwnProfile
+      ? (apiProfile?.deals_count || profile.dealsCount || null)
+      : (profile.dealsCount || null);
     
     return (
       <div className="space-y-6">
@@ -613,15 +716,15 @@ export function UserProfile({
           {investmentRange && (
             <Badge variant="outline">{investmentRange}</Badge>
           )}
-          {(profile.sectors || profile.industry_preferences)?.map((sector: string) => (
+          {industryPreferences?.map((sector: string) => (
             <Badge key={sector} variant="outline">{sector}</Badge>
           ))}
         </div>
 
         {/* Contact & Links */}
-        <div className="flex items-center space-x-4">
-          {profile.website && (() => {
-            const safeUrl = validateAndSanitizeUrl(profile.website);
+        <div className="flex items-center space-x-4 flex-wrap">
+          {website && (() => {
+            const safeUrl = validateAndSanitizeUrl(website);
             return safeUrl ? (
               <Button variant="outline" size="sm" asChild>
                 <a href={safeUrl} target="_blank" rel="noopener noreferrer">
@@ -631,8 +734,12 @@ export function UserProfile({
               </Button>
             ) : null;
           })()}
-          {profile.linkedinUrl && (() => {
-            const safeUrl = validateAndSanitizeUrl(profile.linkedinUrl);
+          {linkedinOrWebsite && (() => {
+            const safeUrl = validateAndSanitizeUrl(linkedinOrWebsite);
+            // Only show LinkedIn if it's different from website
+            if (website && safeUrl === validateAndSanitizeUrl(website)) {
+              return null;
+            }
             return safeUrl ? (
               <Button variant="outline" size="sm" asChild>
                 <a href={safeUrl} target="_blank" rel="noopener noreferrer">
@@ -642,27 +749,16 @@ export function UserProfile({
               </Button>
             ) : null;
           })()}
-          {profile.linkedin_or_website && (() => {
-            const safeUrl = validateAndSanitizeUrl(profile.linkedin_or_website);
-            return safeUrl ? (
-              <Button variant="outline" size="sm" asChild>
-                <a href={safeUrl} target="_blank" rel="noopener noreferrer">
-                  <Linkedin className="w-4 h-4 mr-2" />
-                  LinkedIn
-                </a>
-              </Button>
-            ) : null;
-          })()}
-          {profile.phone && (
+          {phone && (
             <div className="flex items-center text-sm text-muted-foreground">
               <Phone className="w-4 h-4 mr-1" />
-              {profile.phone}
+              {phone}
             </div>
           )}
-          {investor.email && (
+          {email && (
             <div className="flex items-center text-sm text-muted-foreground">
               <Mail className="w-4 h-4 mr-1" />
-              {investor.email}
+              {email}
             </div>
           )}
         </div>
@@ -676,17 +772,35 @@ export function UserProfile({
               <CardTitle className="text-lg">Investment Focus</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {investmentRange && (
+              {investorType && (
+                <div>
+                  <h4 className="font-medium mb-2">Investor Type</h4>
+                  <SafeText text={investorType} as="p" className="text-sm text-muted-foreground" />
+                </div>
+              )}
+              {(minInvestment || maxInvestment) && (
                 <div>
                   <h4 className="font-medium mb-2">Investment Range</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {minInvestment && maxInvestment 
+                      ? `${minInvestment} - ${maxInvestment}`
+                      : minInvestment 
+                        ? `Min: ${minInvestment}`
+                        : `Max: ${maxInvestment}`}
+                  </p>
+                </div>
+              )}
+              {investmentRange && (
+                <div>
+                  <h4 className="font-medium mb-2">Typical Ticket Size</h4>
                   <SafeText text={investmentRange} as="p" className="text-sm text-muted-foreground" />
                 </div>
               )}
-              {(profile.sectors || profile.industry_preferences) && (
+              {industryPreferences && industryPreferences.length > 0 && (
                 <div>
-                  <h4 className="font-medium mb-2">Sectors</h4>
+                  <h4 className="font-medium mb-2">Industries</h4>
                   <div className="flex flex-wrap gap-2">
-                    {(profile.sectors || profile.industry_preferences || []).map((sector: string) => (
+                    {industryPreferences.map((sector: string) => (
                       <Badge key={sector} variant="outline">
                         <SafeText text={sector} />
                       </Badge>
@@ -694,14 +808,40 @@ export function UserProfile({
                   </div>
                 </div>
               )}
-              {(profile.stage || profile.stage_preferences) && (
+              {stagePreferences && stagePreferences.length > 0 && (
                 <div>
-                  <h4 className="font-medium mb-2">Stages</h4>
+                  <h4 className="font-medium mb-2">Investment Stages</h4>
                   <div className="flex flex-wrap gap-2">
-                    {(profile.stage || profile.stage_preferences || []).map((stage: string) => (
+                    {stagePreferences.map((stage: string) => (
                       <Badge key={stage} variant="outline">{stage}</Badge>
                     ))}
                   </div>
+                </div>
+              )}
+              {geographicFocus && geographicFocus.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Geographic Focus</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {geographicFocus.map((region: string) => (
+                      <Badge key={region} variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                        {region}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {investmentExperienceYears !== null && investmentExperienceYears !== undefined && (
+                <div>
+                  <h4 className="font-medium mb-2">Years of Experience</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {investmentExperienceYears} {investmentExperienceYears === 1 ? 'year' : 'years'}
+                  </p>
+                </div>
+              )}
+              {dealsCount !== null && dealsCount !== undefined && (
+                <div>
+                  <h4 className="font-medium mb-2">Total Deals</h4>
+                  <p className="text-sm text-muted-foreground">{dealsCount} deals</p>
                 </div>
               )}
             </CardContent>
@@ -725,7 +865,31 @@ export function UserProfile({
               {bio && (
                 <div>
                   <h4 className="font-medium mb-2">Bio</h4>
-                  <SafeText text={bio} as="p" className="text-sm text-muted-foreground" />
+                  <SafeText text={bio} as="p" className="text-sm text-muted-foreground whitespace-pre-wrap" />
+                </div>
+              )}
+              {investmentExperience && (
+                <div>
+                  <h4 className="font-medium mb-2">Investment Experience</h4>
+                  <SafeText text={investmentExperience} as="p" className="text-sm text-muted-foreground whitespace-pre-wrap" />
+                </div>
+              )}
+              {investmentPhilosophy && (
+                <div>
+                  <h4 className="font-medium mb-2">Investment Philosophy</h4>
+                  <SafeText text={investmentPhilosophy} as="p" className="text-sm text-muted-foreground whitespace-pre-wrap" />
+                </div>
+              )}
+              {notableInvestments && (
+                <div>
+                  <h4 className="font-medium mb-2">Notable Investments</h4>
+                  <SafeText text={notableInvestments} as="p" className="text-sm text-muted-foreground whitespace-pre-wrap" />
+                </div>
+              )}
+              {location && (
+                <div>
+                  <h4 className="font-medium mb-2">Location</h4>
+                  <SafeText text={location} as="p" className="text-sm text-muted-foreground" />
                 </div>
               )}
             </CardContent>
@@ -935,13 +1099,25 @@ export function UserProfile({
     );
   };
 
-  // Show loading state for venture profile when fetching data
-  if (user.role === 'venture' && isOwnProfile && (isLoadingProducts || isLoadingProfile)) {
+  // Show loading state when fetching profile data (for all roles)
+  if (isOwnProfile && isLoadingProfile) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">Loading profile data...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show loading state for venture profile when fetching products
+  if (user.role === 'venture' && isOwnProfile && isLoadingProducts) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading products...</span>
         </div>
       </div>
     );

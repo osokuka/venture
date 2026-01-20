@@ -33,6 +33,7 @@ import { PasswordResetConfirm } from "./components/PasswordResetConfirm";
 import { VerifyEmail } from "./components/VerifyEmail";
 import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
+import { Toaster } from "./components/ui/sonner";
 import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
 
 // Dashboard wrapper component
@@ -475,6 +476,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <Toaster />
       </AuthProvider>
     </BrowserRouter>
   );

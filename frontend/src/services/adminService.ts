@@ -16,6 +16,91 @@ export interface AdminStats {
   totalMessages: number;
 }
 
+// Role-specific profile summaries for admin user view
+export interface VentureProfileSummary {
+  id: string;
+  user: string;
+  user_email: string;
+  user_name: string;
+  company_name: string | null;
+  sector: string | null;
+  short_description: string | null;
+  website: string | null;
+  linkedin_url: string | null;
+  address: string | null;
+  year_founded: number | null;
+  employees_count: number | null;
+  founder_name: string | null;
+  founder_linkedin: string | null;
+  founder_role: string | null;
+  customers: string | null;
+  key_metrics: any;
+  needs: string[] | null;
+  phone: string | null;
+  logo_url: string | null;
+  logo_url_display: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestorProfileSummary {
+  id: string;
+  user: string;
+  full_name: string;
+  organization_name: string;
+  linkedin_or_website?: string; // Legacy field
+  website?: string; // Company/personal website URL
+  linkedin_url?: string; // LinkedIn profile URL
+  email: string;
+  phone?: string;
+  investor_type?: 'INDIVIDUAL' | 'FIRM' | 'CORPORATE' | 'FAMILY_OFFICE';
+  bio?: string; // Professional bio
+  investment_experience?: string; // Detailed investment experience description
+  investment_philosophy?: string; // Investment philosophy
+  notable_investments?: string; // Notable investments
+  address?: string; // Location/address
+  investment_experience_years: number;
+  deals_count?: number;
+  stage_preferences: string[];
+  industry_preferences: string[];
+  geographic_focus?: string[]; // Geographic regions
+  average_ticket_size: string;
+  min_investment?: string; // Minimum investment
+  max_investment?: string; // Maximum investment
+  visible_to_ventures: boolean;
+  allow_direct_contact?: boolean; // Allow direct contact
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  submitted_at?: string;
+  approved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MentorProfileSummary {
+  id: string;
+  user: string;
+  full_name: string;
+  job_title: string;
+  company: string;
+  linkedin_or_website: string;
+  contact_email: string;
+  phone?: string;
+  expertise_fields: string[];
+  experience_overview: string;
+  industries_of_interest: string[];
+  engagement_type: 'PAID' | 'PRO_BONO' | 'BOTH';
+  paid_rate_type?: 'HOURLY' | 'DAILY' | 'MONTHLY';
+  paid_rate_amount?: string;
+  availability_types: string[];
+  preferred_engagement: 'VIRTUAL' | 'IN_PERSON' | 'BOTH';
+  visible_to_ventures: boolean;
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+  submitted_at?: string;
+  approved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserListItem {
   id: string;
   email: string;
@@ -24,6 +109,10 @@ export interface UserListItem {
   is_email_verified: boolean;
   is_active: boolean;
   date_joined: string;
+  // Optional rich profile data (only populated on detail view)
+  venture_profile?: VentureProfileSummary | null;
+  investor_profile?: InvestorProfileSummary | null;
+  mentor_profile?: MentorProfileSummary | null;
 }
 
 export interface AdminUserUpsertPayload {

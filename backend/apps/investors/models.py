@@ -18,20 +18,50 @@ class InvestorProfile(models.Model):
         ('SUSPENDED', 'Suspended'),
     ]
     
+    INVESTOR_TYPE_CHOICES = [
+        ('INDIVIDUAL', 'Individual'),
+        ('FIRM', 'Firm'),
+        ('CORPORATE', 'Corporate'),
+        ('FAMILY_OFFICE', 'Family Office'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='investor_profile')
     full_name = models.CharField(max_length=255)
     organization_name = models.CharField(max_length=255)
-    linkedin_or_website = models.URLField()
+    # Separate website and LinkedIn fields (backward compatible with linkedin_or_website)
+    linkedin_or_website = models.URLField(blank=True, null=True, help_text="Legacy field - use website and linkedin_url instead")
+    website = models.URLField(blank=True, null=True, help_text="Company or personal website URL")
+    linkedin_url = models.URLField(blank=True, null=True, help_text="LinkedIn profile URL")
     email = models.EmailField()
     phone = models.CharField(max_length=20, blank=True, null=True)
+    # Investor type classification
+    investor_type = models.CharField(
+        max_length=20,
+        choices=INVESTOR_TYPE_CHOICES,
+        blank=True,
+        null=True,
+        help_text="Type of investor: Individual, Firm, Corporate, or Family Office"
+    )
+    # Text fields for detailed descriptions
+    bio = models.TextField(blank=True, null=True, help_text="Professional bio describing background and interests")
+    investment_experience = models.TextField(blank=True, null=True, help_text="Detailed description of investment experience, notable deals, etc.")
+    investment_philosophy = models.TextField(blank=True, null=True, help_text="Investment philosophy and what you look for in startups")
+    notable_investments = models.TextField(blank=True, null=True, help_text="Notable investments and portfolio companies")
+    address = models.CharField(max_length=255, blank=True, null=True, help_text="Location/address (City, State, Country)")
+    # Numeric fields
     investment_experience_years = models.IntegerField(validators=[MinValueValidator(0)])
     deals_count = models.IntegerField(blank=True, null=True, validators=[MinValueValidator(0)])
+    # Investment preferences
     stage_preferences = models.JSONField(default=list)
     industry_preferences = models.JSONField(default=list)
+    geographic_focus = models.JSONField(default=list, blank=True, null=True, help_text="Geographic regions of interest (e.g., ['North America', 'Europe'])")
     average_ticket_size = models.CharField(max_length=50)
-    # Incognito mode: if False, investor is hidden from public unless they initiate conversation
-    visible_to_ventures = models.BooleanField(default=False)
+    min_investment = models.CharField(max_length=50, blank=True, null=True, help_text="Minimum investment amount (e.g., '100k', '$500K')")
+    max_investment = models.CharField(max_length=50, blank=True, null=True, help_text="Maximum investment amount (e.g., '5m', '$10M')")
+    # Visibility and contact settings
+    visible_to_ventures = models.BooleanField(default=False, help_text="Make profile visible to ventures")
+    allow_direct_contact = models.BooleanField(default=True, help_text="Allow ventures to contact directly")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
     submitted_at = models.DateTimeField(blank=True, null=True)
     approved_at = models.DateTimeField(blank=True, null=True)

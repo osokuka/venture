@@ -2799,7 +2799,7 @@
         },
         {
           "summary": "Frontend: add admin user detail view + tab sync",
-          "description": "Add `/dashboard/admin/user-view?userId=...` to inspect user accounts (email, role, status, verification). Replace table 'Review Profile' with a generic eye 'View' action for all users. Keep profile approval (investor/mentor) flows in approvals screens.",
+          "description": "Add `/dashboard/admin/user-view?userId=...` to inspect user accounts (email, role, status, verification) and show full role-specific profile context (venture company + sector + needs, investor preferences + ticket size + visibility, mentor expertise + industries + availability). Replace table 'Review Profile' with a generic eye 'View' action for all users. Keep profile approval (investor/mentor) flows in approvals screens.",
           "type": "Task",
           "estimate": "2h",
           "status": "Pending"
@@ -2810,12 +2810,111 @@
           "type": "Task",
           "estimate": "3h",
           "status": "Done"
+        },
+        {
+          "summary": "Backend: implement upsert pattern for investor/mentor profile updates",
+          "description": "Fixed: Updated `InvestorProfileCreateUpdateView.update()` and `MentorProfileCreateUpdateView.update()` to automatically create a profile if it doesn't exist when PATCH `/api/investors/profile/me` or `/api/mentors/profile/me` is called. This handles edge cases where profile creation failed during registration (e.g., validation errors that were caught but didn't block account creation). The update method now uses the create serializer to validate and create the profile if missing, then automatically submits it for approval. This prevents users from being stuck with an account but no profile, unable to edit their profile because it doesn't exist.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Frontend: fix investor/mentor profile update payload mapping",
+          "description": "Fixed: Updated `EditProfile.tsx` investor and mentor profile update payloads to include required email fields (`email` for investors, `contact_email` for mentors) and ensure `investment_experience_years` is always a number (never null). The forms were missing email fields in the payloads and sending `null` for `investment_experience_years`, causing backend validation errors. For investors, the form doesn't have a field for years of experience (only a textarea for description), so we default to 0. Future enhancement: Add a proper input field for `investment_experience_years` (number of years) to the EditProfile form for investors.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
         }
       ],
       "status": "Pending"
     }
   ],
-  "bugs": [],
+  "bugs": [
+    {
+      "summary": "Investor profile PATCH /api/investors/profile/me returns 500 UnboundLocalError",
+      "description": "Fix: `InvestorProfileCreateUpdateView.update()` raised `UnboundLocalError: cannot access local variable 'ContentType' where it is not associated with a value` when creating an investor profile via PATCH `/api/investors/profile/me`. Root cause was a local `from django.contrib.contenttypes.models import ContentType` inside the `if was_rejected` block, which shadowed the module-level `ContentType` import and caused reads earlier in the function (for the upsert branch) to fail. Removed the inner import and now rely solely on the module-level import. Applied the same fix to `MentorProfileCreateUpdateView.update()` for consistency.",
+      "type": "Bug",
+      "status": "Fixed"
+    }
+  ],
+  "techDebt": [
+    {
+      "key": "VL-841",
+      "summary": "Tech Debt: Investor Profile CRUD - Incomplete Profile View and Missing Toast Notifications",
+      "description": "Multiple issues identified in investor profile CRUD workflow:\n\n1. **Profile View Not Using API Data**: `UserProfile.renderInvestorProfile()` only uses `investor.profile` (from user prop) and ignores `ventureProfile` state that contains fetched API data. Unlike `renderVentureProfile()` which properly uses API data when `isOwnProfile=true`, `renderInvestorProfile()` doesn't have this logic, causing empty/minimal profile displays.\n\n2. **Toast Notifications Not Showing**: `Toaster` component from `sonner` is not rendered in the app root (`AppWithRouter.tsx`), so `toast.success()` calls in `EditProfile.tsx` don't display. Users get no feedback when saving profiles.\n\n3. **Missing Loading States**: `UserProfile` shows loading state only for venture profiles (`isLoadingProducts || isLoadingProfile`), but not for investor/mentor profiles when `isLoadingProfile` is true.\n\n4. **Incomplete Data Mapping**: Profile view doesn't display all available fields from API:\n   - `investment_experience_years` (shown in admin view but not user profile view)\n   - `deals_count` (shown in admin view but not user profile view)\n   - Proper mapping of `industry_preferences` and `stage_preferences` from API response\n   - Contact email from API profile vs user.email\n\n5. **Data Flow Issues**: After profile update via `EditProfile`, the updated data is passed to `onProfileUpdate` callback, but `UserProfile` component fetches fresh data from API and stores it in `ventureProfile`, which `renderInvestorProfile` doesn't use.\n\n6. **Field Name Inconsistencies**: Frontend uses different field names than backend API:\n   - Frontend: `profile.organizationName`, `profile.linkedinUrl`, `profile.investmentStages`\n   - Backend API: `organization_name`, `linkedin_or_website`, `stage_preferences`\n   - Mapping happens in `EditProfile.onProfileUpdate` but not consistently used in `UserProfile.renderInvestorProfile`\n\n**Impact**:\n- Users see empty/minimal profile data when viewing their own investor profile\n- No visual feedback when saving profile changes\n- Poor user experience and confusion about whether data was saved\n- Missing profile information that exists in the database\n\n**Files Affected**:\n- `frontend/src/components/UserProfile.tsx` - Profile rendering logic\n- `frontend/src/components/EditProfile.tsx` - Profile update and toast notifications\n- `frontend/src/AppWithRouter.tsx` - Missing Toaster component\n- `frontend/src/components/ui/sonner.tsx` - Toaster component (needs theme dependency fix)",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Investor profile view displays all profile data from API (organization, industries, stages, experience years, deals count, contact info)",
+        "Toast notifications appear when saving profile changes",
+        "Loading states shown for investor/mentor profiles when fetching data",
+        "Profile view uses API data (`ventureProfile`) when `isOwnProfile=true`, similar to venture profile logic",
+        "All backend API fields are properly mapped to frontend display fields",
+        "Profile updates trigger refresh of profile view data"
+      ],
+      "tasks": [
+        {
+          "summary": "Fix UserProfile.renderInvestorProfile to use API data (ventureProfile)",
+          "description": "Update `renderInvestorProfile()` to prioritize `ventureProfile` API data when `isOwnProfile=true`, similar to how `renderVentureProfile()` works. Map all API response fields (organization_name, industry_preferences, stage_preferences, investment_experience_years, deals_count, linkedin_or_website, email, phone) to display fields.",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add Toaster component to app root",
+          "description": "Import and render `<Toaster />` component in `AppWithRouter.tsx` so toast notifications from `EditProfile.tsx` and other components are displayed. Fix `sonner.tsx` to work without next-themes dependency or install next-themes if theme support is needed.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add loading states for investor/mentor profiles",
+          "description": "Update `UserProfile` component to show loading spinner when `isLoadingProfile` is true for investor and mentor profiles, not just venture profiles.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Display all investor profile fields in profile view",
+          "description": "Add display of `investment_experience_years` and `deals_count` fields in `renderInvestorProfile()`. Ensure all fields from API response are shown: organization, industries, stages, ticket size, experience, deals count, contact info.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Ensure profile view refreshes after edit",
+          "description": "After `EditProfile` saves profile and calls `onProfileUpdate`, ensure `UserProfile` component refetches profile data from API or properly updates `ventureProfile` state. Consider adding a refresh mechanism or ensuring the useEffect dependencies trigger a refetch.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Add bio, investment_experience, and address fields to InvestorProfile model and display",
+          "description": "The EditProfile form collects `bio` and `investmentExperience` (text fields) but they were not being saved to the backend. Added `bio` (TextField), `investment_experience` (TextField), and `address` (CharField) to InvestorProfile model. Updated serializers to include these fields with validation. Updated EditProfile to save these fields to backend. Updated UserProfile to display bio and investment_experience from API. Updated AdminUserView to show these fields in categorized sections. Created database migration (needs to be run).",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Done"
+        },
+        {
+          "summary": "Fix investor profile view to display all fields from edit form",
+          "description": "The investor profile view page (`/dashboard/investor/profile`) was not showing all fields that are available in the edit form (`/dashboard/investor/edit-profile`). Updated `UserProfile.renderInvestorProfile()` to display: investor type, min/max investment range (if available), website separately from LinkedIn, location/address, and all other fields from the edit form. Ensured proper field mapping from API data and profile fallbacks. Profile view now matches edit form fields completely.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Complete investor profile API parity - Add all missing fields from edit form to backend",
+          "description": "Implemented full parity between investor edit form (`/dashboard/investor/edit-profile`) and backend InvestorProfile API. The form collected many fields that were not persisted in the backend, causing data loss.\n\n**Backend Changes:**\n- Added `investor_type` field (INDIVIDUAL, FIRM, CORPORATE, FAMILY_OFFICE) to InvestorProfile model\n- Added `website` and `linkedin_url` as separate fields (backward compatible with `linkedin_or_website`)\n- Added `min_investment` and `max_investment` fields (CharField, max 50 chars)\n- Added `geographic_focus` field (JSONField, list of regions)\n- Added `investment_philosophy` field (TextField, max 5000 chars)\n- Added `notable_investments` field (TextField, max 5000 chars)\n- Added `allow_direct_contact` field (BooleanField, default True)\n- Updated all serializers (InvestorProfileSerializer, InvestorProfileCreateSerializer, InvestorProfileUpdateSerializer) to include new fields\n- Added validation for all new fields (URL validation, length limits, type validation)\n- Created migration `0004_add_complete_investor_profile_fields.py`\n\n**Frontend Changes:**\n- Updated `investorService.ts` TypeScript interfaces to include all new fields\n- Updated `EditProfile.tsx` to:\n  - Load all new fields from API when opening edit form\n  - Save all new fields to backend (with proper field name mapping: investorType → investor_type, etc.)\n  - Map frontend field names (individual/firm/corporate/family-office) to backend (INDIVIDUAL/FIRM/CORPORATE/FAMILY_OFFICE)\n- Updated `UserProfile.tsx` to display all new fields:\n  - Investor type in Investment Focus section\n  - Min/Max investment range\n  - Geographic focus badges\n  - Investment philosophy in Background section\n  - Notable investments in Background section\n  - Separate website and LinkedIn links\n- Updated `AdminUserView.tsx` to show all new fields in categorized sections:\n  - Investor type in Basic Information\n  - Separate website and LinkedIn in Basic Information\n  - Min/Max investment in Investment Focus\n  - Geographic focus in Investment Preferences\n  - Investment philosophy and Notable investments in Professional Background\n  - Allow direct contact flag\n- Updated `adminService.ts` InvestorProfileSummary interface to include all new fields\n\n**Field Mapping:**\n- Frontend `investorType` (individual/firm/corporate/family-office) ↔ Backend `investor_type` (INDIVIDUAL/FIRM/CORPORATE/FAMILY_OFFICE)\n- Frontend `minInvestment` ↔ Backend `min_investment`\n- Frontend `maxInvestment` ↔ Backend `max_investment`\n- Frontend `geographicFocus[]` ↔ Backend `geographic_focus[]`\n- Frontend `investmentPhilosophy` ↔ Backend `investment_philosophy`\n- Frontend `notableInvestments` ↔ Backend `notable_investments`\n- Frontend `allowDirectContact` ↔ Backend `allow_direct_contact`\n- Frontend `website` ↔ Backend `website`\n- Frontend `linkedinUrl` ↔ Backend `linkedin_url`\n\n**Migration:**\n- Migration file: `apps/investors/migrations/0004_add_complete_investor_profile_fields.py`\n- Run: `docker-compose exec web python manage.py migrate investors`\n\n**Result:**\n- All fields from investor edit form are now persisted in backend\n- Profile view displays all fields from edit form\n- Admin view shows all fields in organized sections\n- No data loss - all form fields are saved and displayed",
+          "type": "Task",
+          "estimate": "6h",
+          "status": "Done"
+        }
+      ],
+      "status": "In Progress"
+    }
+  ],
   "metadata": {
     "created": "2025-01-27",
     "updated": "2025-01-16",
