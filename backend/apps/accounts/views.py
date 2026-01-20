@@ -7,9 +7,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
-from shared.throttles import PasswordResetRateThrottle
+from shared.throttles import PasswordResetRateThrottle, CurrentUserRateThrottle
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.conf import settings
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db.models import Q, Count
@@ -62,12 +63,14 @@ class RegisterView(generics.CreateAPIView):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
-    Custom login view that updates last_login.
+    Custom login view that updates last_login and sets httpOnly cookies.
     POST /api/auth/login
     
     Security: Rate limited to prevent brute force attacks.
+    Sets httpOnly cookies for secure token storage (prevents XSS attacks).
     """
     throttle_classes = [AnonRateThrottle]  # Rate limit: 10/hour for anonymous users
+    
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         
@@ -81,8 +84,141 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             except User.DoesNotExist:
                 # User not found - don't reveal this information
                 pass
+            
+            # Set httpOnly cookies for secure token storage
+            # Cookies are automatically sent with requests, preventing XSS attacks
+            access_token = response.data.get('access')
+            refresh_token = response.data.get('refresh')
+            
+            # Determine cookie domain based on environment
+            # For production (ventureuplink.com), use parent domain so cookies work across subdomains
+            # For development (localhost), don't set domain (browser handles it)
+            cookie_domain = None
+            if not settings.DEBUG:
+                # Production: set domain to .ventureuplink.com for cross-subdomain cookies
+                cookie_domain = '.ventureuplink.com'
+            
+            if access_token:
+                # Set access token cookie (httpOnly, Secure in production, SameSite=Lax)
+                response.set_cookie(
+                    'access_token',
+                    access_token,
+                    max_age=15 * 60,  # 15 minutes (matches ACCESS_TOKEN_LIFETIME)
+                    httponly=True,  # Prevent JavaScript access (XSS protection)
+                    samesite='Lax',  # CSRF protection
+                    secure=not settings.DEBUG,  # HTTPS only in production
+                    path='/',  # Available for entire domain
+                    domain=cookie_domain,  # Cross-subdomain support in production
+                )
+            
+            if refresh_token:
+                # Set refresh token cookie (httpOnly, Secure in production, SameSite=Lax)
+                response.set_cookie(
+                    'refresh_token',
+                    refresh_token,
+                    max_age=7 * 24 * 60 * 60,  # 7 days (matches REFRESH_TOKEN_LIFETIME)
+                    httponly=True,  # Prevent JavaScript access (XSS protection)
+                    samesite='Lax',  # CSRF protection
+                    secure=not settings.DEBUG,  # HTTPS only in production
+                    path='/',  # Available for entire domain
+                    domain=cookie_domain,  # Cross-subdomain support in production
+                )
+            
+            # Remove tokens from response body for security (cookies are set)
+            # Frontend should not store tokens in localStorage
+            if hasattr(response, 'data'):
+                response.data.pop('access', None)
+                response.data.pop('refresh', None)
         
         return response
+
+
+class CustomTokenRefreshView(TokenRefreshView):
+    """
+    Custom token refresh view that sets httpOnly cookies.
+    POST /api/auth/refresh
+    
+    Reads refresh token from httpOnly cookie and sets new access token in cookie.
+    """
+    def post(self, request, *args, **kwargs):
+        # Get refresh token from cookie (preferred) or request body (fallback)
+        refresh_token = request.COOKIES.get('refresh_token') or request.data.get('refresh')
+        
+        if not refresh_token:
+            return Response(
+                {'detail': 'Refresh token not provided.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create request with refresh token in body for TokenRefreshView
+        request.data['refresh'] = refresh_token
+        
+        response = super().post(request, *args, **kwargs)
+        
+        if response.status_code == 200:
+            # Set httpOnly cookie for new access token
+            access_token = response.data.get('access')
+            
+            # Determine cookie domain based on environment
+            cookie_domain = None
+            if not settings.DEBUG:
+                cookie_domain = '.ventureuplink.com'
+            
+            if access_token:
+                response.set_cookie(
+                    'access_token',
+                    access_token,
+                    max_age=15 * 60,  # 15 minutes
+                    httponly=True,
+                    samesite='Lax',
+                    secure=not settings.DEBUG,
+                    path='/',
+                    domain=cookie_domain,
+                )
+            
+            # If refresh token was rotated, set new refresh token cookie
+            if 'refresh' in response.data:
+                refresh_token = response.data.get('refresh')
+                response.set_cookie(
+                    'refresh_token',
+                    refresh_token,
+                    max_age=7 * 24 * 60 * 60,  # 7 days
+                    httponly=True,
+                    samesite='Lax',
+                    secure=not settings.DEBUG,
+                    path='/',
+                    domain=cookie_domain,
+                )
+            
+            # Remove tokens from response body for security
+            response.data.pop('access', None)
+            response.data.pop('refresh', None)
+        
+        return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """
+    Logout user by clearing httpOnly cookies.
+    POST /api/auth/logout
+    """
+    response = Response(
+        {'detail': 'Successfully logged out.'},
+        status=status.HTTP_200_OK
+    )
+    
+    # Determine cookie domain based on environment
+    cookie_domain = None
+    if not settings.DEBUG:
+        cookie_domain = '.ventureuplink.com'
+    
+    # Clear httpOnly cookies
+    response.delete_cookie('access_token', path='/', samesite='Lax', domain=cookie_domain)
+    response.delete_cookie('refresh_token', path='/', samesite='Lax', domain=cookie_domain)
+    
+    return response
 
 
 @api_view(['POST'])
@@ -133,11 +269,15 @@ def resend_verification(request):
 
 @api_view(['GET', 'PATCH'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([CurrentUserRateThrottle])  # Higher rate limit: 1000/hour (vs default 100/hour)
 def get_current_user(request):
     """
     Get or update current authenticated user.
     GET /api/auth/me - Get current user
     PATCH /api/auth/me - Update current user profile
+    
+    Rate Limited: 1000 requests/hour (higher than default to prevent legitimate users
+    from hitting limits during normal app usage)
     """
     if request.method == 'GET':
         serializer = UserSerializer(request.user)

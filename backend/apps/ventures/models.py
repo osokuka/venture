@@ -429,6 +429,16 @@ class InvestmentCommitment(models.Model):
         help_text="Venture user who responded to the commitment"
     )
     
+    # Link to conversation for negotiation correspondence
+    conversation = models.ForeignKey(
+        'messaging.Conversation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='commitments',
+        help_text="Linked conversation for negotiation correspondence"
+    )
+    
     class Meta:
         db_table = 'investment_commitments'
         unique_together = [['document', 'investor']]

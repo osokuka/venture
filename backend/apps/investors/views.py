@@ -608,7 +608,27 @@ def commit_to_invest(request, product_id, doc_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get or create conversation between investor and venture user
+        from apps.messaging.models import Conversation
+        from django.db.models import Q, Count
+        
+        # Helper function to get or create conversation
+        existing_conversation = Conversation.objects.filter(
+            Q(participants=request.user) & Q(participants=product.user)
+        ).annotate(
+            participant_count=Count('participants')
+        ).filter(
+            participant_count=2
+        ).distinct().first()
+        
+        if existing_conversation:
+            conversation = existing_conversation
+        else:
+            conversation = Conversation.objects.create()
+            conversation.participants.add(request.user, product.user)
+        
         # Create or update commitment
+        previous_amount = None
         commitment, created = InvestmentCommitment.objects.get_or_create(
             document=document,
             investor=request.user,
@@ -616,24 +636,58 @@ def commit_to_invest(request, product_id, doc_id):
                 'product': product,
                 'status': 'COMMITTED',
                 'amount': amount_decimal,
-                'message': message.strip() if message else None
+                'message': message.strip() if message else None,
+                'conversation': conversation  # Link conversation to commitment
             }
         )
         
         if not created:
             # Update existing commitment
+            previous_amount = commitment.amount
             commitment.status = 'COMMITTED'
             if amount_decimal is not None:
                 commitment.amount = amount_decimal
             if message:
                 commitment.message = message.strip()
-            commitment.save(update_fields=['status', 'amount', 'message', 'updated_at'])
+            # Link conversation if not already linked
+            if not commitment.conversation:
+                commitment.conversation = conversation
+            commitment.save(update_fields=['status', 'amount', 'message', 'conversation', 'updated_at'])
+        
+        # Create system message in conversation
+        from apps.messaging.models import Message
+        from django.utils import timezone
+        from decimal import Decimal
+        
+        amount_str = f"${commitment.amount:,.0f}" if commitment.amount else "Amount not specified"
+        
+        if created:
+            body = f"💰 Investment commitment created: {amount_str} for {product.name}"
+            if commitment.message:
+                body += f"\n\nMessage: {commitment.message}"
+        else:
+            prev_amount_str = f"${previous_amount:,.0f}" if previous_amount else "Amount not specified"
+            body = f"📝 Investment commitment updated: {amount_str} (previously {prev_amount_str}) for {product.name}"
+            if commitment.message:
+                body += f"\n\nMessage: {commitment.message}"
+        
+        # Create system message (use product.user as sender for context)
+        system_message = Message.objects.create(
+            conversation=conversation,
+            sender=product.user,  # Use venture user as sender for system messages
+            body=body
+        )
+        
+        # Update conversation's last_message_at
+        conversation.last_message_at = timezone.now()
+        conversation.save(update_fields=['last_message_at'])
         
         return Response({
             'detail': 'Investment commitment recorded successfully.',
             'commitment_id': str(commitment.id),
             'status': commitment.status,
-            'amount': str(commitment.amount) if commitment.amount else None
+            'amount': str(commitment.amount) if commitment.amount else None,
+            'conversation_id': str(conversation.id)  # Return conversation ID for frontend
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -643,6 +697,315 @@ def commit_to_invest(request, product_id, doc_id):
         return Response(
             {
                 'detail': 'An error occurred while recording investment commitment.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_commitment(request, product_id, commitment_id):
+    """
+    Update an investment commitment after renegotiation request.
+    
+    POST /api/investors/products/{product_id}/commitments/{commitment_id}/update
+    Body: {
+        "amount": "600000",  # Optional: new investment amount
+        "message": "Updated terms based on negotiation"  # Optional: message to venture
+    }
+    Only the investor who made the commitment can update it.
+    Can only update if venture_response is 'RENEGOTIATE'.
+    """
+    try:
+        # Security: Only investors can update commitments
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can update commitments.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate UUIDs
+        try:
+            product = VentureProduct.objects.get(id=product_id, status='APPROVED', is_active=True)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found or not available.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get commitment
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product,
+                investor=request.user
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if commitment can be updated (must be in RENEGOTIATE status)
+        if commitment.venture_response != 'RENEGOTIATE':
+            return Response(
+                {
+                    'detail': 'Commitment can only be updated when renegotiation has been requested.',
+                    'current_status': commitment.venture_response
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get amount and message from request
+        amount = request.data.get('amount')
+        message = request.data.get('message', '')
+        
+        # Validate amount if provided
+        previous_amount = commitment.amount
+        if amount:
+            try:
+                from decimal import Decimal
+                amount_decimal = Decimal(str(amount))
+                if amount_decimal < 0:
+                    return Response(
+                        {'detail': 'Investment amount must be positive.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'Invalid investment amount format.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            amount_decimal = commitment.amount  # Keep existing amount if not provided
+        
+        # Validate message length
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update commitment (reset venture_response to PENDING for new review)
+        commitment.amount = amount_decimal
+        commitment.message = message.strip() if message else commitment.message
+        commitment.venture_response = 'PENDING'  # Reset to pending for venture to review
+        commitment.venture_response_at = None
+        commitment.venture_response_message = None
+        commitment.responded_by = None
+        commitment.updated_at = timezone.now()
+        commitment.save(update_fields=['amount', 'message', 'venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'updated_at'])
+        
+        # Get or create conversation if not already linked
+        if not commitment.conversation:
+            from apps.messaging.models import Conversation
+            from django.db.models import Q, Count
+            
+            existing_conversation = Conversation.objects.filter(
+                Q(participants=request.user) & Q(participants=product.user)
+            ).annotate(
+                participant_count=Count('participants')
+            ).filter(
+                participant_count=2
+            ).distinct().first()
+            
+            if existing_conversation:
+                conversation = existing_conversation
+            else:
+                conversation = Conversation.objects.create()
+                conversation.participants.add(request.user, product.user)
+            
+            commitment.conversation = conversation
+            commitment.save(update_fields=['conversation'])
+        else:
+            conversation = commitment.conversation
+        
+        # Create system message in conversation
+        from apps.messaging.models import Message
+        
+        amount_str = f"${commitment.amount:,.0f}" if commitment.amount else "Amount not specified"
+        prev_amount_str = f"${previous_amount:,.0f}" if previous_amount else "Amount not specified"
+        
+        body = f"📝 Investment commitment updated: {amount_str} (previously {prev_amount_str}) for {product.name}"
+        if commitment.message:
+            body += f"\n\nMessage: {commitment.message}"
+        
+        # Create system message (use product.user as sender for context)
+        system_message = Message.objects.create(
+            conversation=conversation,
+            sender=product.user,  # Use venture user as sender for system messages
+            body=body
+        )
+        
+        # Update conversation's last_message_at
+        conversation.last_message_at = timezone.now()
+        conversation.save(update_fields=['last_message_at'])
+        
+        return Response({
+            'detail': 'Investment commitment updated successfully. Waiting for venture response.',
+            'commitment_id': str(commitment.id),
+            'status': commitment.status,
+            'amount': str(commitment.amount) if commitment.amount else None,
+            'venture_response': commitment.venture_response,
+            'conversation_id': str(conversation.id)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in update_commitment: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while updating investment commitment.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def withdraw_commitment(request, product_id, commitment_id):
+    """
+    Withdraw/retract an investment commitment.
+    
+    POST /api/investors/products/{product_id}/commitments/{commitment_id}/withdraw
+    Body: {
+        "message": "Optional reason for withdrawal"  # Optional
+    }
+    Only the investor who made the commitment can withdraw it.
+    Cannot withdraw if commitment has been ACCEPTED (deal already created).
+    """
+    try:
+        # Security: Only investors can withdraw commitments
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can withdraw commitments.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate UUIDs
+        try:
+            product = VentureProduct.objects.get(id=product_id, status='APPROVED', is_active=True)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found or not available.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get commitment
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product,
+                investor=request.user
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if commitment can be withdrawn (cannot withdraw accepted deals)
+        if commitment.venture_response == 'ACCEPTED':
+            return Response(
+                {
+                    'detail': 'Cannot withdraw an accepted commitment. The deal has already been created. Please contact the venture directly.',
+                    'current_status': commitment.venture_response
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if already withdrawn
+        if commitment.status == 'WITHDRAWN':
+            return Response(
+                {
+                    'detail': 'This commitment has already been withdrawn.',
+                    'current_status': commitment.status
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional message
+        message = request.data.get('message', '').strip()
+        
+        # Validate message length
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Store previous status for system message
+        previous_status = commitment.status
+        previous_amount = commitment.amount
+        
+        # Withdraw the commitment
+        commitment.status = 'WITHDRAWN'
+        if message:
+            commitment.message = message  # Update message with withdrawal reason
+        commitment.updated_at = timezone.now()
+        commitment.save(update_fields=['status', 'message', 'updated_at'])
+        
+        # Get or create conversation if not already linked
+        if not commitment.conversation:
+            from apps.messaging.models import Conversation
+            from django.db.models import Q, Count
+            
+            existing_conversation = Conversation.objects.filter(
+                Q(participants=request.user) & Q(participants=product.user)
+            ).annotate(
+                participant_count=Count('participants')
+            ).filter(
+                participant_count=2
+            ).distinct().first()
+            
+            if existing_conversation:
+                conversation = existing_conversation
+            else:
+                conversation = Conversation.objects.create()
+                conversation.participants.add(request.user, product.user)
+            
+            commitment.conversation = conversation
+            commitment.save(update_fields=['conversation'])
+        else:
+            conversation = commitment.conversation
+        
+        # Create system message in conversation
+        from apps.messaging.models import Message
+        
+        amount_str = f"${previous_amount:,.0f}" if previous_amount else "Amount not specified"
+        
+        body = f"❌ Investment commitment withdrawn: {amount_str} for {product.name}"
+        if message:
+            body += f"\n\nReason: {message}"
+        
+        # Create system message (use product.user as sender for context)
+        system_message = Message.objects.create(
+            conversation=conversation,
+            sender=product.user,  # Use venture user as sender for system messages
+            body=body
+        )
+        
+        # Update conversation's last_message_at
+        conversation.last_message_at = timezone.now()
+        conversation.save(update_fields=['last_message_at'])
+        
+        return Response({
+            'detail': 'Investment commitment withdrawn successfully.',
+            'commitment_id': str(commitment.id),
+            'status': commitment.status,
+            'conversation_id': str(conversation.id)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in withdraw_commitment: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while withdrawing investment commitment.',
                 'error': str(e) if settings.DEBUG else None
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

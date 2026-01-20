@@ -42,6 +42,90 @@ from apps.accounts.models import User
 from django.contrib.contenttypes.models import ContentType
 from django.http import FileResponse, Http404
 from django.utils.http import http_date
+from apps.messaging.models import Conversation, Message
+from django.db.models import Count
+
+
+def get_or_create_commitment_conversation(investor, venture_user):
+    """
+    Helper function to get or create a conversation between investor and venture user.
+    Used for linking investment commitments to chat conversations.
+    
+    Args:
+        investor: User object (investor)
+        venture_user: User object (venture owner)
+    
+    Returns:
+        Conversation object
+    """
+    # Check if conversation already exists between these two users
+    existing_conversation = Conversation.objects.filter(
+        Q(participants=investor) & Q(participants=venture_user)
+    ).annotate(
+        participant_count=Count('participants')
+    ).filter(
+        participant_count=2
+    ).distinct().first()
+    
+    if existing_conversation:
+        return existing_conversation
+    
+    # Create new conversation
+    conversation = Conversation.objects.create()
+    conversation.participants.add(investor, venture_user)
+    return conversation
+
+
+def create_commitment_system_message(conversation, commitment, message_type, previous_amount=None):
+    """
+    Helper function to create system messages for commitment events.
+    
+    Args:
+        conversation: Conversation object
+        commitment: InvestmentCommitment object
+        message_type: str - 'created', 'updated', 'accepted', 'renegotiate'
+        previous_amount: Decimal (optional) - previous amount for 'updated' messages
+    
+    Returns:
+        Message object
+    """
+    from decimal import Decimal
+    
+    amount_str = f"${commitment.amount:,.0f}" if commitment.amount else "Amount not specified"
+    
+    if message_type == 'created':
+        body = f"💰 Investment commitment created: {amount_str} for {commitment.product.name}"
+        if commitment.message:
+            body += f"\n\nMessage: {commitment.message}"
+    elif message_type == 'updated':
+        prev_amount_str = f"${previous_amount:,.0f}" if previous_amount else "Amount not specified"
+        body = f"📝 Investment commitment updated: {amount_str} (previously {prev_amount_str}) for {commitment.product.name}"
+        if commitment.message:
+            body += f"\n\nMessage: {commitment.message}"
+    elif message_type == 'accepted':
+        body = f"✅ Investment commitment accepted - Deal created! {amount_str} for {commitment.product.name}"
+        if commitment.venture_response_message:
+            body += f"\n\nMessage: {commitment.venture_response_message}"
+    elif message_type == 'renegotiate':
+        body = f"🔄 Renegotiation requested for investment commitment: {amount_str} for {commitment.product.name}"
+        if commitment.venture_response_message:
+            body += f"\n\nRenegotiation message: {commitment.venture_response_message}"
+    else:
+        body = f"Investment commitment: {amount_str} for {commitment.product.name}"
+    
+    # Create system message (sender is the system, represented by the venture user for context)
+    # Note: System messages are not editable/deletable
+    message = Message.objects.create(
+        conversation=conversation,
+        sender=commitment.product.user,  # Use venture user as sender for system messages
+        body=body
+    )
+    
+    # Update conversation's last_message_at
+    conversation.last_message_at = timezone.now()
+    conversation.save(update_fields=['last_message_at'])
+    
+    return message
 
 
 class ProductListCreateView(generics.ListCreateAPIView):
@@ -2180,18 +2264,29 @@ def accept_commitment(request, product_id, commitment_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get or create conversation if not already linked
+        if not commitment.conversation:
+            conversation = get_or_create_commitment_conversation(commitment.investor, product.user)
+            commitment.conversation = conversation
+        else:
+            conversation = commitment.conversation
+        
         # Accept the commitment (becomes a deal)
         commitment.venture_response = 'ACCEPTED'
         commitment.venture_response_at = timezone.now()
         commitment.venture_response_message = message if message else None
         commitment.responded_by = request.user
-        commitment.save(update_fields=['venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'updated_at'])
+        commitment.save(update_fields=['venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'conversation', 'updated_at'])
+        
+        # Create system message in conversation
+        create_commitment_system_message(conversation, commitment, 'accepted')
         
         return Response({
             'detail': 'Investment commitment accepted. Deal created successfully.',
             'commitment_id': str(commitment.id),
             'venture_response': commitment.venture_response,
-            'is_deal': commitment.is_deal
+            'is_deal': commitment.is_deal,
+            'conversation_id': str(conversation.id)
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -2272,18 +2367,29 @@ def renegotiate_commitment(request, product_id, commitment_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get or create conversation if not already linked
+        if not commitment.conversation:
+            conversation = get_or_create_commitment_conversation(commitment.investor, product.user)
+            commitment.conversation = conversation
+        else:
+            conversation = commitment.conversation
+        
         # Request renegotiation
         commitment.venture_response = 'RENEGOTIATE'
         commitment.venture_response_at = timezone.now()
         commitment.venture_response_message = message
         commitment.responded_by = request.user
-        commitment.save(update_fields=['venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'updated_at'])
+        commitment.save(update_fields=['venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'conversation', 'updated_at'])
+        
+        # Create system message in conversation
+        create_commitment_system_message(conversation, commitment, 'renegotiate')
         
         return Response({
             'detail': 'Renegotiation request sent to investor.',
             'commitment_id': str(commitment.id),
             'venture_response': commitment.venture_response,
-            'message': commitment.venture_response_message
+            'message': commitment.venture_response_message,
+            'conversation_id': str(conversation.id)
         }, status=status.HTTP_200_OK)
         
     except Exception as e:

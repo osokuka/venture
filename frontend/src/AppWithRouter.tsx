@@ -262,15 +262,29 @@ function LandingPage() {
 }
 
 function AppRoutes() {
-  const { user, registrationRole, logout } = useAuth();
+  const { user, registrationRole, logout, isLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   
-  // Redirect to login if user logs out
+  // Redirect to login if user logs out (but wait for auth check to complete)
   useEffect(() => {
+    // Don't redirect while auth is still loading
+    if (isLoading) {
+      return;
+    }
+    
+    // Don't redirect if already on login/register pages
+    if (location.pathname === '/login' || location.pathname.startsWith('/register') || 
+        location.pathname === '/forgot-password' || location.pathname === '/reset-password' ||
+        location.pathname === '/verify-email' || location.pathname === '/') {
+      return;
+    }
+    
+    // Only redirect if user is null and trying to access protected route
     if (!user && window.location.pathname.startsWith('/dashboard')) {
       navigate('/login');
     }
-  }, [user, navigate]);
+  }, [user, navigate, isLoading, location.pathname]);
 
   return (
     <Routes>

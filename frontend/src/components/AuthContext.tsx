@@ -3,6 +3,7 @@ import { authService, type UserResponse } from '../services/authService';
 import { investorService, type InvestorProfileCreatePayload } from '../services/investorService';
 import { mentorService, type MentorProfileCreatePayload } from '../services/mentorService';
 import { type FrontendUser } from '../types';
+import { getUserFromToken, isTokenValid } from '../utils/jwt';
 
 export type UserRole = 'venture' | 'investor' | 'mentor' | 'admin';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -31,78 +32,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Check if user is authenticated on mount
+  // With httpOnly cookies, we need to call /api/auth/me to check auth status
+  // (httpOnly cookies cannot be read by JavaScript - that's the security feature)
+  // Skip auth check on login/register pages to prevent loops
   useEffect(() => {
+    // Don't check auth on login/register pages - let those pages handle their own flow
+    const path = window.location.pathname;
+    if (path === '/login' || path.startsWith('/register') || path === '/forgot-password' || path === '/reset-password' || path === '/verify-email') {
+      setIsLoading(false);
+      return;
+    }
+    
     const checkAuth = async () => {
-      if (authService.isAuthenticated()) {
-        try {
-          const userData = await authService.getCurrentUser();
-          // Map backend role to frontend role
-          const backendRole = userData.role.toUpperCase();
-          let frontendRole: UserRole;
-          
-          if (backendRole === 'VENTURE') {
-            frontendRole = 'venture';
-          } else if (backendRole === 'INVESTOR') {
-            frontendRole = 'investor';
-          } else if (backendRole === 'MENTOR') {
-            frontendRole = 'mentor';
-          } else if (backendRole === 'ADMIN') {
-            frontendRole = 'admin';
-          } else {
-            frontendRole = 'venture';
+      try {
+        // Call /api/auth/me to check authentication
+        // Backend reads token from httpOnly cookie automatically
+        const userData = await authService.getCurrentUser();
+        
+        // Map backend role to frontend role
+        const backendRole = userData.role.toUpperCase();
+        let frontendRole: UserRole;
+        
+        if (backendRole === 'VENTURE') {
+          frontendRole = 'venture';
+        } else if (backendRole === 'INVESTOR') {
+          frontendRole = 'investor';
+        } else if (backendRole === 'MENTOR') {
+          frontendRole = 'mentor';
+        } else if (backendRole === 'ADMIN') {
+          frontendRole = 'admin';
+        } else {
+          frontendRole = 'venture';
+        }
+        
+        // Create user object with proper structure
+        const userObject: any = {
+          id: userData.id,
+          email: userData.email,
+          role: frontendRole,
+          full_name: userData.full_name || userData.email,
+          profile: {
+            approvalStatus: 'approved' as const,
           }
-          
-          // Create user object with proper structure
-          const userObject: any = {
-            id: userData.id,
-            email: userData.email,
-            role: frontendRole,
-            full_name: userData.full_name || userData.email,
-            profile: {
-              approvalStatus: 'approved' as const,
+        };
+        
+        // Optionally fetch venture profile data if user is a venture
+        if (frontendRole === 'venture') {
+          try {
+            const { ventureService } = await import('../services/ventureService');
+            const ventureProfile = await ventureService.getMyProfile();
+            if (ventureProfile) {
+              // Map backend profile to frontend profile format
+              userObject.profile = {
+                ...userObject.profile,
+                companyName: ventureProfile.company_name,
+                sector: ventureProfile.sector,
+                shortDescription: ventureProfile.short_description,
+                website: ventureProfile.website,
+                linkedinUrl: ventureProfile.linkedin_url,
+                address: ventureProfile.address,
+                foundedYear: ventureProfile.year_founded?.toString(),
+                employeeCount: ventureProfile.employees_count?.toString(),
+                founderName: ventureProfile.founder_name,
+                founderLinkedin: ventureProfile.founder_linkedin,
+                founderRole: ventureProfile.founder_role,
+                customers: ventureProfile.customers,
+                keyMetrics: ventureProfile.key_metrics,
+                needs: ventureProfile.needs || [],
+                phone: ventureProfile.phone,
+                logo: ventureProfile.logo_url_display || ventureProfile.logo_url,
+              };
             }
-          };
-          
-          // Optionally fetch venture profile data if user is a venture
-          if (frontendRole === 'venture') {
-            try {
-              const { ventureService } = await import('../services/ventureService');
-              const ventureProfile = await ventureService.getMyProfile();
-              if (ventureProfile) {
-                // Map backend profile to frontend profile format
-                userObject.profile = {
-                  ...userObject.profile,
-                  companyName: ventureProfile.company_name,
-                  sector: ventureProfile.sector,
-                  shortDescription: ventureProfile.short_description,
-                  website: ventureProfile.website,
-                  linkedinUrl: ventureProfile.linkedin_url,
-                  address: ventureProfile.address,
-                  foundedYear: ventureProfile.year_founded?.toString(),
-                  employeeCount: ventureProfile.employees_count?.toString(),
-                  founderName: ventureProfile.founder_name,
-                  founderLinkedin: ventureProfile.founder_linkedin,
-                  founderRole: ventureProfile.founder_role,
-                  customers: ventureProfile.customers,
-                  keyMetrics: ventureProfile.key_metrics,
-                  needs: ventureProfile.needs || [],
-                  phone: ventureProfile.phone,
-                  logo: ventureProfile.logo_url_display || ventureProfile.logo_url,
-                };
-              }
-            } catch (error) {
-              // Profile might not exist yet, that's okay
-              console.log('Venture profile not found or error fetching:', error);
-            }
+          } catch (error) {
+            // Profile might not exist yet, that's okay
+            console.log('Venture profile not found or error fetching:', error);
           }
-          
-          setUser(userObject as User);
-          setCurrentView('dashboard');
-        } catch (error) {
-          // Token invalid, clear it
-          authService.logout();
+        }
+        
+        setUser(userObject as User);
+        setCurrentView('dashboard');
+      } catch (error) {
+        // Token invalid or not authenticated, clear any stale state
+        // Cookies are managed by backend, no need to clear localStorage
+        // Only set user to null if we're not on a public page
+        if (!path.startsWith('/login') && !path.startsWith('/register') && path !== '/forgot-password' && path !== '/reset-password' && path !== '/verify-email') {
+          setUser(null);
         }
       }
+      
       setIsLoading(false);
     };
     checkAuth();
@@ -110,13 +127,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      // Login sets httpOnly cookies (tokens stored securely by backend)
       await authService.login({ email, password });
+      
+      // Small delay to ensure cookies are set before fetching user data
+      // Cookies are set synchronously, but browser needs a moment to process them
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Fetch user data after login (tokens in httpOnly cookies, sent automatically)
       const userData = await authService.getCurrentUser();
-      // TODO: Map UserResponse to User type and fetch profile based on role
-      // For now, set a basic user object
+      
       // Map backend role to frontend role
-      // Backend returns: 'VENTURE' | 'INVESTOR' | 'MENTOR' | 'ADMIN'
-      // Frontend expects: 'venture' | 'investor' | 'mentor' | 'admin'
       const backendRole = userData.role.toUpperCase();
       let frontendRole: UserRole;
       
@@ -129,7 +150,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (backendRole === 'ADMIN') {
         frontendRole = 'admin';
       } else {
-        // Fallback to venture if unknown role
         frontendRole = 'venture';
       }
       
@@ -140,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: frontendRole,
         full_name: userData.full_name || userData.email,
         profile: {
-          approvalStatus: 'approved' as const, // TODO: Get from profile API
+          approvalStatus: 'approved' as const,
         }
       };
       
@@ -177,9 +197,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       
+      // Set user state before returning (ensures user is available for navigation)
       setUser(userObject as User);
       setCurrentView('dashboard');
-      // Navigate will be handled by React Router in AppWithRouter
+      
+      // Small delay to ensure state is updated before navigation happens
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -188,8 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
-    authService.logout();
+  const logout = async () => {
+    // Call backend logout to clear httpOnly cookies
+    await authService.logout();
     setUser(null);
     setCurrentView('landing');
     setRegistrationRole(null);
@@ -341,7 +366,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileCreated = false;
       }
 
-      // Fetch current user to get full user data (including email verification status)
+      // After registration and auto-login, tokens are in httpOnly cookies
+      // Fetch full user data from API (tokens sent automatically)
       let currentUserData = registeredUser;
       try {
         currentUserData = await authService.getCurrentUser();

@@ -52,20 +52,19 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,  // Required for httpOnly cookies to be sent
 });
 
-// Request interceptor - Add auth token to requests
+// Request interceptor - Cookies are sent automatically, no manual Authorization header needed
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('access_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
     // Don't set Content-Type for FormData - let browser set it with boundary
     if (config.data instanceof FormData && config.headers) {
       delete config.headers['Content-Type'];
     }
+    
+    // Note: httpOnly cookies are sent automatically by browser
+    // No need to manually set Authorization header
     
     return config;
   },
@@ -85,27 +84,21 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (!refreshToken) {
-          throw new Error('No refresh token');
-        }
+        // Refresh token is in httpOnly cookie, sent automatically
+        // Backend reads from cookie, no need to send in body
+        const response = await axios.post(
+          `${API_BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true }  // Ensure cookies are sent
+        );
 
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-          refresh: refreshToken,
-        });
-
-        const { access } = response.data;
-        localStorage.setItem('access_token', access);
-
-        // Retry original request with new token
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${access}`;
-        }
+        // New access token is set in httpOnly cookie by backend
+        // No need to store in localStorage
+        
+        // Retry original request (cookies sent automatically)
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, logout user
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        // Refresh failed, logout user (cookies cleared by backend)
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }

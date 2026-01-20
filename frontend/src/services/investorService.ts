@@ -109,6 +109,7 @@ export interface SharedPitchDeck {
   use_of_funds: string | null;
   is_following: boolean;  // Whether investor is following this pitch deck
   commitment_status: string | null;  // Investment commitment status (EXPRESSED, COMMITTED, WITHDRAWN, COMPLETED)
+  commitment_id: string | null;  // Investment commitment ID (for retract action)
   commitment_amount: string | null;  // Investment commitment amount
   venture_response: string | null;  // Venture response: PENDING, ACCEPTED, RENEGOTIATE
   is_deal: boolean;  // True if venture has accepted the commitment (venture_response === 'ACCEPTED')
@@ -277,6 +278,46 @@ export const investorService = {
   }> {
     try {
       const response = await apiClient.get('/investors/portfolio');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Update an investment commitment after renegotiation request
+   * POST /api/investors/products/{product_id}/commitments/{commitment_id}/update
+   */
+  async updateCommitment(
+    productId: string,
+    commitmentId: string,
+    data?: { amount?: string; message?: string }
+  ): Promise<{ detail: string; commitment_id: string; status: string; venture_response: string; conversation_id?: string }> {
+    try {
+      const response = await apiClient.post(
+        `/investors/products/${productId}/commitments/${commitmentId}/update`,
+        data || {}
+      );
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Withdraw/retract an investment commitment
+   * POST /api/investors/products/{product_id}/commitments/{commitment_id}/withdraw
+   */
+  async withdrawCommitment(
+    productId: string,
+    commitmentId: string,
+    message?: string
+  ): Promise<{ detail: string; commitment_id: string; status: string; conversation_id?: string }> {
+    try {
+      const response = await apiClient.post(
+        `/investors/products/${productId}/commitments/${commitmentId}/withdraw`,
+        message ? { message } : {}
+      );
       return response.data;
     } catch (error) {
       throw new Error(getErrorMessage(error));

@@ -527,6 +527,7 @@ class InvestorSharedPitchDeckSerializer(serializers.ModelSerializer):
     # Investor engagement status
     is_following = serializers.SerializerMethodField()
     commitment_status = serializers.SerializerMethodField()
+    commitment_id = serializers.SerializerMethodField()  # Add commitment_id for retract action
     commitment_amount = serializers.SerializerMethodField()
     venture_response = serializers.SerializerMethodField()
     is_deal = serializers.SerializerMethodField()
@@ -540,7 +541,7 @@ class InvestorSharedPitchDeckSerializer(serializers.ModelSerializer):
             'document_id', 'document_type',
             'funding_amount', 'funding_stage', 'problem_statement', 'solution_description',
             'target_market', 'traction_metrics', 'use_of_funds',
-            'is_following', 'commitment_status', 'commitment_amount', 'venture_response', 'is_deal'
+            'is_following', 'commitment_status', 'commitment_id', 'commitment_amount', 'venture_response', 'is_deal'
         )
     
     def get_is_new(self, obj):
@@ -643,6 +644,21 @@ class InvestorSharedPitchDeckSerializer(serializers.ModelSerializer):
                 investor=request.user
             ).first()
             return commitment.status if commitment else None
+        except Exception:
+            return None
+    
+    def get_commitment_id(self, obj):
+        """Get investment commitment ID for current investor."""
+        request = self.context.get('request')
+        if not request or not request.user or request.user.role != 'INVESTOR':
+            return None
+        try:
+            from apps.ventures.models import InvestmentCommitment
+            commitment = InvestmentCommitment.objects.filter(
+                document=obj.document,
+                investor=request.user
+            ).first()
+            return str(commitment.id) if commitment else None
         except Exception:
             return None
     

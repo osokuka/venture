@@ -115,8 +115,19 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
     if (selectedConversation?.id && selectedConversation.id !== 'new' && !isLoadingMessages) {
       // Reset the fetch tracking when conversation changes
       if (lastFetchedConversationId.current !== selectedConversation.id) {
+        console.log(`[MessagingSystem] useEffect: Fetching messages for conversation ${selectedConversation.id}`);
         lastFetchedConversationId.current = null;
         fetchMessages(selectedConversation.id);
+      } else {
+        console.log(`[MessagingSystem] useEffect: Skipping fetch - already fetched conversation ${selectedConversation.id}`);
+      }
+    } else {
+      if (!selectedConversation?.id) {
+        console.log('[MessagingSystem] useEffect: No conversation selected');
+      } else if (selectedConversation.id === 'new') {
+        console.log('[MessagingSystem] useEffect: Conversation is "new", skipping fetch');
+      } else if (isLoadingMessages) {
+        console.log('[MessagingSystem] useEffect: Already loading messages, skipping fetch');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -240,6 +251,13 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
       const data = await messagingService.getConversations();
       // Ensure data is an array
       const conversationsList = Array.isArray(data) ? data : [];
+      
+      // Debug: Log received conversations (temporary - for debugging)
+      console.log(`[MessagingSystem] Received ${conversationsList.length} conversations from API`);
+      conversationsList.forEach((conv: Conversation, idx: number) => {
+        console.log(`  [${idx}] Conversation ${conv.id}: last_message=${conv.last_message?.body?.substring(0, 50) || 'none'}..., unread_count=${conv.unread_count}`);
+      });
+      
       setConversations(conversationsList);
       
       // If selectedUserId is provided, find and select that conversation
@@ -285,55 +303,55 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
   };
 
   const fetchMessages = async (conversationId: string) => {
+    console.log(`[MessagingSystem] fetchMessages called for conversation ${conversationId}`);
+    
     if (!conversationId || !currentUser?.id) {
+      console.log(`[MessagingSystem] fetchMessages: Skipping - conversationId=${conversationId}, currentUser.id=${currentUser?.id}`);
       return; // Don't fetch if conversation ID or user is invalid
     }
     
     // Prevent duplicate fetches - check if we're already loading or if this conversation was just fetched
-    if (isLoadingMessages || lastFetchedConversationId.current === conversationId) {
+    if (isLoadingMessages) {
+      console.log(`[MessagingSystem] fetchMessages: Already loading messages, skipping`);
+      return;
+    }
+    
+    if (lastFetchedConversationId.current === conversationId) {
+      console.log(`[MessagingSystem] fetchMessages: Already fetched conversation ${conversationId}, skipping`);
       return;
     }
     
     // Mark this conversation as being fetched
+    console.log(`[MessagingSystem] fetchMessages: Starting fetch for conversation ${conversationId}`);
     lastFetchedConversationId.current = conversationId;
     setIsLoadingMessages(true);
     
     try {
-      // Find the selected conversation to get all conversation IDs for this user
-      const selectedConv = conversations.find(c => c.id === conversationId);
-      const allConversationIds = (selectedConv as any)?._allConversationIds || [conversationId];
+      // Fetch conversation details which includes all messages (including system messages)
+      const conversationDetail = await messagingService.getConversation(conversationId);
       
-      // Fetch messages from all conversations with this user
-      const allMessagesPromises = allConversationIds.map((id: string) => 
-        messagingService.getConversation(id).then(conv => conv.messages || [])
-      );
+      // Get all messages from the conversation (backend returns all messages chronologically)
+      const conversationMessages = conversationDetail.messages || [];
       
-      const allMessagesArrays = await Promise.all(allMessagesPromises);
-      
-      // Flatten and merge all messages, then sort chronologically
-      const allMessages = allMessagesArrays.flat();
-      const uniqueMessages = Array.from(
-        new Map(allMessages.map(msg => [msg.id, msg])).values()
-      );
+      // Debug: Log received messages (temporary - for debugging)
+      console.log(`[MessagingSystem] Conversation ${conversationId}: Received ${conversationMessages.length} messages from API`);
+      conversationMessages.forEach((msg: Message, idx: number) => {
+        console.log(`  [${idx}] Message ${msg.id}: sender=${msg.sender_email}, created_at=${msg.created_at}, body_preview=${msg.body.substring(0, 50)}...`);
+      });
       
       // Sort by created_at (oldest first) for chronological display
-      uniqueMessages.sort((a, b) => {
+      const sortedMessages = [...conversationMessages].sort((a, b) => {
         const timeA = new Date(a.created_at).getTime();
         const timeB = new Date(b.created_at).getTime();
         return timeA - timeB;
       });
       
-      setMessages(uniqueMessages);
+      console.log(`[MessagingSystem] Setting ${sortedMessages.length} messages to state`);
+      setMessages(sortedMessages);
       
-      // Update selectedConversation with the primary conversation data
-      if (selectedConv) {
-        const primaryConversation = await messagingService.getConversation(conversationId);
-        if (primaryConversation && selectedConversation?.id === conversationId) {
-          // Update only if there are meaningful changes (like unread_count)
-          if (selectedConversation.unread_count !== primaryConversation.unread_count) {
-            setSelectedConversation(primaryConversation);
-          }
-        }
+      // Update selectedConversation with the conversation data
+      if (selectedConversation?.id === conversationId) {
+        setSelectedConversation(conversationDetail);
       }
     } catch (error) {
       console.error('Failed to fetch messages:', error);
@@ -893,13 +911,16 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                         // Convert both to strings for comparison to handle UUID vs string mismatches
                         const isCurrentUser = currentUser?.id && String(message.sender) === String(currentUser.id);
                         
+                        // Check if this is a system message (commitment-related messages start with emojis)
+                        const isSystemMessage = /^[💰📝✅🔄❌]/.test(message.body);
+                        
                         // Check if this is the last message to auto-scroll
                         const isLastMessage = index === messages.length - 1;
                     
                     return (
                       <div
                         key={message.id}
-                            className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                            className={`flex items-end gap-2 ${isSystemMessage ? 'justify-center' : (isCurrentUser ? 'justify-end' : 'justify-start')}`}
                             ref={isLastMessage ? (el) => {
                               // Auto-scroll to bottom when last message renders
                               if (el) {
@@ -909,8 +930,8 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                               }
                             } : undefined}
                           >
-                            {/* Avatar for received messages (left side) */}
-                            {!isCurrentUser && (
+                            {/* Avatar for received messages (left side) - Hide for system messages */}
+                            {!isCurrentUser && !isSystemMessage && (
                               <Avatar className="w-8 h-8 flex-shrink-0">
                                 <AvatarFallback className="text-xs bg-gray-200 text-gray-700">
                                   {((selectedConversation.other_participant.full_name || selectedConversation.other_participant.email || 'U')[0] || 'U').toUpperCase()}
@@ -921,7 +942,9 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                             {/* Message Bubble */}
                             <div
                               className={`max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm relative group ${
-                            isCurrentUser
+                            isSystemMessage
+                                  ? 'bg-blue-100 border-2 border-blue-300 rounded-2xl' // Distinct blue background for system messages
+                                  : isCurrentUser
                                   ? 'bg-gray-300 rounded-br-sm' // Silver/gray bubble for user's messages
                                   : 'bg-gray-200 rounded-bl-sm' // Silver/gray bubble for other party's messages
                               }`}
@@ -974,19 +997,19 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                                 // Display mode
                                 <>
                                   <p 
-                                    className="text-sm leading-relaxed break-words whitespace-pre-wrap font-normal text-black"
-                                    style={{
-                                      color: '#000000'
-                                    }}
+                                    className={`text-sm leading-relaxed break-words whitespace-pre-wrap font-normal ${
+                                      isSystemMessage ? 'text-blue-900 font-semibold' : 'text-black'
+                                    }`}
+                                    style={!isSystemMessage ? { color: '#000000' } : undefined}
                                   >
                                     {safeMessageText(message.body)}
                                   </p>
-                                  <div className="flex items-center justify-between mt-1.5">
-                                    <p className="text-xs text-gray-600">
+                                  <div className={`flex items-center ${isSystemMessage ? 'justify-center' : 'justify-between'} mt-1.5`}>
+                                    <p className={`text-xs ${isSystemMessage ? 'text-blue-700' : 'text-gray-600'}`}>
                                       {formatTime(message.created_at)}
                                     </p>
-                                    {/* Edit button - only show for user's own messages that are editable */}
-                                    {isCurrentUser && isMessageEditable(message) && (
+                                    {/* Edit button - only show for user's own messages that are editable (not system messages) */}
+                                    {!isSystemMessage && isCurrentUser && isMessageEditable(message) && (
                                       <button
                                         onClick={() => handleStartEdit(message)}
                                         className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 p-1 hover:bg-gray-400 rounded"
@@ -1000,8 +1023,8 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                               )}
                         </div>
                             
-                            {/* Avatar for sent messages (right side) */}
-                            {isCurrentUser && (
+                            {/* Avatar for sent messages (right side) - Hide for system messages */}
+                            {isCurrentUser && !isSystemMessage && (
                               <Avatar className="w-8 h-8 flex-shrink-0">
                                 <AvatarFallback className="text-xs bg-sky-500 text-white">
                                   {((currentUser.full_name || currentUser.email || 'U')[0] || 'U').toUpperCase()}

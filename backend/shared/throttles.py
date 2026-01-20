@@ -75,3 +75,31 @@ class EmailBasedRateThrottle(SimpleRateThrottle):
         Override in subclasses or set via scope.
         """
         return self.rate
+
+
+class CurrentUserRateThrottle(SimpleRateThrottle):
+    """
+    Custom throttle for /api/auth/me endpoint.
+    Allows more requests since this is a lightweight read-only endpoint
+    that's frequently called to check authentication status.
+    
+    Rate: 1000 requests/hour for authenticated users (vs default 100/hour)
+    This prevents legitimate users from hitting rate limits during normal usage.
+    """
+    scope = 'current_user'
+    
+    def get_cache_key(self, request, view):
+        """
+        Generate cache key based on authenticated user ID.
+        """
+        if request.user and request.user.is_authenticated:
+            return f'throttle_current_user_{request.user.id}'
+        # Fall back to IP for unauthenticated requests (shouldn't happen for /auth/me)
+        ident = self.get_ident(request)
+        return f'throttle_current_user_{ident}'
+    
+    def get_rate(self):
+        """
+        Return the rate limit: 1000 requests per hour for authenticated users.
+        """
+        return '1000/hour'

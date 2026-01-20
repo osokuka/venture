@@ -11,6 +11,8 @@ from .views import (
     follow_pitch_deck,
     unfollow_pitch_deck,
     commit_to_invest,
+    update_commitment,
+    withdraw_commitment,
     get_investor_portfolio
 )
 
@@ -30,6 +32,8 @@ urlpatterns = [
     path('products/<uuid:product_id>/documents/<uuid:doc_id>/follow', follow_pitch_deck, name='investor_follow_pitch_deck'),
     path('products/<uuid:product_id>/documents/<uuid:doc_id>/unfollow', unfollow_pitch_deck, name='investor_unfollow_pitch_deck'),
     path('products/<uuid:product_id>/documents/<uuid:doc_id>/commit', commit_to_invest, name='investor_commit_to_invest'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/update', update_commitment, name='investor_update_commitment'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/withdraw', withdraw_commitment, name='investor_withdraw_commitment'),
     
     # Public investor views (approved users only)
     path('public', PublicInvestorListView.as_view(), name='public_investors'),

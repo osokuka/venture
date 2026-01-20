@@ -36,18 +36,16 @@ export const authService = {
   },
 
   /**
-   * Login user and get JWT tokens
+   * Login user - tokens are stored in httpOnly cookies by backend
    */
   async login(data: LoginData): Promise<LoginResponse> {
     try {
       const response = await apiClient.post('/auth/login', data);
-      const { access, refresh } = response.data;
       
-      // Store tokens
-      localStorage.setItem('access_token', access);
-      localStorage.setItem('refresh_token', refresh);
-      
-      return { access, refresh };
+      // Tokens are stored in httpOnly cookies by backend (more secure)
+      // No need to store in localStorage (prevents XSS attacks)
+      // Return empty object for backward compatibility
+      return { access: '', refresh: '' };
     } catch (error: any) {
       // Preserve the original error so we can check status code in components
       const enhancedError = new Error(getErrorMessage(error));
@@ -57,11 +55,16 @@ export const authService = {
   },
 
   /**
-   * Logout user (clear tokens)
+   * Logout user - clears httpOnly cookies via backend
    */
-  logout(): void {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+  async logout(): Promise<void> {
+    try {
+      // Call backend logout endpoint to clear httpOnly cookies
+      await apiClient.post('/auth/logout');
+    } catch (error) {
+      // Even if logout fails, redirect to login
+      console.error('Logout error:', error);
+    }
   },
 
   /**
@@ -126,15 +129,25 @@ export const authService = {
 
   /**
    * Check if user is authenticated
+   * Note: Cannot check httpOnly cookies directly (that's the security feature)
+   * This is a best-effort check. Real auth check happens via /api/auth/me
    */
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('access_token');
+    // httpOnly cookies cannot be read by JavaScript (security feature)
+    // We'll check authentication via /api/auth/me when needed
+    // This method is kept for backward compatibility but always returns false
+    // Components should call getCurrentUser() to check auth status
+    return false;  // Always false - use getCurrentUser() for real check
   },
 
   /**
    * Get stored access token
+   * Note: httpOnly cookies cannot be read by JavaScript
+   * This method is kept for backward compatibility but always returns null
    */
   getAccessToken(): string | null {
-    return localStorage.getItem('access_token');
+    // httpOnly cookies cannot be read by JavaScript (security feature)
+    // Tokens are sent automatically by browser with requests
+    return null;
   },
 };

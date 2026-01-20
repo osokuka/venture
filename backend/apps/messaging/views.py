@@ -207,18 +207,55 @@ class ConversationDetailView(generics.RetrieveAPIView):
     
     GET /api/messages/conversations/{id}
     Returns conversation with messages sorted chronologically (oldest first).
+    Includes all messages: both user messages and system messages (commitment-related).
     
-    Note: All authenticated users can view their own conversations.
+    Security:
+    - Only authenticated users can access conversations they are participants in
+    - RBAC: All authenticated users can view their own conversations
+    - IDOR protection: Queryset filtered by participants to prevent unauthorized access
+    - Participant verification: Ensures user is a participant before returning data
     """
     permission_classes = [IsAuthenticated]  # Allow all authenticated users to view their conversations
     serializer_class = ConversationDetailSerializer
     lookup_field = 'id'
     
     def get_queryset(self):
-        """Return conversations where current user is a participant."""
+        """
+        Return conversations where current user is a participant.
+        
+        Security: Filters by participants to prevent IDOR (Insecure Direct Object Reference) attacks.
+        Users can only access conversations they are part of.
+        
+        Note: We don't prefetch messages here because the serializer queries messages directly
+        to ensure all messages (user + system) are returned reliably.
+        """
+        # Only prefetch participants - messages are queried directly in serializer for reliability
         return Conversation.objects.filter(
             participants=self.request.user
-        ).prefetch_related('participants', 'messages')
+        ).prefetch_related('participants')
+    
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Override retrieve to add explicit security check.
+        Ensures user is a participant before returning conversation data.
+        """
+        instance = self.get_object()
+        
+        # Security: Explicit participant check (additional layer beyond queryset filtering)
+        if request.user not in instance.participants.all():
+            return Response(
+                {'detail': 'You do not have permission to access this conversation.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Debug: Verify message count (can be removed in production)
+        # message_count = Message.objects.filter(conversation_id=instance.id).count()
+        # import logging
+        # logger = logging.getLogger(__name__)
+        # logger.debug(f'Retrieving conversation {instance.id}: Found {message_count} messages in database')
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
     
     def get_serializer_context(self):
         """Ensure request context is passed to serializer."""

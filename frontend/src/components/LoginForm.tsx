@@ -39,6 +39,8 @@ export function LoginForm() {
     try {
       const success = await login(sanitizedEmail, password);
       if (success) {
+        // Small delay to ensure user state is set and cookies are available
+        await new Promise(resolve => setTimeout(resolve, 150));
         // Navigate to dashboard using React Router
         navigate('/dashboard');
       }
