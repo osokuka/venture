@@ -98,6 +98,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const [filterSector, setFilterSector] = useState('all');
   const [filterStage, setFilterStage] = useState('all');
   const [filterFunding, setFilterFunding] = useState('all');
+  const [profileRefreshTrigger, setProfileRefreshTrigger] = useState(0);
   
   // Get selected user info from URL params (for messaging)
   const selectedUserId = searchParams.get('userId');
@@ -273,9 +274,19 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     );
   }
 
+  // Wrapper for onProfileUpdate that also triggers profile refresh
+  const handleProfileUpdate = useCallback((updatedUser: User) => {
+    // Call the original callback if provided
+    if (onProfileUpdate) {
+      onProfileUpdate(updatedUser);
+    }
+    // Increment refresh trigger to force UserProfile to re-fetch data
+    setProfileRefreshTrigger(prev => prev + 1);
+  }, [onProfileUpdate]);
+
   // Handle profile and settings views
   if (activeView === 'edit-profile') {
-    return <EditProfile user={user} onProfileUpdate={onProfileUpdate} />;
+    return <EditProfile user={user} onProfileUpdate={handleProfileUpdate} />;
   }
 
   if (activeView === 'settings') {
@@ -283,7 +294,16 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   }
 
   if (activeView === 'profile') {
-    return <UserProfile user={user} onEdit={() => onViewChange?.('edit-profile')} isOwnProfile={true} />;
+    // Pass refreshTrigger to force UserProfile to re-fetch data when profile is updated
+    return (
+      <UserProfile 
+        key={`${user.id}-${profileRefreshTrigger}`}
+        user={user} 
+        onEdit={() => onViewChange?.('edit-profile')} 
+        isOwnProfile={true}
+        refreshTrigger={profileRefreshTrigger}
+      />
+    );
   }
 
   // Calculate total committed amount from portfolio investments only

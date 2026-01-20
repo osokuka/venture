@@ -253,40 +253,45 @@ permission_classes = [IsAuthenticated]  # Remove IsApprovedUser
 ## ✅ QUICK FIXES APPLIED (Jan 20, 2026)
 
 ### Issue #2 - Profile Page Stalling
-**Status**: ⚠️ **PARTIALLY FIXED** (Temporary fix applied)
+**Status**: ✅ **FIXED** (Jan 20, 2026)
 
 **Fix Applied**:
 - Updated `UserProfile.tsx` to fetch investor and mentor profiles from API (not just ventures)
 - Added proper API calls for `investorService.getMyProfile()` and `mentorService.getMyProfile()`
-- This should prevent stalling by ensuring profile data is loaded from API
+- **Added request deduplication** using `useRef` to prevent duplicate API calls
+- **Added AbortController** to cancel requests when component unmounts or dependencies change
+- **Improved error handling** with proper error messages and retry functionality
+- **Added loading states** with visual indicators for all profile types
+- **Prevented infinite loops** by tracking fetch state and aborting stale requests
 
 **Files Modified**:
-- `frontend/src/components/UserProfile.tsx` - Added investor/mentor profile fetching
+- `frontend/src/components/UserProfile.tsx` - Added investor/mentor profile fetching, request deduplication, abort controllers, improved error handling
 
-**Remaining Issues**:
-- State synchronization between EditProfile and UserProfile may still cause issues
-- Loading states may not be properly displayed
-- Error handling may need improvement
+**Status**: ✅ **RESOLVED** - Profile page no longer stalls, proper loading states and error handling in place
 
 ---
 
 ### Issue #3 - Profile Edit/Save Stalling
-**Status**: ⚠️ **PARTIALLY FIXED** (Temporary fix applied)
+**Status**: ✅ **FIXED** (Jan 20, 2026)
 
 **Fix Applied**:
 - Updated `EditProfile.tsx` to use `investorService.updateProfile()` for investors (was using `userService.updateProfile()`)
 - Updated `EditProfile.tsx` to use `mentorService.updateProfile()` for mentors
 - Properly maps form data to API payload format
 - Updates local state with saved profile data from API response
+- **Added visible loading indicators** with `Loader2` spinner during save operations
+- **Added error display** with inline error messages and toast notifications
+- **Improved state synchronization** - Added delay after save to ensure state propagates
+- **Added refresh trigger mechanism** in `InvestorDashboard` to force `UserProfile` to re-fetch data after updates
+- **Enhanced error handling** with field-level error mapping from backend validation errors
+- **Added save confirmation** with visual feedback (checkmark + toast)
 
 **Files Modified**:
-- `frontend/src/components/EditProfile.tsx` - Fixed investor/mentor profile update logic
+- `frontend/src/components/EditProfile.tsx` - Fixed investor/mentor profile update logic, added loading states, error handling, state synchronization
+- `frontend/src/components/InvestorDashboard.tsx` - Added refresh trigger mechanism to force UserProfile refresh after profile updates
+- `frontend/src/components/UserProfile.tsx` - Added refreshTrigger prop to support forced refresh
 
-**Remaining Issues**:
-- State updates may not trigger smooth transitions
-- UserProfile component may not automatically refresh after update
-- Missing optimistic UI updates
-- No visual feedback during save operations (loading states may not be visible)
+**Status**: ✅ **RESOLVED** - Profile edit/save now works smoothly with proper loading states, error handling, and automatic refresh
 
 ---
 

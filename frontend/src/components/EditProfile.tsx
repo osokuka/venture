@@ -4,6 +4,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -29,7 +30,8 @@ import {
   Clock,
   Target,
   Briefcase,
-  Star
+  Star,
+  Loader2
 } from "lucide-react";
 import { useAuth } from './AuthContext';
 import { type FrontendUser } from '../types';
@@ -46,6 +48,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   // Initialize form data based on user type
   const initializeFormData = () => {
@@ -339,6 +342,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
     setIsLoading(true);
     setJustSaved(false);
+    setSaveError(null); // Clear any previous errors
 
     try {
       // Security: Sanitize all form data before updating
@@ -454,8 +458,12 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             phone: savedProfile.phone,
             logo: savedProfile.logo_url_display || savedProfile.logo_url || savedProfile.logo,
           };
+          // Trigger parent component update - this will cause UserProfile to re-render
           onProfileUpdate(updatedUser);
         }
+        
+        // Force a small delay to ensure state updates propagate before returning
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else if (user.role === 'investor') {
         // Handle investor profile updates - use investorService, not userService
         const { investorService } = await import('../services/investorService');
@@ -511,18 +519,30 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             ...updatedUser.profile,
             name: savedProfile.full_name,
             organizationName: savedProfile.organization_name,
-            linkedinUrl: savedProfile.linkedin_or_website,
-            website: savedProfile.linkedin_or_website,
+            linkedinUrl: savedProfile.linkedin_url || savedProfile.linkedin_or_website,
+            website: savedProfile.website || savedProfile.linkedin_or_website,
             phone: savedProfile.phone,
-            investmentExperience: savedProfile.investment_experience_years?.toString(),
+            bio: savedProfile.bio,
+            investmentExperience: savedProfile.investment_experience,
+            investmentPhilosophy: savedProfile.investment_philosophy,
+            notableInvestments: savedProfile.notable_investments,
+            address: savedProfile.address,
             investmentStages: savedProfile.stage_preferences || [],
             industries: savedProfile.industry_preferences || [],
+            geographicFocus: savedProfile.geographic_focus || [],
             ticketSize: savedProfile.average_ticket_size,
+            minInvestment: savedProfile.min_investment,
+            maxInvestment: savedProfile.max_investment,
             isVisible: savedProfile.visible_to_ventures,
+            allowDirectContact: savedProfile.allow_direct_contact,
           };
           updatedUser.full_name = savedProfile.full_name;
+          // Trigger parent component update - this will cause UserProfile to re-render
           onProfileUpdate(updatedUser);
         }
+        
+        // Force a small delay to ensure state updates propagate before returning
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else if (user.role === 'mentor') {
         // Handle mentor profile updates - use mentorService
         const { mentorService } = await import('../services/mentorService');
@@ -562,8 +582,12 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
             isVisible: savedProfile.visible_to_ventures,
           };
           updatedUser.full_name = savedProfile.full_name;
+          // Trigger parent component update - this will cause UserProfile to re-render
           onProfileUpdate(updatedUser);
         }
+        
+        // Force a small delay to ensure state updates propagate before returning
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         // Fallback: Update user account only (for other roles or if specific service not available)
         const { userService } = await import('../services/userService');
@@ -609,6 +633,10 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
         employees_count: 'employeeCount',
         key_metrics: 'keyMetrics',
         logo_url: 'logo',
+        full_name: 'name',
+        organization_name: 'organizationName',
+        investment_experience: 'investmentExperience',
+        job_title: 'jobTitle',
       };
 
       // DRF often returns: { field: ["msg1", "msg2"], non_field_errors: [...] }
@@ -631,12 +659,15 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
         if (Object.keys(newErrors).length > 0) {
           setErrors((prev) => ({ ...prev, ...newErrors }));
+          const errorMessage = Object.values(newErrors).join(', ');
+          setSaveError(errorMessage);
           toast.error('Please fix the highlighted fields and try again.');
           return;
         }
       }
 
       const errorMessage = error instanceof Error ? error.message : "Failed to update profile. Please try again.";
+      setSaveError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -1435,7 +1466,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin"></div>
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">Loading profile data...</span>
         </div>
       </div>
@@ -1558,23 +1589,47 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
         {user.role === 'investor' && renderInvestorFields()}
         {user.role === 'mentor' && renderMentorFields()}
 
+        {/* Error Display */}
+        {saveError && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-900">Error saving profile</p>
+                  <p className="text-sm text-red-800 mt-1">{saveError}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSaveError(null)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Submit Button */}
         <div className="flex justify-end space-x-4 pt-6 border-t">
           {/* Inline confirmation (in addition to toast) to reduce uncertainty */}
           {justSaved && (
             <div className="flex items-center text-sm text-green-700 mr-auto">
               <CheckCircle className="w-4 h-4 mr-2" />
-              Saved
+              Saved successfully
             </div>
           )}
           <button 
             type="button" 
             className="btn-chrome-secondary"
             onClick={() => {
+              setSaveError(null);
               if (onCancel) {
                 onCancel();
               }
             }}
+            disabled={isLoading}
           >
             Cancel
           </button>
@@ -1585,7 +1640,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           >
             {isLoading ? (
               <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Saving...</span>
               </div>
             ) : (

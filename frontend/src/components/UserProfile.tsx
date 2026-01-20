@@ -28,7 +28,7 @@ import { type FrontendUser } from '../types';
 import { SafeText } from './SafeText';
 import { validateAndSanitizeUrl } from '../utils/security';
 import { productService, type VentureProduct } from '../services/productService';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 
 interface UserProfileProps {
@@ -39,6 +39,7 @@ interface UserProfileProps {
   onEdit?: () => void;
   onNavigateToPitchDecks?: () => void; // Callback to navigate to pitch deck creation
   isOwnProfile?: boolean;
+  refreshTrigger?: number; // Optional trigger to force refresh when changed
 }
 
 export function UserProfile({ 
@@ -48,7 +49,8 @@ export function UserProfile({
   onViewDocument, 
   onEdit,
   onNavigateToPitchDecks,
-  isOwnProfile = false 
+  isOwnProfile = false,
+  refreshTrigger
 }: UserProfileProps) {
   const canMessage = currentUser && user.id !== currentUser.id && onMessage;
   
@@ -59,84 +61,145 @@ export function UserProfile({
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   
+  // Use ref to track if we're currently fetching to prevent duplicate requests
+  const isFetchingRef = useRef(false);
+  
   useEffect(() => {
-    if (isOwnProfile) {
-      const fetchData = async () => {
-        // Clear any previous load error before retrying.
-        setLoadError(null);
-        if (user.role === 'venture') {
-          // Fetch venture profile data
-          try {
-            setIsLoadingProfile(true);
-            const { ventureService } = await import('../services/ventureService');
-            const profile = await ventureService.getMyProfile();
-            if (profile) {
-              setVentureProfile(profile);
-              console.log('Fetched venture profile:', profile);
-            }
-          } catch (error) {
+    // Prevent duplicate fetches and infinite loops
+    if (!isOwnProfile || isFetchingRef.current) {
+      return;
+    }
+    
+    // Abort controller for cleanup
+    const abortController = new AbortController();
+    
+    const fetchData = async () => {
+      // Set fetching flag to prevent duplicate requests
+      isFetchingRef.current = true;
+      
+      // Clear any previous load error before retrying.
+      setLoadError(null);
+      
+      if (user.role === 'venture') {
+        // Fetch venture profile data
+        try {
+          setIsLoadingProfile(true);
+          const { ventureService } = await import('../services/ventureService');
+          const profile = await ventureService.getMyProfile();
+          
+          // Check if component is still mounted and request wasn't aborted
+          if (!abortController.signal.aborted && profile) {
+            setVentureProfile(profile);
+            console.log('Fetched venture profile:', profile);
+          }
+        } catch (error) {
+          // Don't set error if request was aborted
+          if (!abortController.signal.aborted) {
             console.error('Failed to fetch venture profile:', error);
             // Profile might not exist yet, but other failures should surface to the user.
             const message = error instanceof Error ? error.message : 'Failed to load venture profile.';
             setLoadError(message);
-          } finally {
+          }
+        } finally {
+          if (!abortController.signal.aborted) {
             setIsLoadingProfile(false);
           }
+        }
+        
+        // Fetch products
+        try {
+          setIsLoadingProducts(true);
+          const data = await productService.getMyProducts();
           
-          // Fetch products
-          try {
-            setIsLoadingProducts(true);
-            const data = await productService.getMyProducts();
+          // Check if component is still mounted and request wasn't aborted
+          if (!abortController.signal.aborted) {
             console.log('Fetched products for profile:', data); // Debug log
             // Ensure we always have an array
             const productsArray = Array.isArray(data) ? data : [];
             setProducts(productsArray);
             console.log('Set products array:', productsArray.length, 'products');
-          } catch (error) {
+          }
+        } catch (error) {
+          // Don't set error if request was aborted
+          if (!abortController.signal.aborted) {
             console.error('Failed to fetch products:', error);
             setProducts([]);
             const message = error instanceof Error ? error.message : 'Failed to load pitch decks.';
             setLoadError((prev) => prev || message);
-          } finally {
+          }
+        } finally {
+          if (!abortController.signal.aborted) {
             setIsLoadingProducts(false);
           }
-        } else if (user.role === 'investor') {
-          // Fetch investor profile data
-          try {
-            setIsLoadingProfile(true);
-            const { investorService } = await import('../services/investorService');
-            const profile = await investorService.getMyProfile();
-            if (profile) {
-              setVentureProfile(profile); // Reuse same state variable for consistency
-              console.log('Fetched investor profile:', profile);
-            }
-          } catch (error) {
-            console.error('Failed to fetch investor profile:', error);
-            // Profile might not exist yet, that's okay
-          } finally {
-            setIsLoadingProfile(false);
+        }
+      } else if (user.role === 'investor') {
+        // Fetch investor profile data
+        try {
+          setIsLoadingProfile(true);
+          const { investorService } = await import('../services/investorService');
+          const profile = await investorService.getMyProfile();
+          
+          // Check if component is still mounted and request wasn't aborted
+          if (!abortController.signal.aborted && profile) {
+            setVentureProfile(profile); // Reuse same state variable for consistency
+            console.log('Fetched investor profile:', profile);
           }
-        } else if (user.role === 'mentor') {
-          // Fetch mentor profile data
-          try {
-            setIsLoadingProfile(true);
-            const { mentorService } = await import('../services/mentorService');
-            const profile = await mentorService.getMyProfile();
-            if (profile) {
-              setVentureProfile(profile); // Reuse same state variable for consistency
-              console.log('Fetched mentor profile:', profile);
+        } catch (error) {
+          // Don't set error if request was aborted
+          if (!abortController.signal.aborted) {
+            console.error('Failed to fetch investor profile:', error);
+            // Profile might not exist yet, that's okay - don't show error for 404
+            if (error instanceof Error && !error.message.includes('404')) {
+              const message = error.message || 'Failed to load investor profile.';
+              setLoadError(message);
             }
-          } catch (error) {
-            console.error('Failed to fetch mentor profile:', error);
-            // Profile might not exist yet, that's okay
-          } finally {
+          }
+        } finally {
+          if (!abortController.signal.aborted) {
             setIsLoadingProfile(false);
           }
         }
-      };
-      fetchData();
-    }
-  }, [user.role, isOwnProfile, user.id]); // Add user.id to dependencies
+      } else if (user.role === 'mentor') {
+        // Fetch mentor profile data
+        try {
+          setIsLoadingProfile(true);
+          const { mentorService } = await import('../services/mentorService');
+          const profile = await mentorService.getMyProfile();
+          
+          // Check if component is still mounted and request wasn't aborted
+          if (!abortController.signal.aborted && profile) {
+            setVentureProfile(profile); // Reuse same state variable for consistency
+            console.log('Fetched mentor profile:', profile);
+          }
+        } catch (error) {
+          // Don't set error if request was aborted
+          if (!abortController.signal.aborted) {
+            console.error('Failed to fetch mentor profile:', error);
+            // Profile might not exist yet, that's okay - don't show error for 404
+            if (error instanceof Error && !error.message.includes('404')) {
+              const message = error.message || 'Failed to load mentor profile.';
+              setLoadError(message);
+            }
+          }
+        } finally {
+          if (!abortController.signal.aborted) {
+            setIsLoadingProfile(false);
+          }
+        }
+      }
+      
+      // Reset fetching flag
+      isFetchingRef.current = false;
+    };
+    
+    fetchData();
+    
+    // Cleanup function to abort requests if component unmounts or dependencies change
+    return () => {
+      abortController.abort();
+      isFetchingRef.current = false;
+    };
+  }, [user.role, isOwnProfile, user.id, refreshTrigger]); // Add refreshTrigger to dependencies to force refresh when changed
   
   const renderVentureProfile = (venture: FrontendUser) => {
     const profile = venture.profile || {};
