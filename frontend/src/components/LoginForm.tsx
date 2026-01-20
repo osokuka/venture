@@ -6,7 +6,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Alert, AlertDescription } from "./ui/alert";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, LogIn } from "lucide-react";
+import { ArrowLeft, LogIn, AlertCircle, Clock } from "lucide-react";
 import { sanitizeInput, validateEmail } from '../utils/security';
 
 export function LoginForm() {
@@ -41,11 +41,16 @@ export function LoginForm() {
       if (success) {
         // Navigate to dashboard using React Router
         navigate('/dashboard');
-      } else {
-        setError('Invalid email or password. Please check your credentials and try again.');
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.');
+      // Handle rate limiting (429) with user-friendly message
+      if (err.response?.status === 429) {
+        setError('Too many login attempts. Please wait a few minutes before trying again. This helps protect your account from unauthorized access.');
+      } else if (err.response?.status === 401) {
+        setError('Invalid email or password. Please check your credentials and try again.');
+      } else {
+        setError(err.message || 'Login failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -113,8 +118,26 @@ export function LoginForm() {
                 </div>
 
                 {error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
+                  <Alert variant={error.includes('Too many') ? "default" : "destructive"} className={error.includes('Too many') ? "bg-amber-50 border-amber-200" : ""}>
+                    <AlertDescription className="flex items-start">
+                      {error.includes('Too many') ? (
+                        <>
+                          <Clock className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-amber-600" />
+                          <div>
+                            <p className="font-medium text-amber-900 mb-1">Rate Limit Exceeded</p>
+                            <p className="text-sm text-amber-800">{error}</p>
+                            <p className="text-xs text-amber-700 mt-2">
+                              You can try again in a few minutes, or use the "Forgot Password" link if you need to reset your password.
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>{error}</span>
+                        </>
+                      )}
+                    </AlertDescription>
                   </Alert>
                 )}
 

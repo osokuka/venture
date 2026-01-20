@@ -61,18 +61,43 @@ export function MentorDashboard({ user, activeView = 'overview', onViewChange, o
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSector, setFilterSector] = useState('all');
 
-  // Fetch unread message count
+  // Fetch unread message count with rate limit handling
   useEffect(() => {
+    let retryDelay = 30000; // Start with 30 seconds
+    let isRateLimited = false;
+    
     const fetchUnreadCount = async () => {
+      // Skip if we're currently rate limited
+      if (isRateLimited) {
+        return;
+      }
+      
       try {
         const count = await messagingService.getUnreadCount();
         setUnreadCount(count);
-      } catch (error) {
+        // Reset retry delay on success
+        retryDelay = 30000;
+        isRateLimited = false;
+      } catch (error: any) {
+        // Check if it's a rate limit error (429)
+        if (error?.response?.status === 429) {
+          console.warn('Rate limited on unread count. Pausing polling for 5 minutes.');
+          isRateLimited = true;
+          // Stop polling for 5 minutes when rate limited
+          setTimeout(() => {
+            isRateLimited = false;
+            retryDelay = 30000;
+          }, 5 * 60 * 1000); // 5 minutes
+          return;
+        }
+        // For other errors, just log but continue polling
         console.error('Failed to fetch unread count:', error);
       }
     };
+    
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
+    // Refresh every 30 seconds (or longer if rate limited)
+    const interval = setInterval(fetchUnreadCount, retryDelay);
     return () => clearInterval(interval);
   }, []);
 

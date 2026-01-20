@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 
 interface ServicesSectionProps {
-  onRegister: (role: 'venture' | 'investor' | 'mentor') => void;
+  onRegister: (role?: 'venture' | 'investor' | 'mentor') => void;
 }
 
 export function ServicesSection({ onRegister }: ServicesSectionProps) {

@@ -41,7 +41,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS middleware must be before CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -146,7 +146,7 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/hour',  # Anonymous users: 10 requests per hour
+        'anon': '20/hour',  # Anonymous users: 20 requests per hour (increased for login)
         'user': '100/hour',  # Authenticated users: 100 requests per hour
         'password_reset': '1/hour',  # Password reset: 1 request per hour per email
     },
@@ -168,12 +168,52 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000'
-).split(',')
+# Base settings - will be overridden by environment-specific settings
+# IMPORTANT: Set to False by default, let environment-specific settings override
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Default to development origins
+cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if cors_origins_env and cors_origins_env.strip():
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
+else:
+    # Default development origins
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://frontend:3000',
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# CORS preflight cache time (in seconds) - reduces preflight requests
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
+
+# CORS headers to expose
+CORS_EXPOSE_HEADERS = ['Content-Type', 'Authorization']
+
+# CORS allowed methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# CORS allowed headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'

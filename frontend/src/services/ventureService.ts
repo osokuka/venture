@@ -146,8 +146,12 @@ export const ventureService = {
       }
       
       return response.data;
-    } catch (error) {
-      throw new Error(getErrorMessage(error));
+    } catch (error: any) {
+      // Preserve response payload for field-level validation in UI.
+      const enhancedError = new Error(getErrorMessage(error));
+      (enhancedError as any).response = error?.response;
+      (enhancedError as any).data = error?.response?.data;
+      throw enhancedError;
     }
   },
 
@@ -176,14 +180,21 @@ export const ventureService = {
   },
 
   /**
-   * Upload pitch deck
+   * Upload pitch deck (legacy helper)
+   *
+   * IMPORTANT:
+   * Pitch deck uploads are **per product** in the backend:
+   * POST /api/ventures/products/{product_id}/documents/pitch-deck
+   *
+   * The primary implementation lives in `productService.uploadPitchDeck(...)`.
+   * This method is kept for backward compatibility, but now requires `productId`.
    */
-  async uploadPitchDeck(file: File) {
+  async uploadPitchDeck(productId: string, file: File) {
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await apiClient.post('/ventures/documents/pitch-deck', formData, {
+      const response = await apiClient.post(`/ventures/products/${productId}/documents/pitch-deck`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

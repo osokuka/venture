@@ -1,5 +1,336 @@
 # VentureUPLink Platform Status
 
+> **📋 Technical Debt**: Known issues and technical debt are documented in [`TECHNICAL_DEBT.md`](./TECHNICAL_DEBT.md)
+> 
+> **Current Known Issues**:
+> - Investor Discover Page: New investors can't see pitch decks (requires approval)
+> - Investor Profile Page: Stalling/freezing when viewing profile
+> - Profile Edit/Save: No smooth transitions, page stalls, requires manual refresh
+
+---
+
+## ✅ INVESTOR VISIBILITY FIX (Jan 20, 2026)
+
+### Problem
+**Status**: ✅ **RESOLVED**
+
+**Issue**:
+- New investor registered but not showing in venture dashboard investors roster
+- Venture wants to share pitch deck with newly registered investor
+- Investor not visible at `/dashboard/venture/investors`
+
+**Root Cause**:
+- `PublicInvestorListView` only returned investors with `status='APPROVED'`
+- New investors start with `status='DRAFT'` when profile is created
+- After submission, status becomes `status='SUBMITTED'` (pending admin approval)
+- Only after admin approval does status become `status='APPROVED'`
+- Ventures couldn't see or share pitch decks with investors pending approval
+
+### Solution
+**Status**: ✅ **COMPLETE**
+
+**Backend Changes**:
+- Updated `PublicInvestorListView.get_queryset()` to include both `APPROVED` and `SUBMITTED` investors
+- Updated `PublicInvestorDetailView.get_queryset()` to include both `APPROVED` and `SUBMITTED` investors
+- Ventures can now see investors who have submitted their profiles for approval
+- Allows ventures to proactively share pitch decks with investors even while they're pending approval
+
+**Frontend Changes**:
+- Added status badges in investor cards to show approval status
+- "Pending Approval" badge (amber) for `SUBMITTED` investors
+- "Approved" badge (green) for `APPROVED` investors
+- Visual distinction helps ventures understand investor status
+
+**Files Modified**:
+- `backend/apps/investors/views.py` - Updated both `PublicInvestorListView` and `PublicInvestorDetailView`
+- `frontend/src/components/VentureDashboard.tsx` - Added status badges
+
+**Benefits**:
+- Ventures can now see newly registered investors who have submitted profiles
+- Ventures can share pitch decks with investors pending approval
+- Clear visual indicators show which investors are approved vs pending
+- Maintains security: Only `APPROVED` and `SUBMITTED` investors visible (not `DRAFT`)
+
+**Note**: Investors still need to:
+1. Create their investor profile (status: `DRAFT`)
+2. Submit profile for approval (status: `SUBMITTED`) - **Now visible to ventures**
+3. Get approved by admin (status: `APPROVED`) - **Fully approved**
+
+---
+
+## ✅ LOGIN RATE LIMITING FIX (Jan 20, 2026)
+
+### Problem
+**Status**: ✅ **RESOLVED**
+
+**Issue**:
+- Users unable to sign in due to 429 (Too Many Requests) errors
+- Login endpoint had rate limit of 10 requests/hour for anonymous users
+- After failed login attempts, users hit the rate limit and couldn't log in
+- Frontend showed generic error messages without explaining the rate limit issue
+
+**Root Cause**:
+- `CustomTokenObtainPairView` uses `AnonRateThrottle` with default rate of 10/hour
+- Multiple failed login attempts quickly exhausted the limit
+- Frontend error handling didn't distinguish between 401 (invalid credentials) and 429 (rate limited)
+
+### Solution
+**Status**: ✅ **COMPLETE**
+
+**Backend Changes**:
+- Increased anonymous user rate limit from `10/hour` to `20/hour` in `DEFAULT_THROTTLE_RATES`
+- Provides more reasonable limit while still preventing brute force attacks
+
+**Frontend Changes**:
+- Enhanced error handling in `LoginForm.tsx` to detect 429 status codes
+- Added user-friendly rate limit message with visual indicators (Clock icon, amber styling)
+- Clear instructions: "Too many login attempts. Please wait a few minutes before trying again."
+- Suggests using "Forgot Password" link as alternative
+- Updated `AuthContext.tsx` to properly throw errors so LoginForm can handle them
+- Updated `authService.ts` to preserve response status in error objects
+
+**Files Modified**:
+- `backend/config/settings/base.py` - Increased rate limit
+- `frontend/src/components/LoginForm.tsx` - Enhanced error handling
+- `frontend/src/components/AuthContext.tsx` - Proper error propagation
+- `frontend/src/services/authService.ts` - Preserve response in errors
+
+**User Experience**:
+- Users now see clear, actionable messages when rate limited
+- Visual distinction between rate limit (amber warning) and invalid credentials (red error)
+- Guidance on what to do next (wait or use forgot password)
+
+---
+
+## ✅ EMAIL VERIFICATION ENHANCEMENT (Jan 20, 2026)
+
+### 1. Email Verification Page - IMPLEMENTED
+**Status**: ✅ **COMPLETE**
+
+**Features**:
+- New `/verify-email` route handles email verification from email links
+- Automatically extracts token from URL query parameter (`?token=...`)
+- Calls backend API to verify email when page loads
+- Shows loading state while verifying
+- Success state with clear next steps
+- Error state with helpful troubleshooting information
+- LinkedIn-style UI matching the rest of the platform
+
+**User Flow**:
+1. User registers and receives verification email
+2. User clicks "Verify Email Address" button in email
+3. Redirected to `/verify-email?token={token}`
+4. Frontend automatically calls `/api/auth/verify-email` with token
+5. Backend verifies token, marks email as verified, and marks token as used
+6. User sees success message and can proceed to login
+
+**Backend Verification**:
+- Endpoint: `POST /api/auth/verify-email`
+- Validates token exists and is not expired/used
+- Sets `user.is_email_verified = True`
+- Marks token as used (`used_at = now()`)
+- Returns success message
+
+**Files Created**:
+- `frontend/src/components/VerifyEmail.tsx`
+
+**Files Modified**:
+- `frontend/src/AppWithRouter.tsx` (added route)
+
+---
+
+### 2. Enhanced Registration Success Messages - IMPLEMENTED
+**Status**: ✅ **COMPLETE**
+
+**Changes**:
+- All registration forms now show clear email verification instructions
+- Prominent message advising users to check their email
+- Step-by-step instructions on how to verify email
+- Visual indicators (Mail icon) for email verification section
+- Clear call-to-action to click the verification link
+- Helpful troubleshooting (check spam folder, resend link)
+
+**Updated Components**:
+- `VentureRegistration.tsx` ✅
+- `InvestorRegistration.tsx` ✅ (Fixed: Now properly shows email verification message)
+- `MentorRegistration.tsx` ✅ (Fixed: Now properly shows email verification message)
+
+**Key Fix**:
+- Updated `completeRegistration` in `AuthContext.tsx` to accept `skipNavigation` option
+- InvestorRegistration and MentorRegistration now use `skipNavigation: true` to prevent immediate dashboard navigation
+- Users can now see the email verification instructions before being redirected
+- Added "Go to Login" button on success step for Investor and Mentor registrations
+
+**Key Features**:
+- Email address highlighted in success message
+- Numbered list of verification steps
+- "After Verification" section showing what users can do next
+- Link to login page for resending verification email
+
+---
+
+## ✅ REGISTRATION FLOW ENHANCEMENT (Jan 20, 2026)
+
+### 1. Role Selection Page - IMPLEMENTED
+**Status**: ✅ **COMPLETE**
+
+**Features**:
+- New `/register` route shows role selection page
+- LinkedIn-style cards for Venture, Investor, and Mentor
+- Users can visually compare options before selecting
+- Clear descriptions and feature lists for each role
+- "Continue as [Role]" button appears after selection
+
+**Files Created**:
+- `frontend/src/components/RoleSelection.tsx`
+
+---
+
+### 2. Unified Registration with Sidebar - IMPLEMENTED
+**Status**: ✅ **COMPLETE**
+
+**Features**:
+- LinkedIn-style sidebar navigation for role selection
+- Users can switch between roles during registration
+- Active role highlighted with color-coded indicators
+- Main content area shows selected role's registration form
+- Responsive design with sticky sidebar
+
+**Files Created**:
+- `frontend/src/components/UnifiedRegistration.tsx`
+
+**Routes**:
+- `/register` - Role selection page
+- `/register/:role` - Unified registration with sidebar (venture/investor/mentor)
+
+---
+
+### 3. Form Validation Updates - IN PROGRESS
+**Status**: ⚠️ **PARTIALLY COMPLETE**
+
+**Venture Registration** ✅:
+- Removed inline validation (no validation on onChange)
+- Validation only occurs on form submit
+- Added helpful descriptive labels for each field
+- Added warning messages with AlertCircle icons when criteria not met
+- LinkedIn-style form styling with proper spacing
+
+**Investor & Mentor Registration** ⚠️:
+- Account creation step (Step 1) needs same updates
+- Other steps can be updated incrementally
+
+**Key Changes**:
+- Validation errors stored in state, displayed below fields
+- Clear error messages with visual indicators
+- Helpful labels explaining what goes in each field
+- No validation feedback until user clicks submit button
+
+**Files Modified**:
+- `frontend/src/components/VentureRegistration.tsx` ✅
+- `frontend/src/components/InvestorRegistration.tsx` ⚠️ (Step 1 pending)
+- `frontend/src/components/MentorRegistration.tsx` ⚠️ (Step 1 pending)
+
+---
+
+### 4. Navigation Updates - IMPLEMENTED
+**Status**: ✅ **COMPLETE**
+
+**Changes**:
+- "Get Started" buttons now navigate to `/register` (role selection)
+- HeroSection and ServicesSection updated to use new flow
+- ServicesSection buttons can still pre-select role via `/register/{role}`
+- All registration routes properly configured
+
+**Files Modified**:
+- `frontend/src/AppWithRouter.tsx`
+- `frontend/src/components/HeroSection.tsx`
+- `frontend/src/components/ServicesSection.tsx`
+
+---
+
+## ✅ CRITICAL FIXES - Rate Limiting & UI Errors (Jan 20, 2026)
+
+### 1. Radix UI Select Component Error - FIXED
+**Status**: ✅ **RESOLVED**
+
+**Problem**:
+- `CreatePitchDeck.tsx` component had a `SelectItem` with `value=""` (empty string)
+- Radix UI requires all `SelectItem` values to be non-empty strings
+- Error: `"A <Select.Item /> must have a value prop that is not an empty string"`
+
+**Solution**:
+- Changed placeholder value from `""` to `"__create_new__"`
+- Updated `onValueChange` handler to detect and handle the placeholder value
+- When `"__create_new__"` is selected, clears product selection and resets form data
+- Component now properly handles "Create New Product" option without violating Radix UI constraints
+
+**Files Modified**:
+- `frontend/src/components/CreatePitchDeck.tsx`
+
+---
+
+### 2. Excessive API Calls - Rate Limiting (429 Errors) - FIXED
+**Status**: ✅ **RESOLVED**
+
+**Problem**:
+- Multiple dashboard components (`ModernDashboardLayout`, `DashboardLayout`, `InvestorDashboard`, `MentorDashboard`, `VentureDashboard`) were all polling `/api/messages/conversations/unread-count` every 30 seconds
+- When rate limit (429) errors occurred, intervals continued retrying, causing a flood of requests
+- Default throttle rate is `100/hour` per authenticated user
+- Multiple components × 30-second intervals = easily exceeding rate limits
+
+**Solution**:
+- Added rate limit detection: Check for `error?.response?.status === 429`
+- When rate limited, pause polling for 5 minutes
+- Reset polling interval after cooldown period
+- Continue normal polling (30 seconds) when not rate limited
+- Applied fix to all dashboard components that fetch unread count
+
+**Implementation Details**:
+```typescript
+// Skip if we're currently rate limited
+if (isRateLimited) {
+  return;
+}
+
+// On 429 error, pause polling for 5 minutes
+if (error?.response?.status === 429) {
+  console.warn('Rate limited on unread count. Pausing polling for 5 minutes.');
+  isRateLimited = true;
+  setTimeout(() => {
+    isRateLimited = false;
+    retryDelay = 30000;
+  }, 5 * 60 * 1000); // 5 minutes
+  return;
+}
+```
+
+**Files Modified**:
+- `frontend/src/components/ModernDashboardLayout.tsx`
+- `frontend/src/components/DashboardLayout.tsx`
+- `frontend/src/components/InvestorDashboard.tsx`
+- `frontend/src/components/MentorDashboard.tsx`
+- `frontend/src/components/VentureDashboard.tsx`
+
+**Benefits**:
+- Prevents API flooding when rate limited
+- Graceful degradation: Stops retrying when rate limited, resumes after cooldown
+- Better user experience: No console spam from repeated 429 errors
+- Respects backend rate limits while maintaining functionality
+
+---
+
+### 3. WebSocket Connection Issues (Vite HMR)
+**Status**: ⚠️ **INFORMATIONAL** (Not Critical)
+
+**Note**: WebSocket connection failures (`wss://ventureuplink.com:3000`) are related to Vite's Hot Module Replacement (HMR) in production. This is expected behavior when:
+- Production build doesn't use HMR
+- Reverse proxy doesn't forward WebSocket connections for HMR
+- These errors don't affect application functionality
+
+**No Action Required**: This is a development-time feature that's not needed in production builds.
+
+---
+
 ## ✅ PASSWORD RESET & SECURITY ENHANCEMENTS (Jan 19, 2026)
 
 ### Frontend Password Reset UI
@@ -2087,6 +2418,63 @@ All frontend service endpoints match backend URL patterns correctly:
 
 ---
 
+#### Investment Commitment & Deal Workflow (Investor → Venture) ✅ **IMPLEMENTED**
+
+**Complete Workflow:**
+1. **Venture shares pitch deck** → Creates `PitchDeckShare` record
+2. **Investor views pitch deck** → `viewed_at` timestamp recorded
+3. **Investor follows/monitors** → Creates `PitchDeckInterest` record (optional)
+4. **Investor commits to invest** → Creates `InvestmentCommitment` with `status='COMMITTED'` and `venture_response='PENDING'`
+5. **Venture reviews commitment** → Sees commitment in product commitments list
+6. **Venture accepts** → `venture_response='ACCEPTED'` → **Becomes a Deal** (`is_deal=True`)
+   OR
+   **Venture requests renegotiation** → `venture_response='RENEGOTIATE'` → Investor can update commitment
+7. **Deal lifecycle**:
+   - `ACCEPTED` → Deal in progress
+   - `COMPLETED` → Investment finalized
+   - `WITHDRAWN` → Either party withdraws
+
+**Backend Implementation:**
+
+**Model: `InvestmentCommitment`** (Extended)
+- Added `venture_response` field: `PENDING`, `ACCEPTED`, `RENEGOTIATE`
+- Added `venture_response_at` timestamp
+- Added `venture_response_message` (optional message from venture)
+- Added `responded_by` FK to User (venture user who responded)
+- Added `is_deal` property: Returns `True` if `venture_response == 'ACCEPTED'` and `status == 'COMMITTED'`
+
+**Endpoints:**
+- `GET /api/ventures/products/{product_id}/commitments` - List all commitments for a product (venture only)
+- `POST /api/ventures/products/{product_id}/commitments/{commitment_id}/accept` - Accept commitment (creates deal)
+- `POST /api/ventures/products/{product_id}/commitments/{commitment_id}/renegotiate` - Request renegotiation
+
+**Investor Endpoints:**
+- `GET /api/investors/portfolio` - Returns commitments with `venture_response` and `is_deal` status
+- `POST /api/investors/products/{product_id}/documents/{doc_id}/commit` - Create/update commitment
+
+**Frontend Implementation:**
+
+**Venture Dashboard:**
+- New section: "Investment Commitments" showing pending commitments
+- Actions: "Accept" (creates deal) and "Renegotiate" (with message)
+- Visual indicators: Pending (amber), Accepted/Deal (green), Renegotiate (orange)
+
+**Investor Dashboard:**
+- Portfolio view shows deal status (`is_deal`, `venture_response`)
+- Shared pitch decks show commitment status and venture response
+- Visual indicators: Pending (amber), Accepted/Deal (green badge), Renegotiate (orange)
+
+**Key Features:**
+- ✅ **Soft rejection**: Uses "RENEGOTIATE" instead of "REJECTED" for better relationship management
+- ✅ **Single source of truth**: Commitment becomes deal when accepted (no separate Deal model)
+- ✅ **Full lifecycle tracking**: From commitment → acceptance → deal → completion
+- ✅ **Clear status progression**: `COMMITTED` → `ACCEPTED` → `COMPLETED`
+- ✅ **Message support**: Ventures can include messages when accepting/renegotiating
+
+**Status**: ✅ **FULLY FUNCTIONAL** - Complete workflow from investor commitment to venture acceptance/renegotiation. Accepted commitments become deals automatically.
+
+---
+
 #### Pitch Deck Sharing/Request Workflow ✅ **IMPLEMENTED** (See VENTURES_CRUD_STATUS.md)
 
 **Current State**:
@@ -2700,6 +3088,45 @@ The Vite configuration is already set up correctly:
      - `frontend/vite.config.ts` - Source maps enabled in dev, disabled in production
      - `frontend/src/main.tsx` - No error suppression (for debugging)
    - **Last Updated**: 2025-01-14
+
+14. **InvestorDashboard Syntax Error - JSX Component Reference**
+   - **Status**: ✅ **FIXED** - 2026-01-19
+   - **Priority**: High (Blocking Component Load)
+   - **Component**: Frontend (`InvestorDashboard.tsx`)
+   - **Issue**: `GET https://ventureuplink.com/src/components/InvestorDashboard.tsx` returning 500 Internal Server Error, preventing component from loading
+   - **Root Cause**: 
+     - Multiple JSX syntax errors in `InvestorDashboard.tsx`:
+       1. **Line 719**: Invalid JSX syntax `<activity.icon>` - Cannot use dot notation directly in JSX tags
+       2. **Line 735**: Missing closing `)}` for ternary operator in "Recent Activity" section
+       3. **Line 840**: Missing conditional wrapper for "Deal Pipeline" section - orphaned `)}` without matching opening ternary
+     - Vite's React SWC compiler was throwing "Unterminated regexp literal" errors due to invalid JSX syntax
+     - Component failed to compile, causing browser to request raw source file, which also failed
+   - **Solution Implemented**:
+     - ✅ Fixed dynamic component rendering: Changed `<activity.icon>` to extract component to variable first:
+       ```tsx
+       const IconComponent = activity.icon;
+       return <IconComponent className={...} />
+       ```
+     - ✅ Fixed ternary operator closure: Added missing `)}` to close ternary in "Recent Activity" section
+     - ✅ Fixed Deal Pipeline section: Added proper conditional wrapper `{pipelineDeals.length === 0 ? (...) : (...)}` to match structure of other sections
+     - ✅ Added `useCallback` hook for `fetchSharedPitchDecks` to prevent unnecessary re-renders
+     - ✅ Moved user validation check AFTER all hooks (React Rules of Hooks compliance)
+   - **Files Modified**:
+     - `frontend/src/components/InvestorDashboard.tsx` - Fixed JSX syntax errors, added proper conditional wrappers
+     - `frontend/src/services/investorService.ts` - Added `getSharedPitchDecks()` method and `SharedPitchDeck` interface
+     - `backend/apps/investors/views.py` - Added `list_shared_pitch_decks()` endpoint with error handling
+     - `backend/apps/investors/urls.py` - Added route for shared pitch decks endpoint
+     - `backend/apps/ventures/serializers.py` - Added `InvestorSharedPitchDeckSerializer` with null-safe methods
+   - **Impact**: 
+     - ✅ Component now compiles successfully
+     - ✅ No more 500 errors when loading InvestorDashboard
+     - ✅ Shared pitch decks feature fully functional
+     - ✅ Proper error handling prevents crashes
+   - **Related Changes**:
+     - Implemented investor shared pitch decks feature (backend endpoint + frontend integration)
+     - Removed mock data from InvestorDashboard (replaced with real API calls)
+     - Added comprehensive error handling and null-safety checks
+   - **Last Updated**: 2026-01-19
 
 #### High Priority Tech Debt
 

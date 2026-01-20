@@ -45,6 +45,7 @@ interface EditProfileProps {
 export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
   
   // Initialize form data based on user type
   const initializeFormData = () => {
@@ -293,6 +294,7 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
     }
 
     setIsLoading(true);
+    setJustSaved(false);
 
     try {
       // Security: Sanitize all form data before updating
@@ -381,6 +383,9 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
         const savedProfile = await ventureService.updateProfile(profileUpdateData);
         
         toast.success("Profile updated successfully!");
+        // Extra feedback to reduce "did it save?" uncertainty.
+        setJustSaved(true);
+        window.setTimeout(() => setJustSaved(false), 2500);
         
         // Update local state with saved profile data
         if (onProfileUpdate) {
@@ -407,17 +412,91 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           };
           onProfileUpdate(updatedUser);
         }
+      } else if (user.role === 'investor') {
+        // Handle investor profile updates - use investorService, not userService
+        const { investorService } = await import('../services/investorService');
+        
+        // Map form data to investor profile update payload
+        const investorUpdateData: any = {
+          full_name: formData.name || formData.full_name || user.full_name,
+          organization_name: formData.organizationName || '',
+          linkedin_or_website: formData.linkedinUrl || formData.website || '',
+          phone: formData.phone || undefined,
+          investment_experience_years: formData.investmentExperience ? parseInt(formData.investmentExperience) : 0,
+          stage_preferences: formData.investmentStages || [],
+          industry_preferences: formData.industries || [],
+          average_ticket_size: formData.ticketSize || '',
+          visible_to_ventures: formData.isVisible !== false,
+        };
+        
+        // Update investor profile via API
+        const savedProfile = await investorService.updateProfile(investorUpdateData);
+        
+        toast.success("Profile updated successfully!");
+        
+        if (onProfileUpdate) {
+          const updatedUser = { ...user };
+          updatedUser.profile = {
+            ...updatedUser.profile,
+            name: savedProfile.full_name,
+            organizationName: savedProfile.organization_name,
+            linkedinUrl: savedProfile.linkedin_or_website,
+            website: savedProfile.linkedin_or_website,
+            phone: savedProfile.phone,
+            investmentExperience: savedProfile.investment_experience_years?.toString(),
+            investmentStages: savedProfile.stage_preferences || [],
+            industries: savedProfile.industry_preferences || [],
+            ticketSize: savedProfile.average_ticket_size,
+            isVisible: savedProfile.visible_to_ventures,
+          };
+          updatedUser.full_name = savedProfile.full_name;
+          onProfileUpdate(updatedUser);
+        }
+      } else if (user.role === 'mentor') {
+        // Handle mentor profile updates - use mentorService
+        const { mentorService } = await import('../services/mentorService');
+        
+        // Map form data to mentor profile update payload
+        const mentorUpdateData: any = {
+          full_name: formData.name || formData.full_name || user.full_name,
+          job_title: formData.jobTitle || '',
+          company: formData.company || '',
+          linkedin_or_website: formData.linkedinUrl || '',
+          phone: formData.phone || undefined,
+          expertise_fields: formData.expertise || [],
+          experience_overview: formData.bio || '',
+          industries_of_interest: formData.industries || [],
+          visible_to_ventures: formData.isVisible !== false,
+        };
+        
+        // Update mentor profile via API
+        const savedProfile = await mentorService.updateProfile(mentorUpdateData);
+        
+        toast.success("Profile updated successfully!");
+        
+        if (onProfileUpdate) {
+          const updatedUser = { ...user };
+          updatedUser.profile = {
+            ...updatedUser.profile,
+            name: savedProfile.full_name,
+            jobTitle: savedProfile.job_title,
+            company: savedProfile.company,
+            linkedinUrl: savedProfile.linkedin_or_website,
+            phone: savedProfile.phone,
+            expertise: savedProfile.expertise_fields || [],
+            bio: savedProfile.experience_overview,
+            industries: savedProfile.industries_of_interest || [],
+            isVisible: savedProfile.visible_to_ventures,
+          };
+          updatedUser.full_name = savedProfile.full_name;
+          onProfileUpdate(updatedUser);
+        }
       } else {
-        // Handle investor/mentor profile updates
+        // Fallback: Update user account only (for other roles or if specific service not available)
         const { userService } = await import('../services/userService');
         
-        // Note: For ventures, we should NOT update full_name with companyName
-        // full_name should remain as the user's personal name, not the company name
-        // Only update full_name if there's an explicit full_name or name field (for investor/mentor)
         const updateData: any = {};
-        // Only update full_name for investor/mentor roles (they have 'name' field)
-        // For ventures, full_name should stay as the user's personal name
-        if (user.role !== 'venture' && (formData.full_name || formData.name)) {
+        if (formData.full_name || formData.name) {
           updateData.full_name = formData.full_name || formData.name;
         }
         
@@ -434,15 +513,56 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
           } else {
             updatedUser.profile = sanitizedFormData;
           }
-          // Also update the user's full_name if it was changed (only for non-venture roles)
           if (updateData.full_name) {
             updatedUser.full_name = updateData.full_name;
-            // Don't update profile.full_name - keep it separate
           }
           onProfileUpdate(updatedUser);
         }
       }
     } catch (error) {
+      // Prefer field-level errors when backend returns DRF validation errors (400).
+      const anyErr = error as any;
+      const responseData = anyErr?.response?.data || anyErr?.data;
+      const status = anyErr?.response?.status;
+
+      const backendToFrontendField: Record<string, string> = {
+        company_name: 'companyName',
+        short_description: 'shortDescription',
+        linkedin_url: 'linkedinUrl',
+        founder_name: 'founderName',
+        founder_linkedin: 'founderLinkedin',
+        founder_role: 'founderRole',
+        year_founded: 'foundedYear',
+        employees_count: 'employeeCount',
+        key_metrics: 'keyMetrics',
+        logo_url: 'logo',
+      };
+
+      // DRF often returns: { field: ["msg1", "msg2"], non_field_errors: [...] }
+      if (status === 400 && responseData && typeof responseData === 'object' && !Array.isArray(responseData)) {
+        const newErrors: Record<string, string> = {};
+
+        Object.entries(responseData).forEach(([key, value]) => {
+          const frontendKey = backendToFrontendField[key] || key;
+          const message =
+            Array.isArray(value)
+              ? value.filter(Boolean).join(' ')
+              : typeof value === 'string'
+                ? value
+                : value && typeof value === 'object'
+                  ? JSON.stringify(value)
+                  : 'Invalid value';
+
+          if (frontendKey) newErrors[frontendKey] = message;
+        });
+
+        if (Object.keys(newErrors).length > 0) {
+          setErrors((prev) => ({ ...prev, ...newErrors }));
+          toast.error('Please fix the highlighted fields and try again.');
+          return;
+        }
+      }
+
       const errorMessage = error instanceof Error ? error.message : "Failed to update profile. Please try again.";
       toast.error(errorMessage);
     } finally {
@@ -1367,6 +1487,13 @@ export function EditProfile({ user, onProfileUpdate }: EditProfileProps) {
 
         {/* Submit Button */}
         <div className="flex justify-end space-x-4 pt-6 border-t">
+          {/* Inline confirmation (in addition to toast) to reduce uncertainty */}
+          {justSaved && (
+            <div className="flex items-center text-sm text-green-700 mr-auto">
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Saved
+            </div>
+          )}
           <button 
             type="button" 
             className="btn-chrome-secondary"

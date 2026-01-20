@@ -292,8 +292,23 @@ const CreatePitchDeck: React.FC = () => {
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-gray-700">Select Existing Product (Optional)</Label>
                 <Select
-                  value={selectedProductId}
+                  value={selectedProductId || undefined}
                   onValueChange={(value) => {
+                    // Handle placeholder value for "Create New Product"
+                    if (value === '__create_new__') {
+                      setSelectedProductId('');
+                      setProductData({
+                        name: '',
+                        industry_sector: '',
+                        website: '',
+                        linkedin_url: '',
+                        address: '',
+                        year_founded: undefined,
+                        employees_count: undefined,
+                        short_description: '',
+                      });
+                      return;
+                    }
                     setSelectedProductId(value);
                     const product = products.find((p: any) => p.id === value);
                     if (product) {
@@ -314,7 +329,7 @@ const CreatePitchDeck: React.FC = () => {
                     <SelectValue placeholder="Select existing product or create new" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Create New Product</SelectItem>
+                    <SelectItem value="__create_new__">Create New Product</SelectItem>
                     {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}

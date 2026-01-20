@@ -54,7 +54,7 @@ import { MessagingSystem } from './MessagingSystem';
 import { messagingService } from '../services/messagingService';
 import { investorService, type InvestorProfile } from '../services/investorService';
 import { mentorService, type MentorProfile } from '../services/mentorService';
-import { productService } from '../services/productService';
+import { productService, type ProductCommitment } from '../services/productService';
 import { validateUuid, sanitizeInput } from '../utils/security';
 import { SafeText } from './SafeText';
 
@@ -105,6 +105,10 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   // State for recent activity feed
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   
+  // State for investment commitments
+  const [productCommitments, setProductCommitments] = useState<Record<string, any[]>>({});
+  const [isLoadingCommitments, setIsLoadingCommitments] = useState<Record<string, boolean>>({});
+  
   // Security: Sanitize search term
   const handleSearchChange = (value: string) => {
     const sanitized = sanitizeInput(value, 100);
@@ -140,19 +144,120 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView]);
 
-  // Fetch unread message count
+  // Fetch commitments for approved products
+  const fetchProductCommitments = async (productId: string) => {
+    if (!validateUuid(productId)) {
+      return;
+    }
+    setIsLoadingCommitments(prev => ({ ...prev, [productId]: true }));
+    try {
+      const data = await productService.getProductCommitments(productId);
+      setProductCommitments(prev => ({
+        ...prev,
+        [productId]: data.results || []
+      }));
+    } catch (error: any) {
+      console.error('Failed to fetch commitments:', error);
+      setProductCommitments(prev => ({
+        ...prev,
+        [productId]: []
+      }));
+    } finally {
+      setIsLoadingCommitments(prev => ({ ...prev, [productId]: false }));
+    }
+  };
+
+  // Fetch commitments when products change
   useEffect(() => {
+    if (activeView === 'overview' || activeView === 'products') {
+      const approvedProducts = products.filter((p: any) => p.status === 'APPROVED' && p.is_active);
+      approvedProducts.forEach((product: any) => {
+        if (product.id && !productCommitments[product.id]) {
+          fetchProductCommitments(product.id);
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, products]);
+
+  // Handler to accept commitment
+  const handleAcceptCommitment = async (productId: string, commitmentId: string) => {
+    if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+      toast.error("Invalid product or commitment ID");
+      return;
+    }
+
+    try {
+      await productService.acceptCommitment(productId, commitmentId);
+      toast.success("Commitment accepted! Deal created successfully.");
+      // Refresh commitments
+      await fetchProductCommitments(productId);
+    } catch (error: any) {
+      console.error('Error accepting commitment:', error);
+      toast.error(error.message || "Failed to accept commitment");
+    }
+  };
+
+  // Handler to request renegotiation
+  const handleRenegotiateCommitment = async (productId: string, commitmentId: string) => {
+    if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+      toast.error("Invalid product or commitment ID");
+      return;
+    }
+
+    const message = window.prompt("Please provide a message explaining the renegotiation terms:");
+    if (!message || !message.trim()) {
+      return; // User cancelled or didn't provide message
+    }
+
+    try {
+      await productService.renegotiateCommitment(productId, commitmentId, message.trim());
+      toast.success("Renegotiation request sent to investor.");
+      // Refresh commitments
+      await fetchProductCommitments(productId);
+    } catch (error: any) {
+      console.error('Error requesting renegotiation:', error);
+      toast.error(error.message || "Failed to request renegotiation");
+    }
+  };
+
+  // Fetch unread message count with rate limit handling
+  useEffect(() => {
+    let retryDelay = 30000; // Start with 30 seconds
+    let isRateLimited = false;
+    
     const fetchUnreadCount = async () => {
+      // Skip if we're currently rate limited
+      if (isRateLimited) {
+        return;
+      }
+      
       try {
         const count = await messagingService.getUnreadCount();
         setUnreadCount(count);
-      } catch (error) {
+        // Reset retry delay on success
+        retryDelay = 30000;
+        isRateLimited = false;
+      } catch (error: any) {
+        // Check if it's a rate limit error (429)
+        if (error?.response?.status === 429) {
+          console.warn('Rate limited on unread count. Pausing polling for 5 minutes.');
+          isRateLimited = true;
+          // Stop polling for 5 minutes when rate limited
+          setTimeout(() => {
+            isRateLimited = false;
+            retryDelay = 30000;
+          }, 5 * 60 * 1000); // 5 minutes
+          return;
+        }
+        // For other errors, just log but continue polling
         console.error('Failed to fetch unread count:', error);
       }
     };
+    
     fetchUnreadCount();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchUnreadCount, 30000);
+    // Refresh every 30 seconds (or longer if rate limited)
+    const interval = setInterval(fetchUnreadCount, retryDelay);
     return () => clearInterval(interval);
   }, []);
 
@@ -1120,6 +1225,174 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         </Card>
       </div>
 
+      {/* Investment Commitments */}
+      {(() => {
+        const approvedProducts = products.filter((p: any) => p.status === 'APPROVED' && p.is_active);
+        const allCommitments: ProductCommitment[] = [];
+        approvedProducts.forEach((product: any) => {
+          const commitments = productCommitments[product.id] || [];
+          allCommitments.push(...commitments);
+        });
+        const pendingCommitments = allCommitments.filter(c => c.venture_response === 'PENDING');
+        const acceptedDeals = allCommitments.filter(c => c.is_deal);
+        
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <DollarSign className="w-5 h-5" />
+                <span>Investment Commitments</span>
+                {pendingCommitments.length > 0 && (
+                  <Badge variant="default" className="bg-amber-600 ml-2">
+                    {pendingCommitments.length} Pending
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                Review and manage investor commitments. Accept to create deals.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {approvedProducts.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-sm">No approved products yet</p>
+                  <p className="text-xs mt-1">Approved products will show investment commitments here</p>
+                </div>
+              ) : allCommitments.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <DollarSign className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                  <p className="text-sm">No investment commitments yet</p>
+                  <p className="text-xs mt-1">When investors commit to invest, they will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Pending Commitments */}
+                  {pendingCommitments.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-semibold text-amber-600">Pending Response ({pendingCommitments.length})</h4>
+                      {pendingCommitments.map((commitment) => (
+                        <div key={commitment.commitment_id} className="p-4 border border-amber-200 bg-amber-50/50 rounded-lg">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <h5 className="font-semibold">{commitment.investor_name}</h5>
+                                {commitment.investor_organization && (
+                                  <span className="text-sm text-muted-foreground">• {commitment.investor_organization}</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-2">{commitment.investor_email}</p>
+                              {commitment.amount && (
+                                <p className="text-lg font-bold text-green-600">
+                                  ${parseFloat(commitment.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </p>
+                              )}
+                              {commitment.message && (
+                                <div className="mt-2 p-2 bg-white rounded border">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Investor Message:</p>
+                                  <p className="text-sm">{commitment.message}</p>
+                                </div>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Committed {commitment.committed_at ? new Date(commitment.committed_at).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleAcceptCommitment(
+                                approvedProducts.find((p: any) => productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id))?.id || '',
+                                commitment.commitment_id
+                              )}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Accept (Create Deal)
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRenegotiateCommitment(
+                                approvedProducts.find((p: any) => productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id))?.id || '',
+                                commitment.commitment_id
+                              )}
+                            >
+                              <AlertCircle className="w-4 h-4 mr-2" />
+                              Request Renegotiation
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Accepted Deals */}
+                  {acceptedDeals.length > 0 && (
+                    <div className="space-y-3 mt-6">
+                      <h4 className="text-sm font-semibold text-green-600">Accepted Deals ({acceptedDeals.length})</h4>
+                      {acceptedDeals.map((commitment) => (
+                        <div key={commitment.commitment_id} className="p-4 border border-green-200 bg-green-50/50 rounded-lg">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <h5 className="font-semibold">{commitment.investor_name}</h5>
+                                <Badge variant="default" className="bg-green-600">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Deal Accepted
+                                </Badge>
+                              </div>
+                              {commitment.amount && (
+                                <p className="text-lg font-bold text-green-600">
+                                  ${parseFloat(commitment.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </p>
+                              )}
+                              {commitment.venture_response_message && (
+                                <p className="text-sm text-muted-foreground mt-2 italic">"{commitment.venture_response_message}"</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Accepted {commitment.venture_response_at ? new Date(commitment.venture_response_at).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Renegotiation Requests */}
+                  {allCommitments.filter(c => c.venture_response === 'RENEGOTIATE').length > 0 && (
+                    <div className="space-y-3 mt-6">
+                      <h4 className="text-sm font-semibold text-orange-600">Renegotiation Requests</h4>
+                      {allCommitments.filter(c => c.venture_response === 'RENEGOTIATE').map((commitment) => (
+                        <div key={commitment.commitment_id} className="p-4 border border-orange-200 bg-orange-50/50 rounded-lg">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <h5 className="font-semibold">{commitment.investor_name}</h5>
+                                <Badge variant="outline" className="border-orange-500 text-orange-600">
+                                  Renegotiation Requested
+                                </Badge>
+                              </div>
+                              {commitment.venture_response_message && (
+                                <p className="text-sm text-muted-foreground mt-2">"{commitment.venture_response_message}"</p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Requested {commitment.venture_response_at ? new Date(commitment.venture_response_at).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Pitch Deck Performance and Current Mentors */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -1338,9 +1611,21 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                           )}
                         </div>
                       </div>
-                      <Badge variant="outline">
-                        {investor.stage_preferences?.[0] || 'Various'}
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="outline">
+                          {investor.stage_preferences?.[0] || 'Various'}
+                        </Badge>
+                        {investor.status === 'SUBMITTED' && (
+                          <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-300">
+                            Pending Approval
+                          </Badge>
+                        )}
+                        {investor.status === 'APPROVED' && (
+                          <Badge variant="secondary" className="bg-green-100 text-green-800 border-green-300">
+                            Approved
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     {/* Investment Details */}

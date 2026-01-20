@@ -47,7 +47,51 @@ SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 
 # CORS settings for production
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
+# IMPORTANT: Override any CORS_ALLOW_ALL_ORIGINS from base settings
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Default to production frontend URL if environment variable is not set
+cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if cors_origins_env and cors_origins_env.strip():
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
+else:
+    # Default production origins
+    CORS_ALLOWED_ORIGINS = [
+        'https://ventureuplink.com',
+        'https://www.ventureuplink.com',
+    ]
+
+# Ensure CORS credentials are allowed
+CORS_ALLOW_CREDENTIALS = True
+
+# CORS preflight cache time (in seconds) - reduces preflight requests
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
+
+# CORS headers to expose
+CORS_EXPOSE_HEADERS = ['Content-Type', 'Authorization']
+
+# CORS allowed methods
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# CORS allowed headers
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # Static files
 STATIC_ROOT = os.environ.get('STATIC_ROOT', BASE_DIR / 'staticfiles')

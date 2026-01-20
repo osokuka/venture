@@ -278,9 +278,42 @@ This document provides a comprehensive status of making the Venture Dashboard fu
 - ✅ `frontend/package.json` - Added react-router-dom dependency
 - ✅ `frontend/src/main.tsx` - Updated to use AppWithRouter
 - ✅ `frontend/src/components/VentureDashboard.tsx` - Real API integration
+- ✅ `frontend/src/components/InvestorDashboard.tsx` - Real API integration, shared pitch decks feature, syntax error fixes (2026-01-19)
 - ✅ `frontend/src/components/LoginForm.tsx` - React Router navigation
 - ✅ `frontend/src/components/ModernDashboardLayout.tsx` - React Router navigation
 - ✅ `frontend/src/components/AuthContext.tsx` - Updated for React Router compatibility
+- ✅ `frontend/src/services/investorService.ts` - Added `getSharedPitchDecks()` method
+- ✅ `backend/apps/investors/views.py` - Added `list_shared_pitch_decks()` endpoint
+- ✅ `backend/apps/investors/urls.py` - Added route for shared pitch decks
+- ✅ `backend/apps/ventures/serializers.py` - Added `InvestorSharedPitchDeckSerializer`
+
+---
+
+## 8.1. Recent Fixes (2026-01-19)
+
+### InvestorDashboard Syntax Error Fix ✅
+**Issue**: Component failing to load with 500 error due to JSX syntax errors
+**Root Causes**:
+1. Invalid JSX: `<activity.icon>` - Cannot use dot notation directly in JSX
+2. Missing ternary closure: Unclosed `)}` in Recent Activity section
+3. Missing conditional wrapper: Deal Pipeline section had orphaned `)}`
+
+**Fixes Applied**:
+- ✅ Fixed dynamic component rendering by extracting to variable first
+- ✅ Added proper ternary operator closures
+- ✅ Added conditional wrappers for empty state handling
+- ✅ Added `useCallback` for `fetchSharedPitchDecks` to prevent re-render issues
+- ✅ Moved user validation after all hooks (React Rules of Hooks compliance)
+
+**Result**: Component now compiles and loads successfully ✅
+
+### Investor Shared Pitch Decks Feature ✅
+**Implementation**:
+- ✅ Backend endpoint: `GET /api/investors/shared-pitch-decks`
+- ✅ Frontend integration in InvestorDashboard overview section
+- ✅ Displays shared pitch decks with "New" badges
+- ✅ Navigation to pitch deck details and messaging
+- ✅ Removed mock data, replaced with real API calls
 
 ---
 
@@ -324,5 +357,5 @@ The dashboard is no longer using fake/mock data for investors and mentors. All c
 
 ---
 
-**Last Updated**: 2025-01-14
-**Status**: ✅ Complete (Core functionality)
+**Last Updated**: 2026-01-19
+**Status**: ✅ Complete (Core functionality + Shared Pitch Decks feature)

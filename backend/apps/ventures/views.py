@@ -11,11 +11,13 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 
-from shared.permissions import IsApprovedUser, IsAdminOrReviewer
+from shared.permissions import IsApprovedUser, IsAdminOrReviewer, IsApprovedOrSubmittedUser
 from apps.ventures.models import (
     VentureProduct, VentureProfile, VentureDocument, TeamMember, Founder,
-    PitchDeckAccess, PitchDeckAccessEvent, PitchDeckRequest, PitchDeckShare
+    PitchDeckAccess, PitchDeckAccessEvent, PitchDeckRequest, PitchDeckShare,
+    PitchDeckInterest, InvestmentCommitment
 )
+from django.conf import settings
 from apps.ventures.serializers import (
     VentureProductSerializer,
     VentureProductCreateSerializer,
@@ -441,8 +443,14 @@ class PublicProductListView(generics.ListAPIView):
     
     GET /api/ventures/public
     Only returns products with status=APPROVED and is_active=True
+    Marketplace behavior:
+    - Any authenticated investor should be able to browse ALL approved pitch decks/products
+    - Access control for downloading/viewing the actual pitch deck file is handled by the
+      dedicated download/view endpoints (and PitchDeckAccess logic), not by the list feed.
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    # NOTE: Do NOT gate the marketplace feed by profile approval.
+    # The queryset already enforces "public" visibility (APPROVED + active).
+    permission_classes = [IsAuthenticated]
     serializer_class = VentureProductSerializer
     
     def get_queryset(self):
@@ -460,7 +468,9 @@ class PublicProductDetailView(generics.RetrieveAPIView):
     GET /api/ventures/{id}
     Only returns products with status=APPROVED and is_active=True
     """
-    permission_classes = [IsAuthenticated, IsApprovedUser]
+    # Marketplace detail should be viewable to any authenticated investor.
+    # File access remains protected by the download/view endpoints.
+    permission_classes = [IsAuthenticated]
     serializer_class = VentureProductSerializer
     lookup_field = 'id'
     
@@ -2032,3 +2042,258 @@ def get_pitch_deck_analytics(request, product_id, doc_id):
         'total_access_granted': total_access_granted,
         'recent_events': recent_events_serializer.data
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_product_commitments(request, product_id):
+    """
+    List investment commitments for a venture's product.
+    
+    GET /api/ventures/products/{product_id}/commitments
+    Returns all InvestmentCommitment records for the product.
+    Only the product owner (venture) can view commitments.
+    """
+    try:
+        # Security: Only product owner can view commitments
+        try:
+            product = VentureProduct.objects.get(id=product_id)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check ownership
+        if product.user != request.user and request.user.role != 'ADMIN':
+            return Response(
+                {'detail': 'You do not have permission to view commitments for this product.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all commitments for this product
+        commitments = InvestmentCommitment.objects.filter(
+            product=product
+        ).select_related(
+            'investor',
+            'investor__investor_profile',
+            'document',
+            'responded_by'
+        ).order_by('-committed_at')
+        
+        # Serialize commitments
+        commitments_data = []
+        for commitment in commitments:
+            investor_profile = getattr(commitment.investor, 'investor_profile', None)
+            commitments_data.append({
+                'commitment_id': str(commitment.id),
+                'investor_id': str(commitment.investor.id),
+                'investor_name': investor_profile.full_name if investor_profile else commitment.investor.full_name or commitment.investor.email,
+                'investor_organization': investor_profile.organization_name if investor_profile else None,
+                'investor_email': commitment.investor.email,
+                'status': commitment.status,
+                'amount': str(commitment.amount) if commitment.amount else None,
+                'message': commitment.message,
+                'committed_at': commitment.committed_at.isoformat() if commitment.committed_at else None,
+                'venture_response': commitment.venture_response,
+                'venture_response_at': commitment.venture_response_at.isoformat() if commitment.venture_response_at else None,
+                'venture_response_message': commitment.venture_response_message,
+                'responded_by_name': commitment.responded_by.full_name if commitment.responded_by else None,
+                'document_id': str(commitment.document.id) if commitment.document else None,
+                'is_deal': commitment.is_deal,
+            })
+        
+        return Response({
+            'count': len(commitments_data),
+            'results': commitments_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in list_product_commitments: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while fetching commitments.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def accept_commitment(request, product_id, commitment_id):
+    """
+    Accept an investment commitment (creates a deal).
+    
+    POST /api/ventures/products/{product_id}/commitments/{commitment_id}/accept
+    Body: {
+        "message": "Optional message to investor"  # Optional
+    }
+    Only the product owner (venture) can accept commitments.
+    """
+    try:
+        # Security: Only product owner can accept commitments
+        try:
+            product = VentureProduct.objects.get(id=product_id)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check ownership
+        if product.user != request.user and request.user.role != 'ADMIN':
+            return Response(
+                {'detail': 'You do not have permission to accept commitments for this product.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get commitment
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if already responded
+        if commitment.venture_response != 'PENDING':
+            return Response(
+                {
+                    'detail': f'This commitment has already been {commitment.venture_response.lower()}.',
+                    'current_response': commitment.venture_response
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional message
+        message = request.data.get('message', '').strip()
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Accept the commitment (becomes a deal)
+        commitment.venture_response = 'ACCEPTED'
+        commitment.venture_response_at = timezone.now()
+        commitment.venture_response_message = message if message else None
+        commitment.responded_by = request.user
+        commitment.save(update_fields=['venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'updated_at'])
+        
+        return Response({
+            'detail': 'Investment commitment accepted. Deal created successfully.',
+            'commitment_id': str(commitment.id),
+            'venture_response': commitment.venture_response,
+            'is_deal': commitment.is_deal
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in accept_commitment: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while accepting the commitment.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def renegotiate_commitment(request, product_id, commitment_id):
+    """
+    Request renegotiation of an investment commitment.
+    
+    POST /api/ventures/products/{product_id}/commitments/{commitment_id}/renegotiate
+    Body: {
+        "message": "Message explaining renegotiation terms"  # Required
+    }
+    Only the product owner (venture) can request renegotiation.
+    """
+    try:
+        # Security: Only product owner can request renegotiation
+        try:
+            product = VentureProduct.objects.get(id=product_id)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check ownership
+        if product.user != request.user and request.user.role != 'ADMIN':
+            return Response(
+                {'detail': 'You do not have permission to renegotiate commitments for this product.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get commitment
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if already accepted (can't renegotiate an accepted deal)
+        if commitment.venture_response == 'ACCEPTED':
+            return Response(
+                {
+                    'detail': 'Cannot renegotiate an accepted commitment. Please contact the investor directly.',
+                    'current_response': commitment.venture_response
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get message (required for renegotiation)
+        message = request.data.get('message', '').strip()
+        if not message:
+            return Response(
+                {'detail': 'Please provide a message explaining the renegotiation terms.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Request renegotiation
+        commitment.venture_response = 'RENEGOTIATE'
+        commitment.venture_response_at = timezone.now()
+        commitment.venture_response_message = message
+        commitment.responded_by = request.user
+        commitment.save(update_fields=['venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'updated_at'])
+        
+        return Response({
+            'detail': 'Renegotiation request sent to investor.',
+            'commitment_id': str(commitment.id),
+            'venture_response': commitment.venture_response,
+            'message': commitment.venture_response_message
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in renegotiate_commitment: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while requesting renegotiation.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

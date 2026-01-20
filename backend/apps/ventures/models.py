@@ -351,3 +351,100 @@ class PitchDeckShare(models.Model):
     
     def __str__(self):
         return f"Shared {self.document.document_type} to {self.investor.email} by {self.shared_by.email}"
+
+
+class PitchDeckInterest(models.Model):
+    """
+    Model to track investor interest/engagement with pitch decks.
+    Investors can follow/monitor pitch decks they're interested in.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(VentureDocument, on_delete=models.CASCADE, related_name='interests')
+    investor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pitch_deck_interests')
+    interested_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True, null=True, help_text="Optional notes from investor about their interest")
+    is_active = models.BooleanField(default=True, help_text="False if investor unfollowed")
+    
+    class Meta:
+        db_table = 'pitch_deck_interests'
+        unique_together = [['document', 'investor']]
+        ordering = ['-interested_at']
+        indexes = [
+            models.Index(fields=['document', 'investor', 'is_active']),
+            models.Index(fields=['investor', 'is_active']),
+        ]
+    
+    def __str__(self):
+        return f"Interest from {self.investor.email} for {self.document.document_type}"
+
+
+class InvestmentCommitment(models.Model):
+    """
+    Model to track investor commitments to invest in ventures.
+    Represents a formal expression of intent to invest.
+    When venture accepts, it becomes a "Deal".
+    """
+    STATUS_CHOICES = [
+        ('EXPRESSED', 'Interest Expressed'),
+        ('COMMITTED', 'Committed'),
+        ('WITHDRAWN', 'Withdrawn'),
+        ('COMPLETED', 'Completed'),
+    ]
+    
+    VENTURE_RESPONSE_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACCEPTED', 'Accepted'),
+        ('RENEGOTIATE', 'Renegotiate'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(VentureDocument, on_delete=models.CASCADE, related_name='commitments')
+    investor = models.ForeignKey(User, on_delete=models.CASCADE, related_name='investment_commitments')
+    product = models.ForeignKey(VentureProduct, on_delete=models.CASCADE, related_name='investment_commitments')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='EXPRESSED')
+    amount = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True, help_text="Intended investment amount")
+    message = models.TextField(blank=True, null=True, help_text="Optional message from investor")
+    committed_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Venture response fields (for accepting/renegotiating commitments)
+    venture_response = models.CharField(
+        max_length=20, 
+        choices=VENTURE_RESPONSE_CHOICES, 
+        default='PENDING',
+        help_text="Venture's response to the investment commitment"
+    )
+    venture_response_at = models.DateTimeField(blank=True, null=True, help_text="When venture responded")
+    venture_response_message = models.TextField(
+        blank=True, 
+        null=True, 
+        help_text="Optional message from venture (e.g., counter-offer, terms discussion)"
+    )
+    responded_by = models.ForeignKey(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='responded_commitments',
+        help_text="Venture user who responded to the commitment"
+    )
+    
+    class Meta:
+        db_table = 'investment_commitments'
+        unique_together = [['document', 'investor']]
+        ordering = ['-committed_at']
+        indexes = [
+            models.Index(fields=['document', 'investor', 'status']),
+            models.Index(fields=['investor', 'status']),
+            models.Index(fields=['product', 'status']),
+            models.Index(fields=['product', 'venture_response']),
+            models.Index(fields=['venture_response', 'venture_response_at']),
+        ]
+    
+    def __str__(self):
+        return f"Commitment from {self.investor.email} for {self.product.name} - {self.status} ({self.venture_response})"
+    
+    @property
+    def is_deal(self):
+        """Returns True if commitment has been accepted by venture (becomes a deal)."""
+        return self.venture_response == 'ACCEPTED' and self.status == 'COMMITTED'

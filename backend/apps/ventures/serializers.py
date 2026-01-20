@@ -487,6 +487,211 @@ class PitchDeckShareCreateSerializer(serializers.ModelSerializer):
         return value
 
 
+class InvestorSharedPitchDeckSerializer(serializers.ModelSerializer):
+    """
+    Serializer for pitch decks shared with investors.
+    Includes full product and document details for investor dashboard.
+    """
+    # Share information
+    share_id = serializers.UUIDField(source='id', read_only=True)
+    shared_at = serializers.DateTimeField(read_only=True)
+    viewed_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    message = serializers.CharField(read_only=True, allow_null=True, allow_blank=True)
+    is_new = serializers.SerializerMethodField()
+    
+    # Venture/shared_by information
+    shared_by_name = serializers.SerializerMethodField()
+    shared_by_email = serializers.SerializerMethodField()
+    
+    # Product information
+    product_id = serializers.SerializerMethodField()
+    product_user_id = serializers.SerializerMethodField()  # User ID of product owner (for messaging)
+    product_name = serializers.SerializerMethodField()
+    product_industry = serializers.SerializerMethodField()
+    product_description = serializers.SerializerMethodField()
+    product_status = serializers.SerializerMethodField()
+    
+    # Document information
+    document_id = serializers.SerializerMethodField()
+    document_type = serializers.SerializerMethodField()
+    
+    # Pitch deck metadata
+    funding_amount = serializers.SerializerMethodField()
+    funding_stage = serializers.SerializerMethodField()
+    problem_statement = serializers.SerializerMethodField()
+    solution_description = serializers.SerializerMethodField()
+    target_market = serializers.SerializerMethodField()
+    traction_metrics = serializers.SerializerMethodField()
+    use_of_funds = serializers.SerializerMethodField()
+    
+    # Investor engagement status
+    is_following = serializers.SerializerMethodField()
+    commitment_status = serializers.SerializerMethodField()
+    commitment_amount = serializers.SerializerMethodField()
+    venture_response = serializers.SerializerMethodField()
+    is_deal = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PitchDeckShare
+        fields = (
+            'share_id', 'shared_at', 'viewed_at', 'message', 'is_new',
+            'shared_by_name', 'shared_by_email',
+            'product_id', 'product_user_id', 'product_name', 'product_industry', 'product_description', 'product_status',
+            'document_id', 'document_type',
+            'funding_amount', 'funding_stage', 'problem_statement', 'solution_description',
+            'target_market', 'traction_metrics', 'use_of_funds',
+            'is_following', 'commitment_status', 'commitment_amount', 'venture_response', 'is_deal'
+        )
+    
+    def get_is_new(self, obj):
+        """Return True if pitch deck hasn't been viewed yet."""
+        return obj.viewed_at is None
+    
+    def get_shared_by_name(self, obj):
+        """Safely get shared_by name."""
+        return obj.shared_by.full_name if obj.shared_by else None
+    
+    def get_shared_by_email(self, obj):
+        """Safely get shared_by email."""
+        return obj.shared_by.email if obj.shared_by else None
+    
+    def get_product_id(self, obj):
+        """Safely get product ID."""
+        return str(obj.document.product.id) if obj.document and obj.document.product else None
+    
+    def get_product_user_id(self, obj):
+        """Safely get product owner user ID (for messaging)."""
+        return str(obj.document.product.user.id) if obj.document and obj.document.product and obj.document.product.user else None
+    
+    def get_product_name(self, obj):
+        """Safely get product name."""
+        return obj.document.product.name if obj.document and obj.document.product else None
+    
+    def get_product_industry(self, obj):
+        """Safely get product industry."""
+        return obj.document.product.industry_sector if obj.document and obj.document.product else None
+    
+    def get_product_description(self, obj):
+        """Safely get product description."""
+        return obj.document.product.short_description if obj.document and obj.document.product else None
+    
+    def get_product_status(self, obj):
+        """Safely get product status."""
+        return obj.document.product.status if obj.document and obj.document.product else None
+    
+    def get_document_id(self, obj):
+        """Safely get document ID."""
+        return str(obj.document.id) if obj.document else None
+    
+    def get_document_type(self, obj):
+        """Safely get document type."""
+        return obj.document.document_type if obj.document else None
+    
+    def get_funding_amount(self, obj):
+        """Safely get funding amount."""
+        return obj.document.funding_amount if obj.document else None
+    
+    def get_funding_stage(self, obj):
+        """Safely get funding stage."""
+        return obj.document.funding_stage if obj.document else None
+    
+    def get_problem_statement(self, obj):
+        """Safely get problem statement."""
+        return obj.document.problem_statement if obj.document else None
+    
+    def get_solution_description(self, obj):
+        """Safely get solution description."""
+        return obj.document.solution_description if obj.document else None
+    
+    def get_target_market(self, obj):
+        """Safely get target market."""
+        return obj.document.target_market if obj.document else None
+    
+    def get_traction_metrics(self, obj):
+        """Safely get traction metrics."""
+        return obj.document.traction_metrics if obj.document else None
+    
+    def get_use_of_funds(self, obj):
+        """Safely get use of funds."""
+        return obj.document.use_of_funds if obj.document else None
+    
+    def get_is_following(self, obj):
+        """Check if current investor is following this pitch deck."""
+        request = self.context.get('request')
+        if not request or not request.user or request.user.role != 'INVESTOR':
+            return False
+        try:
+            from apps.ventures.models import PitchDeckInterest
+            interest = PitchDeckInterest.objects.filter(
+                document=obj.document,
+                investor=request.user,
+                is_active=True
+            ).exists()
+            return interest
+        except Exception:
+            return False
+    
+    def get_commitment_status(self, obj):
+        """Get investment commitment status for current investor."""
+        request = self.context.get('request')
+        if not request or not request.user or request.user.role != 'INVESTOR':
+            return None
+        try:
+            from apps.ventures.models import InvestmentCommitment
+            commitment = InvestmentCommitment.objects.filter(
+                document=obj.document,
+                investor=request.user
+            ).first()
+            return commitment.status if commitment else None
+        except Exception:
+            return None
+    
+    def get_commitment_amount(self, obj):
+        """Get investment commitment amount for current investor."""
+        request = self.context.get('request')
+        if not request or not request.user or request.user.role != 'INVESTOR':
+            return None
+        try:
+            from apps.ventures.models import InvestmentCommitment
+            commitment = InvestmentCommitment.objects.filter(
+                document=obj.document,
+                investor=request.user
+            ).first()
+            return str(commitment.amount) if commitment and commitment.amount else None
+        except Exception:
+            return None
+    
+    def get_venture_response(self, obj):
+        """Get venture response status for current investor."""
+        request = self.context.get('request')
+        if not request or not request.user or request.user.role != 'INVESTOR':
+            return None
+        try:
+            from apps.ventures.models import InvestmentCommitment
+            commitment = InvestmentCommitment.objects.filter(
+                document=obj.document,
+                investor=request.user
+            ).first()
+            return commitment.venture_response if commitment else None
+        except Exception:
+            return None
+    
+    def get_is_deal(self, obj):
+        """Check if commitment has been accepted (is a deal)."""
+        request = self.context.get('request')
+        if not request or not request.user or request.user.role != 'INVESTOR':
+            return False
+        try:
+            from apps.ventures.models import InvestmentCommitment
+            commitment = InvestmentCommitment.objects.filter(
+                document=obj.document,
+                investor=request.user
+            ).first()
+            return commitment.is_deal if commitment else False
+        except Exception:
+            return False
+
+
 class VentureProfileSerializer(serializers.ModelSerializer):
     """Serializer for VentureProfile model (read operations)."""
     user_email = serializers.EmailField(source='user.email', read_only=True)

@@ -59,6 +59,37 @@ export interface InvestorProfileCreatePayload {
 
 export interface InvestorProfileUpdatePayload extends Partial<InvestorProfileCreatePayload> {}
 
+// Shared pitch deck interface
+export interface SharedPitchDeck {
+  share_id: string;
+  shared_at: string;
+  viewed_at: string | null;
+  message: string | null;
+  is_new: boolean;
+  shared_by_name: string;
+  shared_by_email: string;
+  product_id: string;
+  product_user_id: string | null;  // User ID of product owner (for messaging)
+  product_name: string;
+  product_industry: string;
+  product_description: string;
+  product_status: string;
+  document_id: string;
+  document_type: string;
+  funding_amount: string | null;
+  funding_stage: string | null;
+  problem_statement: string | null;
+  solution_description: string | null;
+  target_market: string | null;
+  traction_metrics: any;
+  use_of_funds: string | null;
+  is_following: boolean;  // Whether investor is following this pitch deck
+  commitment_status: string | null;  // Investment commitment status (EXPRESSED, COMMITTED, WITHDRAWN, COMPLETED)
+  commitment_amount: string | null;  // Investment commitment amount
+  venture_response: string | null;  // Venture response: PENDING, ACCEPTED, RENEGOTIATE
+  is_deal: boolean;  // True if venture has accepted the commitment (venture_response === 'ACCEPTED')
+}
+
 export const investorService = {
   /**
    * Get current user's investor profile
@@ -145,4 +176,110 @@ export const investorService = {
       throw new Error(getErrorMessage(error));
     }
   },
+
+  /**
+   * Get pitch decks shared with the current investor
+   * Returns pitch decks that have been proactively shared with the investor
+   */
+  async getSharedPitchDecks(): Promise<SharedPitchDeck[]> {
+    try {
+      const response = await apiClient.get('/investors/shared-pitch-decks');
+      // Handle both array and paginated response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // If paginated, return results array
+      return response.data.results || response.data.data || [];
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Follow/monitor a pitch deck (express interest)
+   * POST /api/investors/products/{product_id}/documents/{doc_id}/follow
+   */
+  async followPitchDeck(productId: string, docId: string): Promise<{ detail: string; is_following: boolean }> {
+    try {
+      const response = await apiClient.post(`/investors/products/${productId}/documents/${docId}/follow`);
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Unfollow a pitch deck (remove interest)
+   * POST /api/investors/products/{product_id}/documents/{doc_id}/unfollow
+   */
+  async unfollowPitchDeck(productId: string, docId: string): Promise<{ detail: string; is_following: boolean }> {
+    try {
+      const response = await apiClient.post(`/investors/products/${productId}/documents/${docId}/unfollow`);
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Commit to investing in a venture
+   * POST /api/investors/products/{product_id}/documents/{doc_id}/commit
+   * Body: { amount?: string, message?: string }
+   */
+  async commitToInvest(
+    productId: string, 
+    docId: string, 
+    data?: { amount?: string; message?: string }
+  ): Promise<{ detail: string; commitment_id: string; status: string; amount: string | null }> {
+    try {
+      const response = await apiClient.post(
+        `/investors/products/${productId}/documents/${docId}/commit`,
+        data || {}
+      );
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
+
+  /**
+   * Get investor portfolio (committed investments)
+   * GET /api/investors/portfolio
+   */
+  async getPortfolio(): Promise<{
+    count: number;
+    total_committed: string;
+    results: PortfolioInvestment[];
+  }> {
+    try {
+      const response = await apiClient.get('/investors/portfolio');
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
 };
+
+// Portfolio investment interface
+export interface PortfolioInvestment {
+  commitment_id: string;
+  status: string;
+  amount: string | null;
+  message: string | null;
+  committed_at: string | null;
+  updated_at: string | null;
+  venture_response: string | null;  // PENDING, ACCEPTED, RENEGOTIATE
+  venture_response_at: string | null;
+  venture_response_message: string | null;
+  is_deal: boolean;  // True if venture_response === 'ACCEPTED'
+  product_id: string | null;
+  product_name: string | null;
+  product_industry: string | null;
+  product_description: string | null;
+  product_status: string | null;
+  product_user_id: string | null;
+  document_id: string | null;
+  document_type: string | null;
+  funding_amount: string | null;
+  funding_stage: string | null;
+}

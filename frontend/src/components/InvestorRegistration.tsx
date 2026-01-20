@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -10,7 +11,7 @@ import { Switch } from "./ui/switch";
 import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, ArrowRight, CheckCircle, Clock, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, Clock, Eye, EyeOff, Mail } from "lucide-react";
 
 interface InvestorFormData {
   // Step 1: Account Creation
@@ -44,7 +45,8 @@ interface InvestorFormData {
 }
 
 export function InvestorRegistration() {
-  const { completeRegistration } = useAuth();
+  const navigate = useNavigate();
+  const { completeRegistration, startRegistration } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<InvestorFormData>({
@@ -58,16 +60,22 @@ export function InvestorRegistration() {
   const totalSteps = 5;
   const progress = (currentStep / totalSteps) * 100;
 
-  const updateFormData = (field: string, value: any) => {
+  // Ensure role is set even on direct navigation to /register/investor
+  useEffect(() => {
+    startRegistration('investor');
+  }, [startRegistration]);
+
+  // Keep form updates typed to reduce registration tech debt.
+  const updateFormData = <K extends keyof InvestorFormData>(field: K, value: InvestorFormData[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const toggleArrayItem = (array: string[], item: string) => {
-    const current = formData[array as keyof InvestorFormData] as string[];
+  const toggleArrayItem = (field: 'investmentStages' | 'industries' | 'geographicFocus', item: string) => {
+    const current = formData[field] as string[];
     const updated = current.includes(item) 
       ? current.filter(i => i !== item)
       : [...current, item];
-    updateFormData(array, updated);
+    updateFormData(field, updated as InvestorFormData[typeof field]);
   };
 
   const nextStep = () => {
@@ -86,9 +94,29 @@ export function InvestorRegistration() {
     setIsSubmitting(true);
     setCurrentStep(5);
     
-    setTimeout(() => {
-      completeRegistration(formData);
-    }, 2000);
+    try {
+      // Complete registration (this will register user and create profile)
+      // Skip navigation so user can see email verification instructions
+      await completeRegistration(
+        {
+          ...formData,
+          // Backend requires organization_name; for individual investors, default to a sensible value.
+          organizationName:
+            formData.organizationName?.trim() ||
+            (formData.investorType === 'individual' ? `${formData.name || 'Individual'} (Individual)` : ''),
+        },
+        { skipNavigation: true }
+      );
+      
+      // After registration completes, show success message with email verification instructions
+      setIsSubmitting(false);
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      setIsSubmitting(false);
+      alert(error.message || 'Registration failed. Please try again.');
+      // Go back to step 4 on error
+      setCurrentStep(4);
+    }
   };
 
   const renderStep = () => {
@@ -409,18 +437,53 @@ export function InvestorRegistration() {
               </div>
             ) : (
               <div>
-                <h3 className="text-xl mb-2">Welcome to VentureUP Link!</h3>
-                <p className="text-muted-foreground mb-4">
-                  Your investor profile has been created successfully.
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Account Created Successfully!</h3>
+                <p className="text-gray-600 mb-6">
+                  We've sent a verification email to <strong className="text-gray-900">{formData.email}</strong>
                 </p>
-                <Badge className="mb-4">
-                  Status: Active
-                </Badge>
-                <div className="text-sm space-y-2">
-                  <p>✓ Browse pre-vetted startups</p>
-                  <p>✓ Set up investment alerts</p>
-                  <p>✓ Connect with promising ventures</p>
+                
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 space-y-4 mb-6">
+                  <div className="flex items-start">
+                    <Mail className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold text-blue-900 mb-2">Important: Verify Your Email</p>
+                      <p className="text-sm text-blue-800 mb-3">
+                        To complete your registration and access your dashboard, you must verify your email address.
+                      </p>
+                      <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+                        <li>Check your email inbox (and spam folder) for a message from VentureUP Link</li>
+                        <li>Click the <strong>"Verify Email Address"</strong> button in the email</li>
+                        <li>You'll be redirected to complete verification</li>
+                        <li>After verification, you can log in and access your dashboard</li>
+                      </ol>
+                    </div>
+                  </div>
                 </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm mb-6">
+                  <p className="font-medium text-gray-900">After Verification:</p>
+                  <div className="space-y-1">
+                    <div className="flex items-start">
+                      <CheckCircle className="w-4 h-4 text-gray-600 mr-2 mt-0.5 flex-shrink-0" />
+                      <span className="text-gray-700">Browse pre-vetted startups</span>
+                    </div>
+                    <div className="flex items-start">
+                      <CheckCircle className="w-4 h-4 text-gray-600 mr-2 mt-0.5 flex-shrink-0" />
+                      <span className="text-gray-700">Set up investment alerts</span>
+                    </div>
+                    <div className="flex items-start">
+                      <CheckCircle className="w-4 h-4 text-gray-600 mr-2 mt-0.5 flex-shrink-0" />
+                      <span className="text-gray-700">Connect with promising ventures</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-sm text-gray-600">
+                  Didn't receive the email? Check your spam folder or{' '}
+                  <a href="/login" className="text-blue-600 hover:text-blue-700 font-medium underline">
+                    log in to resend verification email
+                  </a>
+                </p>
               </div>
             )}
           </div>
@@ -438,9 +501,26 @@ export function InvestorRegistration() {
           <CardHeader>
             <div className="flex items-center justify-between mb-4">
               <CardTitle className="text-gray-900">Investor Registration</CardTitle>
-              <Badge variant="outline" className="border-gray-300 text-gray-700">
-                Step {currentStep} of {totalSteps}
-              </Badge>
+              <div className="flex items-center gap-3">
+                {/* Always show a sign-in option in case the user already has an account */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 hidden sm:inline">
+                    Already have an account?
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/login')}
+                    className="border-gray-300 text-gray-800"
+                  >
+                    Sign in
+                  </Button>
+                </div>
+                <Badge variant="outline" className="border-gray-300 text-gray-700">
+                  Step {currentStep} of {totalSteps}
+                </Badge>
+              </div>
             </div>
             <Progress value={progress} className="w-full" />
             
@@ -456,6 +536,19 @@ export function InvestorRegistration() {
           
           <CardContent>
             {renderStep()}
+            
+            {currentStep === 5 && !isSubmitting && (
+              <div className="flex justify-center mt-8 pt-6 border-t border-gray-100">
+                <Button
+                  type="button"
+                  // Use SPA navigation for smoother transitions (no full reload).
+                  onClick={() => navigate('/login')}
+                  className="px-8 h-10 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Go to Login
+                </Button>
+              </div>
+            )}
             
             {currentStep <= 4 && (
               <div className="flex justify-between mt-8">
@@ -473,12 +566,13 @@ export function InvestorRegistration() {
                   <Button
                     type="button"
                     onClick={handleSubmit}
+                    disabled={isSubmitting}
                   >
-                    Complete Registration
+                    {isSubmitting ? 'Submitting...' : 'Complete Registration'}
                     <CheckCircle className="w-4 h-4 ml-2" />
                   </Button>
                 ) : (
-                  <Button type="button" onClick={nextStep}>
+                  <Button type="button" onClick={nextStep} disabled={isSubmitting}>
                     Next
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>

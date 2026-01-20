@@ -33,7 +33,10 @@ from .views import (
     request_pitch_deck,
     list_pitch_deck_requests,
     respond_to_pitch_deck_request,
-    get_pitch_deck_analytics
+    get_pitch_deck_analytics,
+    list_product_commitments,
+    accept_commitment,
+    renegotiate_commitment
 )
 
 urlpatterns = [
@@ -76,6 +79,11 @@ urlpatterns = [
     
     # Pitch deck analytics - VL-828
     path('products/<uuid:product_id>/documents/<uuid:doc_id>/analytics', get_pitch_deck_analytics, name='get_pitch_deck_analytics'),
+    
+    # Investment commitments (deals) - VL-829
+    path('products/<uuid:product_id>/commitments', list_product_commitments, name='list_product_commitments'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/accept', accept_commitment, name='accept_commitment'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/renegotiate', renegotiate_commitment, name='renegotiate_commitment'),
     
     # Team member management
     path('products/<uuid:product_id>/team-members', TeamMemberListCreateView.as_view(), name='team_member_list_create'),

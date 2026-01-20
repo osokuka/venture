@@ -4,7 +4,7 @@ import { ArrowRight, Play, CheckCircle, TrendingUp, Users, Target, Sparkles, Sta
 import { useState, useEffect } from "react";
 
 interface HeroSectionProps {
-  onRegister: (role: 'venture' | 'investor' | 'mentor') => void;
+  onRegister: (role?: 'venture' | 'investor' | 'mentor') => void;
 }
 
 export function HeroSection({ onRegister }: HeroSectionProps) {
@@ -163,7 +163,7 @@ export function HeroSection({ onRegister }: HeroSectionProps) {
             <div className="flex flex-col sm:flex-row gap-4">
               <button 
                 className="btn-chrome-primary text-lg px-8 py-4"
-                onClick={() => onRegister('venture')}
+                onClick={() => onRegister()}
               >
                 Start Your Journey
                 <ArrowRight className="w-5 h-5 ml-2 inline transition-transform group-hover:translate-x-1" />

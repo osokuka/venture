@@ -639,4 +639,101 @@ export const productService = {
     const response = await apiClient.get(`/ventures/products/${productId}/documents/${docId}/analytics`);
     return response.data;
   },
+
+  /**
+   * List investment commitments for a product
+   * GET /api/ventures/products/{product_id}/commitments
+   */
+  async getProductCommitments(productId: string): Promise<{
+    count: number;
+    results: ProductCommitment[];
+  }> {
+    try {
+      if (!validateUuid(productId)) {
+        throw new Error('Invalid product ID');
+      }
+      const response = await apiClient.get(`/ventures/products/${productId}/commitments`);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.detail || error.message || 'Failed to fetch commitments');
+    }
+  },
+
+  /**
+   * Accept an investment commitment (creates a deal)
+   * POST /api/ventures/products/{product_id}/commitments/{commitment_id}/accept
+   */
+  async acceptCommitment(
+    productId: string,
+    commitmentId: string,
+    message?: string
+  ): Promise<{
+    detail: string;
+    commitment_id: string;
+    venture_response: string;
+    is_deal: boolean;
+  }> {
+    try {
+      if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+        throw new Error('Invalid product or commitment ID');
+      }
+      const response = await apiClient.post(
+        `/ventures/products/${productId}/commitments/${commitmentId}/accept`,
+        message ? { message } : {}
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.detail || error.message || 'Failed to accept commitment');
+    }
+  },
+
+  /**
+   * Request renegotiation of an investment commitment
+   * POST /api/ventures/products/{product_id}/commitments/{commitment_id}/renegotiate
+   */
+  async renegotiateCommitment(
+    productId: string,
+    commitmentId: string,
+    message: string
+  ): Promise<{
+    detail: string;
+    commitment_id: string;
+    venture_response: string;
+    message: string;
+  }> {
+    try {
+      if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+        throw new Error('Invalid product or commitment ID');
+      }
+      if (!message || !message.trim()) {
+        throw new Error('Renegotiation message is required');
+      }
+      const response = await apiClient.post(
+        `/ventures/products/${productId}/commitments/${commitmentId}/renegotiate`,
+        { message: message.trim() }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.detail || error.message || 'Failed to request renegotiation');
+    }
+  },
 };
+
+// Product commitment interface (for ventures)
+export interface ProductCommitment {
+  commitment_id: string;
+  investor_id: string;
+  investor_name: string;
+  investor_organization: string | null;
+  investor_email: string;
+  status: string;
+  amount: string | null;
+  message: string | null;
+  committed_at: string | null;
+  venture_response: string;  // PENDING, ACCEPTED, RENEGOTIATE
+  venture_response_at: string | null;
+  venture_response_message: string | null;
+  responded_by_name: string | null;
+  document_id: string | null;
+  is_deal: boolean;  // True if venture_response === 'ACCEPTED'
+}

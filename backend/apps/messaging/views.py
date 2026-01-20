@@ -228,7 +228,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsApprovedUser])
+@permission_classes([IsAuthenticated])
 def send_message(request, conversation_id):
     """
     Send a message in a conversation (chat thread).
@@ -388,7 +388,7 @@ def send_message(request, conversation_id):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsApprovedUser])
+@permission_classes([IsAuthenticated])
 def mark_conversation_read(request, conversation_id):
     """
     Mark all messages in a conversation as read.
@@ -422,7 +422,7 @@ def mark_conversation_read(request, conversation_id):
 
 
 @api_view(['PATCH', 'PUT'])
-@permission_classes([IsAuthenticated, IsApprovedUser])
+@permission_classes([IsAuthenticated])
 def update_message(request, message_id):
     """
     Update/edit a message.

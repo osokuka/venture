@@ -57,40 +57,81 @@ export function UserProfile({
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [ventureProfile, setVentureProfile] = useState<any>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   useEffect(() => {
-    if (user.role === 'venture' && isOwnProfile) {
+    if (isOwnProfile) {
       const fetchData = async () => {
-        // Fetch profile data
-        try {
-          setIsLoadingProfile(true);
-          const { ventureService } = await import('../services/ventureService');
-          const profile = await ventureService.getMyProfile();
-          if (profile) {
-            setVentureProfile(profile);
-            console.log('Fetched venture profile:', profile);
+        // Clear any previous load error before retrying.
+        setLoadError(null);
+        if (user.role === 'venture') {
+          // Fetch venture profile data
+          try {
+            setIsLoadingProfile(true);
+            const { ventureService } = await import('../services/ventureService');
+            const profile = await ventureService.getMyProfile();
+            if (profile) {
+              setVentureProfile(profile);
+              console.log('Fetched venture profile:', profile);
+            }
+          } catch (error) {
+            console.error('Failed to fetch venture profile:', error);
+            // Profile might not exist yet, but other failures should surface to the user.
+            const message = error instanceof Error ? error.message : 'Failed to load venture profile.';
+            setLoadError(message);
+          } finally {
+            setIsLoadingProfile(false);
           }
-        } catch (error) {
-          console.error('Failed to fetch venture profile:', error);
-          // Profile might not exist yet, that's okay
-        } finally {
-          setIsLoadingProfile(false);
-        }
-        
-        // Fetch products
-        try {
-          setIsLoadingProducts(true);
-          const data = await productService.getMyProducts();
-          console.log('Fetched products for profile:', data); // Debug log
-          // Ensure we always have an array
-          const productsArray = Array.isArray(data) ? data : [];
-          setProducts(productsArray);
-          console.log('Set products array:', productsArray.length, 'products');
-        } catch (error) {
-          console.error('Failed to fetch products:', error);
-          setProducts([]);
-        } finally {
-          setIsLoadingProducts(false);
+          
+          // Fetch products
+          try {
+            setIsLoadingProducts(true);
+            const data = await productService.getMyProducts();
+            console.log('Fetched products for profile:', data); // Debug log
+            // Ensure we always have an array
+            const productsArray = Array.isArray(data) ? data : [];
+            setProducts(productsArray);
+            console.log('Set products array:', productsArray.length, 'products');
+          } catch (error) {
+            console.error('Failed to fetch products:', error);
+            setProducts([]);
+            const message = error instanceof Error ? error.message : 'Failed to load pitch decks.';
+            setLoadError((prev) => prev || message);
+          } finally {
+            setIsLoadingProducts(false);
+          }
+        } else if (user.role === 'investor') {
+          // Fetch investor profile data
+          try {
+            setIsLoadingProfile(true);
+            const { investorService } = await import('../services/investorService');
+            const profile = await investorService.getMyProfile();
+            if (profile) {
+              setVentureProfile(profile); // Reuse same state variable for consistency
+              console.log('Fetched investor profile:', profile);
+            }
+          } catch (error) {
+            console.error('Failed to fetch investor profile:', error);
+            // Profile might not exist yet, that's okay
+          } finally {
+            setIsLoadingProfile(false);
+          }
+        } else if (user.role === 'mentor') {
+          // Fetch mentor profile data
+          try {
+            setIsLoadingProfile(true);
+            const { mentorService } = await import('../services/mentorService');
+            const profile = await mentorService.getMyProfile();
+            if (profile) {
+              setVentureProfile(profile); // Reuse same state variable for consistency
+              console.log('Fetched mentor profile:', profile);
+            }
+          } catch (error) {
+            console.error('Failed to fetch mentor profile:', error);
+            // Profile might not exist yet, that's okay
+          } finally {
+            setIsLoadingProfile(false);
+          }
         }
       };
       fetchData();
@@ -908,6 +949,56 @@ export function UserProfile({
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {/* Inline load error (non-blocking) so the user isn't stuck with silent failures */}
+      {isOwnProfile && user.role === 'venture' && loadError && (
+        <Card className="border border-red-200 bg-red-50">
+          <CardContent className="p-4 flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-900">We couldn’t load your profile data.</p>
+                <p className="text-sm text-red-800">{loadError}</p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-red-300 text-red-900 hover:bg-red-100"
+              onClick={() => {
+                // Re-run the same effect by forcing a state change via a quick retry path.
+                // (We keep it simple: just refresh the page view data by calling the fetcher again.)
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                (async () => {
+                  // minimal inline retry without refactor: mimic the effect body by triggering a re-render
+                  setLoadError(null);
+                  setIsLoadingProfile(true);
+                  setIsLoadingProducts(true);
+                  try {
+                    const { ventureService } = await import('../services/ventureService');
+                    const profile = await ventureService.getMyProfile();
+                    if (profile) setVentureProfile(profile);
+                  } catch (e) {
+                    setLoadError(e instanceof Error ? e.message : 'Failed to load venture profile.');
+                  } finally {
+                    setIsLoadingProfile(false);
+                  }
+                  try {
+                    const data = await productService.getMyProducts();
+                    setProducts(Array.isArray(data) ? data : []);
+                  } catch (e) {
+                    setLoadError((prev) => prev || (e instanceof Error ? e.message : 'Failed to load pitch decks.'));
+                    setProducts([]);
+                  } finally {
+                    setIsLoadingProducts(false);
+                  }
+                })();
+              }}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {user.role === 'venture' && renderVentureProfile(user)}
       {user.role === 'investor' && renderInvestorProfile(user)}
       {user.role === 'mentor' && renderMentorProfile(user)}

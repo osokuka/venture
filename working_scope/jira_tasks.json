@@ -2062,6 +2062,20 @@
           "status": "Done"
         },
         {
+          "summary": "Create investor endpoint to list shared pitch decks",
+          "description": "GET /api/investors/shared-pitch-decks endpoint for investors to view pitch decks shared with them",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Update investor dashboard to display shared pitch decks",
+          "description": "Add UI section in InvestorDashboard to show pitch decks shared with investor, with 'New' badges and navigation",
+          "type": "Task",
+          "estimate": "4h",
+          "status": "Done"
+        },
+        {
           "summary": "Create sharing notification system",
           "description": "Email/in-app notification when pitch deck is shared",
           "type": "Task",
@@ -2073,6 +2087,13 @@
           "description": "Add UI for ventures to share pitch decks with investors",
           "type": "Task",
           "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Fix InvestorDashboard syntax errors",
+          "description": "Fixed JSX syntax errors (invalid component reference, missing ternary closures) that caused 500 errors",
+          "type": "Bug",
+          "estimate": "1h",
           "status": "Done"
         }
       ],
@@ -2132,6 +2153,79 @@
         }
       ],
       "status": "Pending"
+    },
+    {
+      "key": "VL-829",
+      "summary": "Investment Commitment & Deal Workflow",
+      "type": "Story",
+      "description": "Complete workflow for investor commitments and venture acceptance/renegotiation. When venture accepts a commitment, it becomes a deal.",
+      "acceptanceCriteria": [
+        "Investor can commit to invest with amount and message",
+        "Venture can view all commitments for their products",
+        "Venture can accept commitment (creates deal)",
+        "Venture can request renegotiation (soft rejection with message)",
+        "Investor sees deal status in portfolio and shared pitch decks",
+        "Accepted commitments show as deals in both dashboards"
+      ],
+      "tasks": [
+        {
+          "summary": "Extend InvestmentCommitment model with venture response fields",
+          "description": "Add venture_response (PENDING, ACCEPTED, RENEGOTIATE), venture_response_at, venture_response_message, responded_by fields",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create backend endpoint to list product commitments",
+          "description": "GET /api/ventures/products/{product_id}/commitments - List all commitments for a product (venture only)",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create backend endpoint to accept commitment",
+          "description": "POST /api/ventures/products/{product_id}/commitments/{commitment_id}/accept - Accept commitment (creates deal)",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Create backend endpoint to renegotiate commitment",
+          "description": "POST /api/ventures/products/{product_id}/commitments/{commitment_id}/renegotiate - Request renegotiation with message",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Update portfolio endpoint to include venture response",
+          "description": "Update GET /api/investors/portfolio to include venture_response, is_deal fields",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add frontend service methods for commitment management",
+          "description": "Add getProductCommitments, acceptCommitment, renegotiateCommitment to productService",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Update VentureDashboard to show commitments and accept/renegotiate",
+          "description": "Add commitments section with accept/renegotiate actions",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Update InvestorDashboard to show deal status",
+          "description": "Show venture_response and is_deal status in portfolio and shared pitch decks",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "In Progress"
     },
     {
       "key": "VL-828",
@@ -2556,6 +2650,60 @@
           "type": "Task",
           "estimate": "3h",
           "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    }
+    ,
+    {
+      "key": "VL-838",
+      "summary": "Venture Profile UX Polish - Add Save Feedback + Field-Level API Validation Errors",
+      "description": "Venture profile view/edit flows can feel stalled or unclear: some API failures only log to console, and backend validation errors are not consistently surfaced at the field level. Improve feedback for loading/saving, and map backend validation errors (400 responses) to specific form fields so users know what to fix.",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 5,
+      "acceptanceCriteria": [
+        "Venture profile view shows a clear inline error state when profile fetch fails (not only console logs)",
+        "Edit Profile shows field-level errors returned by the backend (400) mapped to the correct inputs",
+        "Successful saves show clear confirmation (toast + optional 'Saved' indicator) and prevent double-submit",
+        "All venture profile-related API calls use correct endpoints and provide user feedback on failure"
+      ],
+      "tasks": [
+        {
+          "summary": "Add inline error UI for venture profile load failures in UserProfile",
+          "description": "When venture profile/products fetch fails in UserProfile, show a non-blocking inline error banner and a retry action (instead of only console.error).",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Done"
+        },
+        {
+          "summary": "Map backend validation errors to EditProfile field errors (venture)",
+          "description": "Parse DRF 400 responses from venture profile PATCH/POST and set `errors` state per field (e.g., website/linkedin_url format, required fields). Keep toast for summary but highlight exact fields.",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add clear 'Saved' feedback state after successful venture profile save",
+          "description": "In EditProfile, after successful save show a transient 'Saved' state (in addition to toast) to reduce uncertainty, and ensure the Save button is disabled while saving.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Audit and normalize venture profile terminology and sources in UserProfile",
+          "description": "UserProfile currently merges data from ventureProfile API + products + local profile state. Document and normalize priority order and ensure it doesn't show stale values after save/refresh.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Fix/verify pitch deck upload endpoint usage in venture services",
+          "description": "Ensure all pitch deck upload calls use POST /api/ventures/products/{product_id}/documents/pitch-deck. Remove or update any legacy endpoints and confirm frontend services align with backend routes.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
         }
       ],
       "status": "Pending"

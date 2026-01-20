@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -63,6 +63,7 @@ import {
 import { type FrontendUser, type User } from '../types';
 import { ventureService } from '../services/ventureService';
 import { messagingService } from '../services/messagingService';
+import { investorService, type SharedPitchDeck, type PortfolioInvestment } from '../services/investorService';
 import { type VentureProduct } from '../types';
 import { EditProfile } from './EditProfile';
 import { Settings } from './Settings';
@@ -82,9 +83,15 @@ interface InvestorDashboardProps {
 // Portfolio actions navigate on the same page (per user request)
 
 export function InvestorDashboard({ user, activeView = 'overview', onViewChange, onProfileUpdate, onRefreshUnreadCount }: InvestorDashboardProps) {
+  // IMPORTANT: All hooks must be called unconditionally before any early returns
+  // This follows React's Rules of Hooks
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [ventures, setVentures] = useState<VentureProduct[]>([]);
+  const [sharedPitchDecks, setSharedPitchDecks] = useState<SharedPitchDeck[]>([]);
+  const [isLoadingSharedPitchDecks, setIsLoadingSharedPitchDecks] = useState(false);
+  const [portfolioInvestments, setPortfolioInvestments] = useState<PortfolioInvestment[]>([]);
+  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoadingVentures, setIsLoadingVentures] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,29 +104,123 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const selectedUserName = searchParams.get('userName');
   const selectedUserRole = searchParams.get('userRole');
 
-  // Fetch unread message count
+  // Fetch unread message count with rate limit handling
   useEffect(() => {
+    let retryDelay = 30000; // Start with 30 seconds
+    let isRateLimited = false;
+    
     const fetchUnreadCount = async () => {
+      // Skip if we're currently rate limited
+      if (isRateLimited) {
+        return;
+      }
+      
       try {
         const count = await messagingService.getUnreadCount();
         setUnreadCount(count);
-      } catch (error) {
+        // Reset retry delay on success
+        retryDelay = 30000;
+        isRateLimited = false;
+      } catch (error: any) {
+        // Check if it's a rate limit error (429)
+        if (error?.response?.status === 429) {
+          console.warn('Rate limited on unread count. Pausing polling for 5 minutes.');
+          isRateLimited = true;
+          // Stop polling for 5 minutes when rate limited
+          setTimeout(() => {
+            isRateLimited = false;
+            retryDelay = 30000;
+          }, 5 * 60 * 1000); // 5 minutes
+          return;
+        }
+        // For other errors, just log but continue polling
         console.error('Failed to fetch unread count:', error);
       }
     };
+    
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000);
+    // Refresh every 30 seconds (or longer if rate limited)
+    const interval = setInterval(fetchUnreadCount, retryDelay);
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch ventures when discover view is active
-  useEffect(() => {
-    if (activeView === 'discover') {
-      fetchVentures();
+  // Memoize fetchSharedPitchDecks to prevent unnecessary re-renders
+  const fetchSharedPitchDecks = useCallback(async () => {
+    setIsLoadingSharedPitchDecks(true);
+    try {
+      const data = await investorService.getSharedPitchDecks();
+      // Ensure data is always an array - handle all possible response formats
+      let sharesArray: SharedPitchDeck[] = [];
+      if (Array.isArray(data)) {
+        sharesArray = data;
+      } else if (data && typeof data === 'object') {
+        sharesArray = Array.isArray(data.results) ? data.results : 
+                     Array.isArray(data.data) ? data.data : 
+                     Array.isArray(data.items) ? data.items : [];
+      }
+      // Validate that all items are valid SharedPitchDeck objects
+      const validShares = sharesArray.filter((share: any) => 
+        share && 
+        typeof share === 'object' && 
+        share.share_id && 
+        share.product_id && 
+        share.document_id
+      );
+      setSharedPitchDecks(validShares);
+    } catch (error: any) {
+      console.error('Failed to fetch shared pitch decks:', error);
+      // Don't show error toast - just set empty array to prevent component crash
+      setSharedPitchDecks([]);
+      // Only log error details in development
+      if (import.meta.env.DEV) {
+        console.error('Error details:', {
+          message: error?.message,
+          response: error?.response?.data,
+          status: error?.response?.status
+        });
+      }
+    } finally {
+      setIsLoadingSharedPitchDecks(false);
     }
-  }, [activeView, searchTerm, filterSector, filterStage]);
+  }, []); // Empty deps - function doesn't depend on any props/state
 
-  const fetchVentures = async () => {
+  // Fetch shared pitch decks on component mount and when overview is active
+  useEffect(() => {
+    if (activeView === 'overview' || activeView === 'discover') {
+      fetchSharedPitchDecks();
+    }
+  }, [activeView, fetchSharedPitchDecks]);
+
+  // Fetch portfolio investments
+  const fetchPortfolio = useCallback(async () => {
+    setIsLoadingPortfolio(true);
+    try {
+      const data = await investorService.getPortfolio();
+      setPortfolioInvestments(data.results || []);
+    } catch (error: any) {
+      console.error('Failed to fetch portfolio:', error);
+      setPortfolioInvestments([]);
+      if (import.meta.env.DEV) {
+        console.error('Portfolio error details:', {
+          message: error?.message,
+          response: error?.response?.data,
+          status: error?.response?.status
+        });
+      }
+    } finally {
+      setIsLoadingPortfolio(false);
+    }
+  }, []);
+
+  // Fetch portfolio when portfolio view is active or when commitments change
+  useEffect(() => {
+    if (activeView === 'portfolio' || activeView === 'overview') {
+      fetchPortfolio();
+    }
+  }, [activeView, fetchPortfolio]);
+
+  // Memoize fetchVentures to prevent unnecessary re-renders and fix hooks violation
+  const fetchVentures = useCallback(async () => {
     setIsLoadingVentures(true);
     try {
       // Security: Sanitize search term
@@ -133,18 +234,44 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       // Ensure data is always an array (handle paginated responses or errors)
       const venturesArray = Array.isArray(data) ? data : (data?.results || data?.data || []);
       setVentures(venturesArray);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch ventures:', error);
-      toast.error('Failed to load ventures');
+      // Check if it's a permission error (403) - user profile not approved/submitted
+      if (error?.response?.status === 403) {
+        toast.error('Your profile must be submitted or approved to view startups. Please complete your profile and wait for approval.');
+      } else {
+        toast.error('Failed to load ventures. Please try again later.');
+      }
       // Ensure ventures is always an array even on error
       setVentures([]);
     } finally {
       setIsLoadingVentures(false);
     }
-  };
+  }, [searchTerm, filterSector]); // Include dependencies
+
+  // Fetch ventures when discover view is active
+  useEffect(() => {
+    if (activeView === 'discover') {
+      fetchVentures();
+    }
+  }, [activeView, fetchVentures, filterStage]); // Include fetchVentures in dependencies
   
   // Note: All modals have been removed. Actions now open new tabs instead.
   // This follows the platform rule: "No modals - use new tabs for detailed views"
+
+  // Safety check: Ensure user object is valid (AFTER all hooks are called)
+  if (!user || !user.id) {
+    console.error('InvestorDashboard: Invalid user object', user);
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+          <p className="text-lg font-semibold">Error loading dashboard</p>
+          <p className="text-muted-foreground">User information is missing or invalid.</p>
+        </div>
+      </div>
+    );
+  }
 
   // Handle profile and settings views
   if (activeView === 'edit-profile') {
@@ -159,169 +286,146 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     return <UserProfile user={user} onEdit={() => onViewChange?.('edit-profile')} isOwnProfile={true} />;
   }
 
-  // TODO: VL-811 - Replace hardcoded stats with API calls
+  // Calculate total committed amount from portfolio investments only
+  // Note: We use portfolioInvestments as the single source of truth to avoid double-counting
+  // (sharedPitchDecks also shows commitment_status, but that's just for display)
+  const totalCommittedAmount = React.useMemo(() => {
+    let total = 0;
+    // Sum from portfolio investments only (single source of truth)
+    if (Array.isArray(portfolioInvestments)) {
+      portfolioInvestments.forEach(inv => {
+        if (inv.status === 'COMMITTED' && inv.amount) {
+          const amount = parseFloat(inv.amount);
+          if (!isNaN(amount)) {
+            total += amount;
+          }
+        }
+      });
+    }
+    return total;
+  }, [portfolioInvestments]);
+
+  // Real stats - using actual data or showing empty states
   const stats = {
-    totalInvestments: 0, // TODO: VL-811 - Get from investor profile API
-    totalInvested: '$0', // TODO: VL-811 - Get from investor profile API
-    activeDeals: 8, // TODO: VL-811 - Get from GET /api/investors/portfolio (count active investments)
-    avgReturn: '24%', // TODO: VL-811 - Calculate from portfolio API data
-    portfolioValue: '$3.2M', // TODO: VL-811 - Calculate from portfolio API data
-    pipeline: 23, // TODO: VL-811 - Get from GET /api/investors/opportunities (count)
+    totalInvestments: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
+    totalInvested: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
+    totalCommitted: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
+    activeDeals: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
+    avgReturn: '0%', // TODO: Calculate from portfolio API data when available
+    portfolioValue: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
+    pipeline: Array.isArray(sharedPitchDecks) ? sharedPitchDecks.filter(pd => pd.is_new).length : 0, // New shared pitch decks count
     totalMessages: unreadCount
   };
 
-  // TODO: VL-811 - Replace hardcoded recentActivity with API call to GET /api/activity/feed
-  const recentActivity = [
-    {
-      id: 1,
-      type: 'investment',
-      title: 'Investment completed in TechFlow AI',
-      description: '$500K Series A investment successfully closed',
-      time: '2 hours ago',
-      icon: DollarSign,
-      color: 'text-green-600',
-      bgColor: 'bg-green-100'
-    },
-    {
-      id: 2,
-      type: 'startup',
-      title: 'New startup application from HealthBridge',
-      description: 'Series A startup seeking $8M in funding',
-      time: '4 hours ago',
-      icon: Building,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100'
-    },
-    {
-      id: 3,
-      type: 'meeting',
-      title: 'Due diligence call scheduled',
-      description: 'Financial review meeting with GreenSpace tomorrow',
-      time: '1 day ago',
-      icon: Calendar,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-100'
-    },
-    {
-      id: 4,
-      type: 'exit',
-      title: 'Portfolio company exit',
-      description: 'DataCorp acquired by Microsoft - 3.2x return',
-      time: '2 days ago',
-      icon: TrendingUp,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-100'
+  // Portfolio companies from committed investments
+  const portfolioCompanies: any[] = React.useMemo(() => {
+    if (!Array.isArray(portfolioInvestments)) return [];
+    return portfolioInvestments
+      .filter(inv => inv.status === 'COMMITTED')
+      .map(inv => ({
+        id: inv.product_id || inv.commitment_id,
+        commitment_id: inv.commitment_id,
+        company: inv.product_name || 'Unknown',
+        sector: inv.product_industry || 'N/A',
+        stage: inv.funding_stage || 'N/A',
+        status: 'Committed',
+        invested: inv.amount ? `$${parseFloat(inv.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : 'N/A',
+        currentValue: inv.amount ? `$${parseFloat(inv.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : 'N/A',
+        return: '0%',
+        lastUpdate: inv.updated_at ? new Date(inv.updated_at).toLocaleDateString() : 'N/A',
+        committed_at: inv.committed_at,
+        venture_response: inv.venture_response || 'PENDING',
+        venture_response_at: inv.venture_response_at,
+        venture_response_message: inv.venture_response_message,
+        is_deal: inv.is_deal || false,
+        product_id: inv.product_id,
+        document_id: inv.document_id,
+        product_user_id: inv.product_user_id,
+        product_description: inv.product_description,
+        funding_stage: inv.funding_stage,
+        funding_amount: inv.funding_amount,
+        message: inv.message
+      }));
+  }, [portfolioInvestments]);
+
+  // Empty arrays for now - will be populated when APIs are available
+  const recentActivity: any[] = [];
+  const pipelineDeals: any[] = [];
+  const performanceMetrics: any[] = [];
+
+  const handleContactStartup = (ventureUserId: string, ventureName?: string) => {
+    // Navigate straight to messaging with the venture preselected
+    if (!validateUuid(ventureUserId)) {
+      toast.error("Unable to start chat: invalid venture id");
+      return;
     }
-  ];
-
-  // TODO: VL-811 - Replace hardcoded portfolioCompanies with API call to GET /api/investors/portfolio
-  const portfolioCompanies = [
-    {
-      id: 'p1',
-      company: 'TechFlow AI',
-      sector: 'AI/ML',
-      stage: 'Series A',
-      invested: '$500K',
-      currentValue: '$750K',
-      return: '+50%',
-      status: 'Growing',
-      logo: 'https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=60&h=60&fit=crop&crop=center',
-      lastUpdate: '2 days ago',
-      metrics: { revenue: '$200K ARR', growth: '+45% MoM' },
-      founderName: 'Sarah Chen',
-      founderAvatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=60&h=60&fit=crop&crop=center',
-      expertise: 'AI & Machine Learning'
-    },
-    {
-      id: 'p2',
-      company: 'HealthBridge',
-      sector: 'HealthTech',
-      stage: 'Series A',
-      invested: '$300K',
-      currentValue: '$420K',
-      return: '+40%',
-      status: 'Stable',
-      logo: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=60&h=60&fit=crop&crop=center',
-      lastUpdate: '1 week ago',
-      metrics: { revenue: '10K users', growth: '+25% MAU' },
-      founderName: 'Michael Rodriguez',
-      founderAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=60&h=60&fit=crop&crop=center',
-      expertise: 'Healthcare Technology'
-    },
-    {
-      id: 'p3',
-      company: 'GreenSpace',
-      sector: 'CleanTech',
-      stage: 'Seed',
-      invested: '$250K',
-      currentValue: '$200K',
-      return: '-20%',
-      status: 'Watch',
-      logo: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=60&h=60&fit=crop&crop=center',
-      lastUpdate: '3 days ago',
-      metrics: { revenue: '$50K MRR', growth: '+15% MoM' },
-      founderName: 'Emma Watson',
-      founderAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=60&h=60&fit=crop&crop=center',
-      expertise: 'Clean Technology'
-    },
-    {
-      id: 'p4',
-      company: 'FinTech Solutions',
-      sector: 'FinTech',
-      stage: 'Seed',
-      invested: '$200K',
-      currentValue: '$380K',
-      return: '+90%',
-      status: 'Thriving',
-      logo: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=60&h=60&fit=crop&crop=center',
-      lastUpdate: '5 days ago',
-      metrics: { revenue: '$100K ARR', growth: '+30% MoM' },
-      founderName: 'David Kim',
-      founderAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=60&h=60&fit=crop&crop=center',
-      expertise: 'Financial Technology'
-    }
-  ];
-
-  const pipelineDeals = [
-    {
-      id: 1,
-      company: 'TechFlow AI',
-      stage: 'Due Diligence',
-      amount: '$500K',
-      progress: 75,
-      nextStep: 'Financial review call',
-      dueDate: 'Tomorrow'
-    },
-    {
-      id: 2,
-      company: 'AI Analytics',
-      stage: 'Term Sheet',
-      amount: '$1M',
-      progress: 60,
-      nextStep: 'Legal documentation',
-      dueDate: 'Next week'
-    },
-    {
-      id: 3,
-      company: 'EcoEnergy',
-      stage: 'Initial Review',
-      amount: '$300K',
-      progress: 25,
-      nextStep: 'Management presentation',
-      dueDate: 'Friday'
-    }
-  ];
-
-  const performanceMetrics = [
-    { label: 'Total Portfolio Value', value: '$3.2M', change: '+15%', trend: 'up' },
-    { label: 'IRR', value: '28%', change: '+3%', trend: 'up' },
-    { label: 'Active Investments', value: '15', change: '+2', trend: 'up' },
-    { label: 'Avg. Hold Period', value: '2.3 years', change: '+0.2', trend: 'neutral' }
-  ];
-
-  const handleContactStartup = (startupId: string) => {
-    toast.success("Message sent to startup successfully!");
+    const params = new URLSearchParams({
+      userId: ventureUserId,
+      userName: ventureName || 'Venture',
+      userRole: 'venture',
+    });
+    navigate(`/dashboard/investor/messages?${params.toString()}`);
   };
+
+  // Handler for following/unfollowing a pitch deck
+  const handleFollowPitchDeck = useCallback(async (productId: string, docId: string, isCurrentlyFollowing: boolean) => {
+    if (!validateUuid(productId) || !validateUuid(docId)) {
+      toast.error("Invalid product or document ID");
+      return;
+    }
+
+    try {
+      if (isCurrentlyFollowing) {
+        await investorService.unfollowPitchDeck(productId, docId);
+        toast.success("Pitch deck unfollowed");
+      } else {
+        await investorService.followPitchDeck(productId, docId);
+        toast.success("Pitch deck followed");
+      }
+      // Refresh shared pitch decks to update status
+      await fetchSharedPitchDecks();
+    } catch (error: any) {
+      console.error('Error following/unfollowing pitch deck:', error);
+      toast.error(error.message || "Failed to update follow status");
+    }
+  }, [fetchSharedPitchDecks]);
+
+  // Handler for committing to invest
+  const handleCommitToInvest = useCallback(async (productId: string, docId: string, productName: string) => {
+    if (!validateUuid(productId) || !validateUuid(docId)) {
+      toast.error("Invalid product or document ID");
+      return;
+    }
+
+    // Show a simple prompt for investment amount (optional)
+    const amount = window.prompt(`Enter investment amount (optional) for ${productName}:`);
+    if (amount === null) {
+      // User cancelled
+      return;
+    }
+
+    try {
+      const data: { amount?: string; message?: string } = {};
+      if (amount && amount.trim()) {
+        // Validate amount is a positive number
+        const numAmount = parseFloat(amount.trim());
+        if (isNaN(numAmount) || numAmount <= 0) {
+          toast.error("Please enter a valid positive number for investment amount");
+          return;
+        }
+        data.amount = numAmount.toString();
+      }
+
+      await investorService.commitToInvest(productId, docId, data);
+      toast.success("Investment commitment recorded successfully!");
+      // Refresh shared pitch decks and portfolio to update status
+      await fetchSharedPitchDecks();
+      await fetchPortfolio();
+    } catch (error: any) {
+      console.error('Error committing to invest:', error);
+      toast.error(error.message || "Failed to record investment commitment");
+    }
+  }, [fetchSharedPitchDecks, fetchPortfolio]);
 
   const handleRequestPitch = async (productId: string) => {
     // Security: Validate UUID
@@ -587,6 +691,21 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
           <CardContent className="p-6">
             <div className="flex items-center">
               <div className="p-2 bg-orange-100 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-orange-600" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-muted-foreground">Committed</p>
+                <p className="text-2xl font-bold">{stats.totalCommitted}</p>
+                <p className="text-xs text-orange-600">Investment commitments</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-medium transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <div className="p-2 bg-orange-100 rounded-lg">
                 <Target className="w-5 h-5 text-orange-600" />
               </div>
               <div className="ml-4">
@@ -598,6 +717,209 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
           </CardContent>
         </Card>
       </div>
+
+      {/* Shared Pitch Decks Section */}
+      {Array.isArray(sharedPitchDecks) && sharedPitchDecks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5" />
+                <span>Shared Pitch Decks</span>
+                {Array.isArray(sharedPitchDecks) && sharedPitchDecks.filter(pd => pd.is_new).length > 0 && (
+                  <Badge variant="default" className="ml-2">
+                    {sharedPitchDecks.filter(pd => pd.is_new).length} New
+                  </Badge>
+                )}
+              </div>
+            </CardTitle>
+            <CardDescription>
+              Pitch decks that have been shared with you by ventures
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingSharedPitchDecks ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {(Array.isArray(sharedPitchDecks) ? sharedPitchDecks : []).slice(0, 5).map((share) => (
+                  <div
+                    key={share.share_id}
+                    className={`p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
+                      share.is_new ? 'border-blue-300 bg-blue-50/50' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-semibold text-lg">{safeDisplayText(share.product_name || 'Unknown Product')}</h3>
+                          {share.is_new && (
+                            <Badge variant="default" className="bg-blue-600">
+                              New
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {safeDisplayText(share.product_description || 'No description available')}
+                        </p>
+                        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                          <span>{safeDisplayText(share.product_industry || 'N/A')}</span>
+                          {share.funding_amount && (
+                            <span>• Seeking {safeDisplayText(share.funding_amount)}</span>
+                          )}
+                          {share.funding_stage && (
+                            <span>• {safeDisplayText(share.funding_stage)}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                          <span>Shared by {safeDisplayText(share.shared_by_name || 'Unknown')}</span>
+                          <span>•</span>
+                          <span>
+                            {share.shared_at ? new Date(share.shared_at).toLocaleDateString() : 'Unknown date'}
+                          </span>
+                          {share.message && (
+                            <>
+                              <span>•</span>
+                              <span className="italic">"{safeDisplayText(share.message)}"</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
+                            toast.error("Invalid product or document ID");
+                            return;
+                          }
+                          navigate(`/dashboard/investor/pitch-deck/${share.product_id}/${share.document_id}`);
+                        }}
+                      >
+                        <FileText className="w-4 h-4 mr-2" />
+                        View Pitch Deck
+                      </Button>
+                      <Button
+                        variant={share.is_following ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
+                            toast.error("Invalid product or document ID");
+                            return;
+                          }
+                          handleFollowPitchDeck(share.product_id, share.document_id, share.is_following || false);
+                        }}
+                      >
+                        <Star className={`w-4 h-4 mr-2 ${share.is_following ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                        {share.is_following ? 'Following' : 'Follow'}
+                      </Button>
+                      <Button
+                        variant={share.commitment_status === 'COMMITTED' ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
+                            toast.error("Invalid product or document ID");
+                            return;
+                          }
+                          if (share.commitment_status === 'COMMITTED') {
+                            toast.info("You have already committed to invest in this venture");
+                            return;
+                          }
+                          handleCommitToInvest(share.product_id, share.document_id, share.product_name || 'Venture');
+                        }}
+                      >
+                        <DollarSign className="w-4 h-4 mr-2" />
+                        {share.commitment_status === 'COMMITTED' ? 'Committed' : 'Commit to Invest'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // Use product_user_id if available, otherwise fetch it
+                          if (share.product_user_id && validateUuid(share.product_user_id)) {
+                            const params = new URLSearchParams({
+                              userId: share.product_user_id,
+                              userName: share.product_name || 'Venture',
+                              userRole: 'venture',
+                            });
+                            navigate(`/dashboard/investor/messages?${params.toString()}`);
+                          } else if (validateUuid(share.product_id)) {
+                            // Fallback: fetch product to get user ID
+                            ventureService.getVentureById(share.product_id)
+                              .then((product) => {
+                                if (product && product.user) {
+                                  const params = new URLSearchParams({
+                                    userId: product.user,
+                                    userName: product.user_name || share.product_name || 'Venture',
+                                    userRole: 'venture',
+                                  });
+                                  navigate(`/dashboard/investor/messages?${params.toString()}`);
+                                } else {
+                                  toast.error("Unable to find venture user");
+                                }
+                              })
+                              .catch((error) => {
+                                console.error('Failed to fetch product user ID:', error);
+                                toast.error("Unable to contact venture");
+                              });
+                          } else {
+                            toast.error("Invalid product ID");
+                          }
+                        }}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Contact
+                      </Button>
+                    </div>
+                    {/* Show commitment status badge if committed */}
+                    {share.commitment_status === 'COMMITTED' && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {share.is_deal ? (
+                          <Badge variant="default" className="bg-green-600">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Deal Accepted
+                            {share.commitment_amount && ` - $${parseFloat(share.commitment_amount).toLocaleString()}`}
+                          </Badge>
+                        ) : share.venture_response === 'RENEGOTIATE' ? (
+                          <Badge variant="outline" className="border-orange-500 text-orange-600">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Renegotiation Requested
+                          </Badge>
+                        ) : share.venture_response === 'PENDING' ? (
+                          <Badge variant="outline" className="border-amber-500 text-amber-600">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending Venture Response
+                            {share.commitment_amount && ` - $${parseFloat(share.commitment_amount).toLocaleString()}`}
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="bg-green-600">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Investment Committed
+                            {share.commitment_amount && ` - $${parseFloat(share.commitment_amount).toLocaleString()}`}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {Array.isArray(sharedPitchDecks) && sharedPitchDecks.length > 5 && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => onViewChange?.('discover')}
+                  >
+                    View All Shared Pitch Decks
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Portfolio Performance and Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -640,23 +962,33 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className={`p-2 rounded-lg ${activity.bgColor}`}>
-                    <activity.icon className={`w-4 h-4 ${activity.color}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{activity.title}</p>
-                    <p className="text-sm text-muted-foreground">{activity.description}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    <ArrowUpRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+            {recentActivity.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No recent activity</p>
+                <p className="text-sm mt-2">Activity will appear here when available</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentActivity.map((activity) => {
+                  const IconComponent = activity.icon;
+                  return (
+                    <div key={activity.id} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className={`p-2 rounded-lg ${activity.bgColor}`}>
+                        <IconComponent className={`w-4 h-4 ${activity.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{activity.title}</p>
+                        <p className="text-sm text-muted-foreground">{activity.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
+                      </div>
+                      <Button variant="ghost" size="sm">
+                        <ArrowUpRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -674,42 +1006,49 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {portfolioCompanies.slice(0, 4).map((company) => (
+            {portfolioCompanies.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No portfolio companies</p>
+                <p className="text-sm mt-2">Portfolio companies will appear here when available</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {portfolioCompanies.slice(0, 4).map((company) => (
                 <div key={company.id} className="flex items-center space-x-4 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                   <Avatar className="w-10 h-10">
                     <AvatarImage src={company.logo} />
-                    <AvatarFallback>{company.company[0]}</AvatarFallback>
+                    <AvatarFallback>{(company.company || '?')[0]}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{company.company}</p>
-                    <p className="text-sm text-muted-foreground">{company.sector} • {company.stage}</p>
-                    <p className="text-xs text-muted-foreground">{company.metrics.revenue}</p>
+                    <p className="font-medium text-sm">{company.company || 'Unknown'}</p>
+                    <p className="text-sm text-muted-foreground">{company.sector || 'N/A'} • {company.stage || 'N/A'}</p>
+                    <p className="text-xs text-muted-foreground">{company.metrics?.revenue || 'N/A'}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium">{company.currentValue}</p>
+                    <p className="text-sm font-medium">{company.currentValue || 'N/A'}</p>
                     <p className={`text-xs ${
-                      company.return.startsWith('+') ? 'text-green-600' : 'text-red-600'
+                      company.return?.startsWith('+') ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {company.return}
+                      {company.return || 'N/A'}
                     </p>
                     <Badge 
                       variant={company.status === 'Thriving' ? 'default' : 
                               company.status === 'Growing' ? 'secondary' : 'outline'}
                       className="text-xs mt-1"
                     >
-                      {company.status}
+                      {company.status || 'N/A'}
                     </Badge>
                   </div>
                 </div>
               ))}
-              <button 
-                className="btn-chrome-secondary w-full mt-4"
-                onClick={() => onViewChange?.('portfolio')}
-              >
-                View Full Portfolio
-              </button>
-            </div>
+                <button 
+                  className="btn-chrome-secondary w-full mt-4"
+                  onClick={() => onViewChange?.('portfolio')}
+                >
+                  View Full Portfolio
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -724,36 +1063,43 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {pipelineDeals.map((deal) => (
-                <div key={deal.id} className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">{deal.company}</p>
-                      <p className="text-sm text-muted-foreground">{deal.stage}</p>
+            {pipelineDeals.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No deals in pipeline</p>
+                <p className="text-sm mt-2">Deals will appear here when available</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {pipelineDeals.map((deal) => (
+                  <div key={deal.id} className="p-4 border rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-sm">{deal.company}</p>
+                        <p className="text-sm text-muted-foreground">{deal.stage}</p>
+                      </div>
+                      <p className="font-semibold">{deal.amount}</p>
                     </div>
-                    <p className="font-semibold">{deal.amount}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Progress</span>
-                      <span>{deal.progress}%</span>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Progress</span>
+                        <span>{deal.progress}%</span>
+                      </div>
+                      <Progress value={deal.progress} className="h-2" />
                     </div>
-                    <Progress value={deal.progress} className="h-2" />
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{deal.nextStep}</span>
+                      <span className="font-medium">{deal.dueDate}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{deal.nextStep}</span>
-                    <span className="font-medium">{deal.dueDate}</span>
-                  </div>
-                </div>
-              ))}
-              <button 
-                className="btn-chrome-secondary w-full mt-4"
-                onClick={() => onViewChange?.('discover')}
-              >
-                Explore More Opportunities
-              </button>
-            </div>
+                ))}
+                <button 
+                  className="btn-chrome-secondary w-full mt-4"
+                  onClick={() => onViewChange?.('discover')}
+                >
+                  Explore More Opportunities
+                </button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -780,7 +1126,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
         <Card>
           <CardContent className="p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold">$3.2M</p>
+              <p className="text-2xl font-bold">{stats.portfolioValue}</p>
               <p className="text-sm text-muted-foreground">Total Value</p>
             </div>
           </CardContent>
@@ -788,7 +1134,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
         <Card>
           <CardContent className="p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-green-600">+28%</p>
+              <p className="text-2xl font-bold text-green-600">{stats.avgReturn}</p>
               <p className="text-sm text-muted-foreground">Avg Return</p>
             </div>
           </CardContent>
@@ -796,7 +1142,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
         <Card>
           <CardContent className="p-4">
             <div className="text-center">
-              <p className="text-2xl font-bold">12</p>
+              <p className="text-2xl font-bold">{stats.activeDeals}</p>
               <p className="text-sm text-muted-foreground">Active Deals</p>
             </div>
           </CardContent>
@@ -810,113 +1156,169 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
           <CardDescription>Your current investments and their performance</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
-            {portfolioCompanies.map((company) => (
-              <div key={company.id} className="p-6 border rounded-lg hover:bg-muted/50 transition-colors">
+          {isLoadingPortfolio ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin" />
+              <p className="text-sm">Loading portfolio...</p>
+            </div>
+          ) : portfolioCompanies.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Building className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No portfolio companies yet</p>
+              <p className="text-sm mt-2">Commit to investing in a pitch deck to add it to your portfolio</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {portfolioCompanies.map((company) => (
+              <div key={company.id || company.commitment_id} className="p-6 border rounded-lg hover:bg-muted/50 transition-colors">
                 {/* Company Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-4">
                     <Avatar className="w-16 h-16">
-                      <AvatarImage src={company.logo} />
-                      <AvatarFallback>{company.company[0]}</AvatarFallback>
+                      <AvatarImage src={undefined} />
+                      <AvatarFallback>{(company.company || '?')[0].toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="text-xl font-semibold">{company.company}</h3>
-                      <p className="text-muted-foreground">{company.sector} • {company.stage}</p>
+                      <h3 className="text-xl font-semibold">{company.company || 'Unknown'}</h3>
+                      <p className="text-muted-foreground">{company.sector || 'N/A'} • {company.stage || 'N/A'}</p>
                       <div className="flex items-center space-x-2 mt-2">
-                        <Badge 
-                          variant={company.status === 'Thriving' ? 'default' : 
-                                  company.status === 'Growing' ? 'secondary' : 'outline'}
-                        >
-                          {company.status}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">Updated {company.lastUpdate}</span>
+                        {company.is_deal ? (
+                          <Badge variant="default" className="bg-green-600">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Deal Accepted
+                          </Badge>
+                        ) : company.venture_response === 'RENEGOTIATE' ? (
+                          <Badge variant="outline" className="border-orange-500 text-orange-600">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Renegotiation Requested
+                          </Badge>
+                        ) : company.venture_response === 'PENDING' ? (
+                          <Badge variant="outline" className="border-amber-500 text-amber-600">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending Response
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="bg-green-600">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Committed
+                          </Badge>
+                        )}
+                        <span className="text-sm text-muted-foreground">
+                          {company.is_deal 
+                            ? `Deal accepted ${company.venture_response_at ? new Date(company.venture_response_at).toLocaleDateString() : ''}`
+                            : company.venture_response === 'RENEGOTIATE'
+                            ? `Renegotiation requested ${company.venture_response_at ? new Date(company.venture_response_at).toLocaleDateString() : ''}`
+                            : `Committed ${company.committed_at ? new Date(company.committed_at).toLocaleDateString() : company.lastUpdate || 'N/A'}`
+                          }
+                        </span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold">{company.currentValue}</p>
-                    <p className={`text-sm font-medium ${
-                      company.return.startsWith('+') ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {company.return} return
-                    </p>
+                    <p className="text-2xl font-bold">{company.invested || 'N/A'}</p>
+                    <p className="text-sm text-muted-foreground">Committed Amount</p>
                   </div>
                 </div>
 
                 {/* Investment Details */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div className="text-center p-3 bg-muted/30 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Initial Investment</p>
-                    <p className="font-semibold">{company.invested}</p>
+                    <p className="text-sm text-muted-foreground">Committed Investment</p>
+                    <p className="font-semibold">{company.invested || 'N/A'}</p>
                   </div>
                   <div className="text-center p-3 bg-muted/30 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Current Valuation</p>
-                    <p className="font-semibold">{company.currentValue}</p>
+                    <p className="text-sm text-muted-foreground">Funding Stage</p>
+                    <p className="font-semibold">{company.stage || 'N/A'}</p>
                   </div>
                   <div className="text-center p-3 bg-muted/30 rounded-lg">
-                    <p className="text-sm text-muted-foreground">Performance</p>
-                    <p className="font-semibold">{company.metrics.revenue}</p>
-                    <p className="text-xs text-muted-foreground">{company.metrics.growth}</p>
+                    <p className="text-sm text-muted-foreground">Funding Amount</p>
+                    <p className="font-semibold">{company.funding_amount ? `$${parseFloat(company.funding_amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : 'N/A'}</p>
                   </div>
                 </div>
 
-                {/* Founder Info */}
-                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/20 to-muted/10 rounded-lg mb-4">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="w-12 h-12">
-                      <AvatarImage src={company.founderAvatar} />
-                      <AvatarFallback>{company.founderName[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium">{company.founderName}</p>
-                      <p className="text-sm text-muted-foreground">Founder & CEO</p>
-                      <p className="text-xs text-muted-foreground">{company.expertise}</p>
-                    </div>
+                {/* Description */}
+                {company.product_description && (
+                  <div className="mb-4">
+                    <p className="text-sm text-muted-foreground">{company.product_description}</p>
                   </div>
-                  <button
-                    onClick={() => handleScheduleWithFounder(company)}
-                    className="btn-chrome-primary"
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Schedule Meeting
-                  </button>
-                </div>
+                )}
+
+                {/* Investor message if available */}
+                {company.message && (
+                  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Your Note:</p>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">{company.message}</p>
+                  </div>
+                )}
+
+                {/* Venture response message if available */}
+                {company.venture_response_message && (
+                  <div className={`mb-4 p-3 rounded-lg ${
+                    company.venture_response === 'ACCEPTED' 
+                      ? 'bg-green-50 dark:bg-green-950' 
+                      : 'bg-orange-50 dark:bg-orange-950'
+                  }`}>
+                    <p className={`text-sm font-medium ${
+                      company.venture_response === 'ACCEPTED'
+                        ? 'text-green-900 dark:text-green-100'
+                        : 'text-orange-900 dark:text-orange-100'
+                    }`}>
+                      {company.venture_response === 'ACCEPTED' ? 'Venture Response (Deal Accepted):' : 'Venture Response (Renegotiation Request):'}
+                    </p>
+                    <p className={`text-sm ${
+                      company.venture_response === 'ACCEPTED'
+                        ? 'text-green-800 dark:text-green-200'
+                        : 'text-orange-800 dark:text-orange-200'
+                    }`}>
+                      {company.venture_response_message}
+                    </p>
+                  </div>
+                )}
 
                 {/* Action Buttons */}
-                <div className="flex flex-wrap gap-3">
-                  <button 
-                    className="btn-chrome-secondary flex-1 min-w-32"
-                    onClick={() => handleSendMessage(company)}
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Message
-                  </button>
-                  <button 
-                    className="btn-chrome-secondary flex-1 min-w-32"
-                    onClick={() => handleShowReports(company)}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    Reports
-                  </button>
-                  <button 
-                    className="btn-chrome-secondary flex-1 min-w-32"
-                    onClick={() => handleShowDetails(company)}
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Details
-                  </button>
-                  <button 
-                    className="btn-chrome-secondary flex-1 min-w-32"
-                    onClick={() => handleShowExitPlan(company)}
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    Exit Plan
-                  </button>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {company.document_id && company.product_id && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        if (!validateUuid(company.product_id) || !validateUuid(company.document_id)) {
+                          toast.error("Invalid product or document ID");
+                          return;
+                        }
+                        navigate(`/dashboard/investor/pitch-deck/${company.product_id}/${company.document_id}`);
+                      }}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      View Pitch Deck
+                    </Button>
+                  )}
+                  {company.product_user_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (company.product_user_id && validateUuid(company.product_user_id)) {
+                          const params = new URLSearchParams({
+                            userId: company.product_user_id,
+                            userName: company.company || 'Venture',
+                            userRole: 'venture',
+                          });
+                          navigate(`/dashboard/investor/messages?${params.toString()}`);
+                        } else {
+                          toast.error("Unable to contact venture");
+                        }
+                      }}
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Contact Venture
+                    </Button>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -998,9 +1400,48 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
           </CardContent>
         </Card>
 
+        {/* Loading State */}
+        {isLoadingVentures && (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground">Loading startups...</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Empty State - No startups found */}
+        {!isLoadingVentures && filteredStartups.length === 0 && (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Search className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+              <h3 className="text-lg font-semibold mb-2">No Startups Found</h3>
+              <p className="text-muted-foreground mb-4">
+                {venturesArray.length === 0 
+                  ? "There are currently no approved startups available. Check back later or try adjusting your filters."
+                  : "No startups match your current search criteria. Try adjusting your filters or search terms."}
+              </p>
+              {(searchTerm || filterSector !== 'all' || filterStage !== 'all' || filterFunding !== 'all') && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setFilterSector('all');
+                    setFilterStage('all');
+                    setFilterFunding('all');
+                  }}
+                >
+                  Clear All Filters
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* All Startups */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredStartups.map((venture) => (
+        {!isLoadingVentures && filteredStartups.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {filteredStartups.map((venture) => (
             <Card key={venture.id} className="hover:shadow-medium transition-shadow">
               <CardContent className="p-6">
                 <div className="space-y-4">
@@ -1152,7 +1593,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                           toast.error("Invalid venture ID");
                           return;
                         }
-                        handleContactStartup(venture.id);
+                        handleContactStartup(venture.user, venture.user_name || venture.name);
                       }}
                     >
                       <MessageSquare className="w-4 h-4 mr-2" />
@@ -1163,7 +1604,8 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
               </CardContent>
             </Card>
           ))}
-        </div>
+          </div>
+        )}
       </div>
     );
   };

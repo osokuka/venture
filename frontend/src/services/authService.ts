@@ -48,8 +48,11 @@ export const authService = {
       localStorage.setItem('refresh_token', refresh);
       
       return { access, refresh };
-    } catch (error) {
-      throw new Error(getErrorMessage(error));
+    } catch (error: any) {
+      // Preserve the original error so we can check status code in components
+      const enhancedError = new Error(getErrorMessage(error));
+      (enhancedError as any).response = error.response;
+      throw enhancedError;
     }
   },
 

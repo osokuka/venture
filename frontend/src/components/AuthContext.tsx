@@ -183,7 +183,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      // Re-throw error so LoginForm can handle it properly (e.g., 429 rate limit)
+      throw error;
     }
   };
 
@@ -199,12 +200,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentView('register');
   };
 
-  const completeRegistration = async (userData: any) => {
+  const completeRegistration = async (userData: any, options?: { skipNavigation?: boolean }) => {
     try {
       // Map frontend role to backend role
       // Fallback to 'VENTURE' if registrationRole is not set (for direct navigation to registration pages)
-      const roleToUse = registrationRole || userData.role || 'venture';
-      const backendRole = roleToUse.toUpperCase() as 'VENTURE' | 'INVESTOR' | 'MENTOR';
+      const roleToUse = (registrationRole || userData.role || 'venture') as UserRole;
+      const roleToUseLower = (typeof roleToUse === 'string' ? roleToUse.toLowerCase() : 'venture') as UserRole;
+      // Keep context role in sync so any downstream logic doesn't see null.
+      setRegistrationRole(roleToUseLower);
+      const backendRole = roleToUseLower.toUpperCase() as 'VENTURE' | 'INVESTOR' | 'MENTOR';
       
       if (!backendRole || !['VENTURE', 'INVESTOR', 'MENTOR'].includes(backendRole)) {
         throw new Error('Invalid registration role. Please select a valid role.');
@@ -237,12 +241,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let profileError: Error | null = null;
 
       try {
-        if (registrationRole === 'investor' && userData.organizationName) {
+        if (roleToUseLower === 'investor') {
           // Map investor registration form data to API payload
           // Note: Investor form doesn't collect experience_years or deals_count, so we use defaults
           const investorPayload: InvestorProfileCreatePayload = {
             full_name: userData.name || registeredUser.full_name || '',
-            organization_name: userData.organizationName || '',
+            // Backend requires organization_name.
+            organization_name: userData.organizationName || userData.organization_name || '',
             linkedin_or_website: userData.linkedinUrl || userData.website || '',
             email: userData.email,
             phone: userData.phone || undefined,
@@ -256,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           await investorService.createProfile(investorPayload);
           profileCreated = true;
-        } else if (registrationRole === 'mentor' && userData.jobTitle) {
+        } else if (roleToUseLower === 'mentor') {
           // Map mentor registration form data to API payload
           // Determine engagement type from form data
           let engagementType: 'PAID' | 'PRO_BONO' | 'BOTH' = 'PRO_BONO';
@@ -341,7 +346,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({
         id: currentUserData.id,
         email: currentUserData.email,
-        role: registrationRole!,
+        role: roleToUseLower,
         profile: {
           ...userData,
           approvalStatus: 'pending' as const,
@@ -350,7 +355,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } as User);
       
-      setCurrentView('dashboard');
+      // Only navigate to dashboard if not explicitly skipped
+      // This allows registration forms to show email verification message first
+      if (!options?.skipNavigation) {
+        setCurrentView('dashboard');
+      }
     } catch (error) {
       console.error('Registration error:', error);
       throw error;

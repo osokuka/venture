@@ -17,7 +17,12 @@ from .serializers import (
     InvestorProfileUpdateSerializer
 )
 from apps.approvals.models import ReviewRequest
+from apps.ventures.models import (
+    PitchDeckShare, PitchDeckInterest, InvestmentCommitment, VentureDocument, VentureProduct
+)
+from apps.ventures.serializers import InvestorSharedPitchDeckSerializer
 from django.contrib.contenttypes.models import ContentType
+from django.conf import settings
 
 
 class InvestorProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveUpdateAPIView):
@@ -70,6 +75,14 @@ class InvestorProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveU
         
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
+    
+    def get(self, request, *args, **kwargs):
+        """Handle GET requests for /profile/me (no pk in URL)."""
+        return self.retrieve(request, *args, **kwargs)
+    
+    def patch(self, request, *args, **kwargs):
+        """Handle PATCH requests for /profile/me (no pk in URL)."""
+        return self.update(request, *args, **kwargs)
     
     def update(self, request, *args, **kwargs):
         """Update own investor profile."""
@@ -161,8 +174,11 @@ class PublicInvestorListView(generics.ListAPIView):
     
     def get_queryset(self):
         """Return investors visible to the current user."""
+        # Show both APPROVED and SUBMITTED investors
+        # APPROVED: Fully approved and visible
+        # SUBMITTED: Pending approval but visible so ventures can share pitch decks with them
         queryset = InvestorProfile.objects.filter(
-            status='APPROVED'
+            status__in=['APPROVED', 'SUBMITTED']
         ).select_related('user')
         
         # If user is a venture, show:
@@ -177,9 +193,9 @@ class PublicInvestorListView(generics.ListAPIView):
             queryset = queryset.filter(
                 Q(visible_to_ventures=True) | Q(id__in=visible_investor_ids)
             )
-        # Admin can see all approved investors
+        # Admin can see all approved and submitted investors
         elif self.request.user.role == 'ADMIN':
-            pass  # Show all approved investors
+            pass  # Show all approved and submitted investors
         
         return queryset.order_by('-created_at')
 
@@ -201,8 +217,11 @@ class PublicInvestorDetailView(generics.RetrieveAPIView):
     
     def get_queryset(self):
         """Return investors visible to the current user."""
+        # Show both APPROVED and SUBMITTED investors
+        # APPROVED: Fully approved and visible
+        # SUBMITTED: Pending approval but visible so ventures can share pitch decks with them
         queryset = InvestorProfile.objects.filter(
-            status='APPROVED'
+            status__in=['APPROVED', 'SUBMITTED']
         ).select_related('user')
         
         # If user is a venture, show:
@@ -217,8 +236,387 @@ class PublicInvestorDetailView(generics.RetrieveAPIView):
             queryset = queryset.filter(
                 Q(visible_to_ventures=True) | Q(id__in=visible_investor_ids)
             )
-        # Admin can see all approved investors
+        # Admin can see all approved and submitted investors
         elif self.request.user.role == 'ADMIN':
-            pass  # Show all approved investors
+            pass  # Show all approved and submitted investors
         
         return queryset
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_shared_pitch_decks(request):
+    """
+    List pitch decks shared with the current investor.
+    
+    GET /api/investors/shared-pitch-decks
+    Returns pitch decks that have been proactively shared with the investor.
+    Only investors can access this endpoint.
+    """
+    try:
+        # Security: Only investors can access this endpoint
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can view shared pitch decks.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all pitch decks shared with this investor
+        # Include related objects for efficient querying
+        shares = PitchDeckShare.objects.filter(
+            investor=request.user
+        ).select_related(
+            'document',
+            'document__product',
+            'document__product__user',
+            'shared_by'
+        ).order_by('-shared_at')
+        
+        # Serialize the shares with full product/document details
+        # Pass request context so serializer can check interest/commitment status
+        serializer = InvestorSharedPitchDeckSerializer(shares, many=True, context={'request': request})
+        
+        return Response({
+            'count': len(serializer.data),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in list_shared_pitch_decks: {str(e)}', exc_info=True)
+        
+        # Return a safe error response
+        return Response(
+            {
+                'detail': 'An error occurred while fetching shared pitch decks.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def follow_pitch_deck(request, product_id, doc_id):
+    """
+    Follow/monitor a pitch deck (express interest).
+    
+    POST /api/investors/products/{product_id}/documents/{doc_id}/follow
+    Creates or reactivates a PitchDeckInterest record.
+    Only investors can follow pitch decks.
+    """
+    try:
+        # Security: Only investors can follow pitch decks
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can follow pitch decks.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate UUIDs
+        try:
+            product = VentureProduct.objects.get(id=product_id, status='APPROVED', is_active=True)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found or not available.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+        except VentureDocument.DoesNotExist:
+            return Response(
+                {'detail': 'Pitch deck not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create or reactivate interest
+        interest, created = PitchDeckInterest.objects.get_or_create(
+            document=document,
+            investor=request.user,
+            defaults={'is_active': True}
+        )
+        
+        if not created:
+            # Reactivate if previously unfollowed
+            interest.is_active = True
+            interest.save(update_fields=['is_active'])
+        
+        return Response({
+            'detail': 'Pitch deck followed successfully.',
+            'is_following': True
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in follow_pitch_deck: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while following the pitch deck.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unfollow_pitch_deck(request, product_id, doc_id):
+    """
+    Unfollow a pitch deck (remove interest).
+    
+    POST /api/investors/products/{product_id}/documents/{doc_id}/unfollow
+    Deactivates the PitchDeckInterest record.
+    Only investors can unfollow pitch decks.
+    """
+    try:
+        # Security: Only investors can unfollow pitch decks
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can unfollow pitch decks.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate UUIDs
+        try:
+            product = VentureProduct.objects.get(id=product_id, status='APPROVED', is_active=True)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found or not available.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+        except VentureDocument.DoesNotExist:
+            return Response(
+                {'detail': 'Pitch deck not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Deactivate interest
+        interest = PitchDeckInterest.objects.filter(
+            document=document,
+            investor=request.user
+        ).first()
+        
+        if interest:
+            interest.is_active = False
+            interest.save(update_fields=['is_active'])
+            return Response({
+                'detail': 'Pitch deck unfollowed successfully.',
+                'is_following': False
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'detail': 'You are not following this pitch deck.',
+                'is_following': False
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in unfollow_pitch_deck: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while unfollowing the pitch deck.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def commit_to_invest(request, product_id, doc_id):
+    """
+    Commit to investing in a venture (express investment intent).
+    
+    POST /api/investors/products/{product_id}/documents/{doc_id}/commit
+    Body: {
+        "amount": "500000",  # Optional: intended investment amount
+        "message": "Interested in Series A round"  # Optional: message to venture
+    }
+    Creates or updates an InvestmentCommitment record.
+    Only investors can commit to invest.
+    """
+    try:
+        # Security: Only investors can commit to invest
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can commit to invest.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate UUIDs
+        try:
+            product = VentureProduct.objects.get(id=product_id, status='APPROVED', is_active=True)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found or not available.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            document = VentureDocument.objects.get(id=doc_id, product=product, document_type='PITCH_DECK')
+        except VentureDocument.DoesNotExist:
+            return Response(
+                {'detail': 'Pitch deck not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get amount and message from request
+        amount = request.data.get('amount')
+        message = request.data.get('message', '')
+        
+        # Validate amount if provided
+        if amount:
+            try:
+                from decimal import Decimal
+                amount_decimal = Decimal(str(amount))
+                if amount_decimal < 0:
+                    return Response(
+                        {'detail': 'Investment amount must be positive.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'Invalid investment amount format.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            amount_decimal = None
+        
+        # Validate message length
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create or update commitment
+        commitment, created = InvestmentCommitment.objects.get_or_create(
+            document=document,
+            investor=request.user,
+            defaults={
+                'product': product,
+                'status': 'COMMITTED',
+                'amount': amount_decimal,
+                'message': message.strip() if message else None
+            }
+        )
+        
+        if not created:
+            # Update existing commitment
+            commitment.status = 'COMMITTED'
+            if amount_decimal is not None:
+                commitment.amount = amount_decimal
+            if message:
+                commitment.message = message.strip()
+            commitment.save(update_fields=['status', 'amount', 'message', 'updated_at'])
+        
+        return Response({
+            'detail': 'Investment commitment recorded successfully.',
+            'commitment_id': str(commitment.id),
+            'status': commitment.status,
+            'amount': str(commitment.amount) if commitment.amount else None
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in commit_to_invest: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while recording investment commitment.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_investor_portfolio(request):
+    """
+    Get investor portfolio (committed investments).
+    
+    GET /api/investors/portfolio
+    Returns all InvestmentCommitment records for the current investor with full product/document details.
+    Only investors can access their portfolio.
+    """
+    try:
+        # Security: Only investors can view their portfolio
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can view their portfolio.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get all committed investments for the investor
+        commitments = InvestmentCommitment.objects.filter(
+            investor=request.user
+        ).select_related(
+            'document',
+            'document__product',
+            'document__product__user',
+            'product'
+        ).order_by('-committed_at')
+        
+        # Serialize commitments with product/document details
+        portfolio_data = []
+        total_committed = 0
+        
+        for commitment in commitments:
+            product = commitment.product
+            document = commitment.document
+            
+            # Calculate total committed amount
+            if commitment.amount:
+                total_committed += float(commitment.amount)
+            
+            portfolio_data.append({
+                'commitment_id': str(commitment.id),
+                'status': commitment.status,
+                'amount': str(commitment.amount) if commitment.amount else None,
+                'message': commitment.message,
+                'committed_at': commitment.committed_at.isoformat() if commitment.committed_at else None,
+                'updated_at': commitment.updated_at.isoformat() if commitment.updated_at else None,
+                # Venture response (deal status)
+                'venture_response': commitment.venture_response,
+                'venture_response_at': commitment.venture_response_at.isoformat() if commitment.venture_response_at else None,
+                'venture_response_message': commitment.venture_response_message,
+                'is_deal': commitment.is_deal,
+                # Product information
+                'product_id': str(product.id) if product else None,
+                'product_name': product.name if product else None,
+                'product_industry': product.industry_sector if product else None,
+                'product_description': product.short_description if product else None,
+                'product_status': product.status if product else None,
+                'product_user_id': str(product.user.id) if product and product.user else None,
+                # Document information
+                'document_id': str(document.id) if document else None,
+                'document_type': document.document_type if document else None,
+                'funding_amount': document.funding_amount if document else None,
+                'funding_stage': document.funding_stage if document else None,
+            })
+        
+        return Response({
+            'count': len(portfolio_data),
+            'total_committed': str(total_committed),
+            'results': portfolio_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in get_investor_portfolio: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while fetching portfolio data.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

@@ -6,7 +6,12 @@ from .views import (
     InvestorProfileCreateUpdateView,
     submit_investor_profile,
     PublicInvestorListView,
-    PublicInvestorDetailView
+    PublicInvestorDetailView,
+    list_shared_pitch_decks,
+    follow_pitch_deck,
+    unfollow_pitch_deck,
+    commit_to_invest,
+    get_investor_portfolio
 )
 
 urlpatterns = [
@@ -14,6 +19,17 @@ urlpatterns = [
     path('profile', InvestorProfileCreateUpdateView.as_view(), name='investor_profile_create'),
     path('profile/me', InvestorProfileCreateUpdateView.as_view(), name='investor_profile_me'),
     path('profile/submit', submit_investor_profile, name='investor_profile_submit'),
+    
+    # Shared pitch decks (investor only)
+    path('shared-pitch-decks', list_shared_pitch_decks, name='investor_shared_pitch_decks'),
+    
+    # Portfolio (investor only)
+    path('portfolio', get_investor_portfolio, name='investor_portfolio'),
+    
+    # Pitch deck engagement (investor only)
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/follow', follow_pitch_deck, name='investor_follow_pitch_deck'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/unfollow', unfollow_pitch_deck, name='investor_unfollow_pitch_deck'),
+    path('products/<uuid:product_id>/documents/<uuid:doc_id>/commit', commit_to_invest, name='investor_commit_to_invest'),
     
     # Public investor views (approved users only)
     path('public', PublicInvestorListView.as_view(), name='public_investors'),

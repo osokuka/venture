@@ -12,6 +12,8 @@ import { ContactSection } from "./components/ContactSection";
 import { VentureRegistration } from "./components/VentureRegistration";
 import { InvestorRegistration } from "./components/InvestorRegistration";
 import { MentorRegistration } from "./components/MentorRegistration";
+import { RoleSelection } from "./components/RoleSelection";
+import { UnifiedRegistration } from "./components/UnifiedRegistration";
 import { VentureDashboard } from "./components/VentureDashboard";
 import { InvestorDashboard } from "./components/InvestorDashboard";
 import { MentorDashboard } from "./components/MentorDashboard";
@@ -26,6 +28,7 @@ import CreatePitchDeck from "./components/CreatePitchDeck";
 import { LoginForm } from "./components/LoginForm";
 import { PasswordResetRequest } from "./components/PasswordResetRequest";
 import { PasswordResetConfirm } from "./components/PasswordResetConfirm";
+import { VerifyEmail } from "./components/VerifyEmail";
 import { ModernDashboardLayout } from "./components/ModernDashboardLayout";
 import { Button } from "./components/ui/button";
 import { Target, Menu, X, Sparkles, ArrowUp } from "lucide-react";
@@ -180,7 +183,8 @@ function LandingPage() {
                 <Button variant="outline" size="sm" onClick={() => navigate('/login')}>
                   Sign In
                 </Button>
-                <Button size="sm" onClick={() => handleRegisterClick('venture')}>
+                {/* Start at role selection (can't call handleRegisterClick without a role) */}
+                <Button size="sm" onClick={() => navigate('/register')}>
                   Get Started
                 </Button>
               </div>
@@ -272,9 +276,10 @@ function AppRoutes() {
       <Route path="/login" element={<LoginForm />} />
       <Route path="/reset-password" element={<PasswordResetConfirm />} />
       <Route path="/forgot-password" element={<PasswordResetRequest />} />
-      <Route path="/register/venture" element={<VentureRegistration />} />
-      <Route path="/register/investor" element={<InvestorRegistration />} />
-      <Route path="/register/mentor" element={<MentorRegistration />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      {/* Registration Routes */}
+      <Route path="/register" element={<RoleSelection />} />
+      <Route path="/register/:role" element={<UnifiedRegistration />} />
 
       {/* Protected Dashboard Routes */}
       <Route
