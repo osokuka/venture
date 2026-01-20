@@ -20,6 +20,7 @@ import {
 } from './ui/select';
 import { ArrowLeft, Upload, Loader2 } from 'lucide-react';
 import { productService } from '../services/productService';
+import { ventureService } from '../services/ventureService';
 import { 
   sanitizeInput, 
   validateAndSanitizeUrl,
@@ -27,6 +28,62 @@ import {
 } from '../utils/security';
 import { validatePitchDeckFile } from '../utils/fileValidation';
 import { toast } from 'sonner';
+
+// Helper function to normalize sector value from EditProfile format to CreatePitchDeck format
+// EditProfile uses: "FinTech", "HealthTech", "AI/ML", "E-commerce", etc. (capitalized, with slashes/spaces)
+// CreatePitchDeck uses: "fintech", "healthtech", "ai", "ecommerce", etc. (lowercase, no spaces)
+const normalizeSector = (sector: string | undefined): string => {
+  if (!sector) return '';
+  
+  const sectorLower = sector.toLowerCase().trim();
+  
+  // Map EditProfile sector values to CreatePitchDeck values
+  // Handle common variations and formats
+  const sectorMap: Record<string, string> = {
+    // Direct matches (already lowercase)
+    'fintech': 'fintech',
+    'healthtech': 'healthtech',
+    'edtech': 'edtech',
+    'cleantech': 'cleantech',
+    'ai': 'ai',
+    'saas': 'saas',
+    'ecommerce': 'ecommerce',
+    'other': 'other',
+    // EditProfile format variations
+    'ai/ml': 'ai',
+    'ai / ml': 'ai',
+    'e-commerce': 'ecommerce',
+    'e-commerce': 'ecommerce',
+    'fin tech': 'fintech',
+    'health tech': 'healthtech',
+    'ed tech': 'edtech',
+    'clean tech': 'cleantech',
+    // EditProfile specific values that don't have direct matches
+    'enterprise': 'other',
+    'consumer': 'other',
+    'biotech': 'other',
+    'energy': 'other',
+  };
+  
+  // Try exact match first (handles most cases)
+  if (sectorMap[sectorLower]) {
+    return sectorMap[sectorLower];
+  }
+  
+  // Try partial/fuzzy matches for edge cases
+  if (sectorLower.includes('fintech') || sectorLower.includes('fin tech')) return 'fintech';
+  if (sectorLower.includes('healthtech') || sectorLower.includes('health tech')) return 'healthtech';
+  if (sectorLower.includes('edtech') || sectorLower.includes('ed tech')) return 'edtech';
+  if (sectorLower.includes('cleantech') || sectorLower.includes('clean tech')) return 'cleantech';
+  if (sectorLower.includes('ai') || sectorLower.includes('ml') || sectorLower.includes('machine learning')) return 'ai';
+  if (sectorLower.includes('saas')) return 'saas';
+  if (sectorLower.includes('ecommerce') || sectorLower.includes('e-commerce')) return 'ecommerce';
+  
+  // Default to empty string if no match found (let user select)
+  // This is better than defaulting to 'other' which might be incorrect
+  console.warn(`Unknown sector value: "${sector}" - not mapping to CreatePitchDeck format`);
+  return '';
+};
 
 // Component definition
 const CreatePitchDeck: React.FC = () => {
@@ -40,6 +97,8 @@ const CreatePitchDeck: React.FC = () => {
   const [isMutating, setIsMutating] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>(productId || '');
+  const [ventureProfile, setVentureProfile] = useState<any>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   
   // Form state - Product fields
   const [productData, setProductData] = useState({
@@ -70,33 +129,72 @@ const CreatePitchDeck: React.FC = () => {
   });
 
   useEffect(() => {
-    // Fetch existing products to allow selection
-    const fetchProducts = async () => {
+    // Fetch venture profile and products to inherit company data
+    const fetchData = async () => {
+      setIsLoadingProfile(true);
       try {
-        const data = await productService.getMyProducts();
-        setProducts(data);
-        // If productId provided, pre-select it
-        if (productId && validateUuid(productId)) {
-          const product = data.find((p: any) => p.id === productId);
-          if (product) {
-            setSelectedProductId(productId);
+        // Fetch both in parallel
+        const [profileResult, productsResult] = await Promise.allSettled([
+          ventureService.getMyProfile(),
+          productService.getMyProducts()
+        ]);
+
+        // Handle venture profile
+        if (profileResult.status === 'fulfilled' && profileResult.value) {
+          const profile = profileResult.value;
+          setVentureProfile(profile);
+        }
+
+        // Handle products
+        if (productsResult.status === 'fulfilled') {
+          const data = productsResult.value;
+          setProducts(data);
+          
+          // If productId provided, pre-select it (this takes precedence over profile data)
+          if (productId && validateUuid(productId)) {
+            const product = data.find((p: any) => p.id === productId);
+            if (product) {
+              setSelectedProductId(productId);
+              setProductData({
+                name: product.name,
+                industry_sector: product.industry_sector,
+                website: product.website,
+                linkedin_url: product.linkedin_url,
+                address: product.address || '',
+                year_founded: product.year_founded,
+                employees_count: product.employees_count,
+                short_description: product.short_description,
+              });
+              setIsLoadingProfile(false);
+              return; // Don't pre-fill from profile if product is selected
+            }
+          }
+          
+          // If no product selected, pre-fill from venture profile
+          if (profileResult.status === 'fulfilled' && profileResult.value && !productId) {
+            const profile = profileResult.value;
             setProductData({
-              name: product.name,
-              industry_sector: product.industry_sector,
-              website: product.website,
-              linkedin_url: product.linkedin_url,
-              address: product.address || '',
-              year_founded: product.year_founded,
-              employees_count: product.employees_count,
-              short_description: product.short_description,
+              name: profile.company_name || '',
+              industry_sector: normalizeSector(profile.sector), // Normalize sector value to match Select options
+              website: profile.website || '',
+              linkedin_url: profile.linkedin_url || '',
+              address: profile.address || '',
+              year_founded: profile.year_founded,
+              employees_count: profile.employees_count,
+              short_description: profile.short_description || '',
             });
           }
+        } else {
+          console.error('Failed to fetch products:', productsResult.reason);
         }
       } catch (err: any) {
-        console.error('Failed to fetch products:', err);
+        console.error('Failed to fetch data:', err);
+      } finally {
+        setIsLoadingProfile(false);
       }
     };
-    fetchProducts();
+
+    fetchData();
   }, [productId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,7 +204,7 @@ const CreatePitchDeck: React.FC = () => {
     console.log('Product Data:', productData);
     console.log('Pitch Deck Data:', { ...pitchDeckData, file: pitchDeckData.file ? `File: ${pitchDeckData.file.name}` : 'No file' });
 
-    // Validate product fields
+    // Validate pitch deck fields - Company profile must be complete before pitch deck upload
     if (!productData.name || !productData.industry_sector || !productData.website || !productData.linkedin_url || !productData.short_description) {
       console.log('❌ Validation failed: Missing required product fields');
       console.log('Missing fields:', {
@@ -116,7 +214,15 @@ const CreatePitchDeck: React.FC = () => {
         linkedin_url: !productData.linkedin_url,
         short_description: !productData.short_description
       });
-      toast.error('Please fill in all required product fields');
+      
+      const missingFields: string[] = [];
+      if (!productData.name) missingFields.push('Company Name');
+      if (!productData.industry_sector) missingFields.push('Industry Sector');
+      if (!productData.website) missingFields.push('Website');
+      if (!productData.linkedin_url) missingFields.push('LinkedIn URL');
+      if (!productData.short_description) missingFields.push('Short Description');
+      
+      toast.error(`Please complete your company profile first. Missing: ${missingFields.join(', ')}`);
       return;
     }
 
@@ -281,32 +387,47 @@ const CreatePitchDeck: React.FC = () => {
         {/* Product Information Section */}
         <Card className="border border-gray-200 shadow-sm">
           <CardHeader className="pb-4 border-b border-gray-100">
-            <CardTitle className="text-lg font-semibold text-gray-900">Product Information</CardTitle>
+            <CardTitle className="text-lg font-semibold text-gray-900">Pitch Deck Information</CardTitle>
             <CardDescription className="text-sm text-gray-600 mt-1">
-              Basic company and product details
+              Basic company and pitch deck details
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6 space-y-5">
             {/* Product Selection or Creation - LinkedIn Style */}
             {products.length > 0 && (
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-700">Select Existing Product (Optional)</Label>
+                <Label className="text-sm font-medium text-gray-700">Select Existing Pitch Deck (Optional)</Label>
                 <Select
                   value={selectedProductId || undefined}
                   onValueChange={(value) => {
                     // Handle placeholder value for "Create New Product"
                     if (value === '__create_new__') {
                       setSelectedProductId('');
-                      setProductData({
-                        name: '',
-                        industry_sector: '',
-                        website: '',
-                        linkedin_url: '',
-                        address: '',
-                        year_founded: undefined,
-                        employees_count: undefined,
-                        short_description: '',
-                      });
+                      // Restore venture profile data when creating new product
+                      if (ventureProfile) {
+                        setProductData({
+                          name: ventureProfile.company_name || '',
+                          industry_sector: normalizeSector(ventureProfile.sector), // Normalize sector value
+                          website: ventureProfile.website || '',
+                          linkedin_url: ventureProfile.linkedin_url || '',
+                          address: ventureProfile.address || '',
+                          year_founded: ventureProfile.year_founded,
+                          employees_count: ventureProfile.employees_count,
+                          short_description: ventureProfile.short_description || '',
+                        });
+                      } else {
+                        // If no profile, clear fields
+                        setProductData({
+                          name: '',
+                          industry_sector: '',
+                          website: '',
+                          linkedin_url: '',
+                          address: '',
+                          year_founded: undefined,
+                          employees_count: undefined,
+                          short_description: '',
+                        });
+                      }
                       return;
                     }
                     setSelectedProductId(value);
@@ -326,10 +447,10 @@ const CreatePitchDeck: React.FC = () => {
                   }}
                 >
                   <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Select existing product or create new" />
+                    <SelectValue placeholder="Select existing pitch deck or create new" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__create_new__">Create New Product</SelectItem>
+                    <SelectItem value="__create_new__">Create New Pitch Deck</SelectItem>
                     {products.map((product) => (
                       <SelectItem key={product.id} value={product.id}>
                         {product.name}
@@ -338,7 +459,7 @@ const CreatePitchDeck: React.FC = () => {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500">
-                  Select an existing product to add a pitch deck, or create a new one below
+                  Select an existing pitch deck to add a pitch deck, or create a new one below
                 </p>
               </div>
             )}
@@ -346,12 +467,12 @@ const CreatePitchDeck: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-gray-700">
-                  Product Name <span className="text-red-500">*</span>
+                  Company Name <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   value={productData.name}
                   onChange={(e) => setProductData({ ...productData, name: e.target.value })}
-                  placeholder="Enter company or product name"
+                  placeholder="Enter company name"
                   disabled={!!selectedProductId}
                   className="h-10"
                 />
@@ -416,7 +537,7 @@ const CreatePitchDeck: React.FC = () => {
               <Textarea
                 value={productData.short_description}
                 onChange={(e) => setProductData({ ...productData, short_description: e.target.value })}
-                placeholder="Brief description of your product (2-3 sentences)"
+                placeholder="Brief description of your pitch deck (2-3 sentences)"
                 rows={3}
                 disabled={!!selectedProductId}
                 className="min-h-[80px]"
@@ -524,7 +645,7 @@ const CreatePitchDeck: React.FC = () => {
                     solution_description: e.target.value,
                   })
                 }
-                placeholder="How does your product solve this problem? Explain your unique approach and value proposition."
+                placeholder="How does your pitch deck solve this problem? Explain your unique approach and value proposition."
                 rows={4}
                 disabled={isMutating}
                 className="min-h-[100px]"

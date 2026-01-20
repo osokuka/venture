@@ -115,19 +115,8 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
     if (selectedConversation?.id && selectedConversation.id !== 'new' && !isLoadingMessages) {
       // Reset the fetch tracking when conversation changes
       if (lastFetchedConversationId.current !== selectedConversation.id) {
-        console.log(`[MessagingSystem] useEffect: Fetching messages for conversation ${selectedConversation.id}`);
         lastFetchedConversationId.current = null;
         fetchMessages(selectedConversation.id);
-      } else {
-        console.log(`[MessagingSystem] useEffect: Skipping fetch - already fetched conversation ${selectedConversation.id}`);
-      }
-    } else {
-      if (!selectedConversation?.id) {
-        console.log('[MessagingSystem] useEffect: No conversation selected');
-      } else if (selectedConversation.id === 'new') {
-        console.log('[MessagingSystem] useEffect: Conversation is "new", skipping fetch');
-      } else if (isLoadingMessages) {
-        console.log('[MessagingSystem] useEffect: Already loading messages, skipping fetch');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,7 +166,7 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
           return;
         }
       } catch (e) {
-        console.log('Not found in mentors, trying investors...');
+        // Not found in mentors, trying investors...
       }
       
       // Try to fetch investor
@@ -205,7 +194,7 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
           return;
         }
       } catch (e) {
-        console.log('Not found in investors');
+        // Not found in investors
       }
       
       // Fallback: Create temporary conversation with minimal info
@@ -252,12 +241,6 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
       // Ensure data is an array
       const conversationsList = Array.isArray(data) ? data : [];
       
-      // Debug: Log received conversations (temporary - for debugging)
-      console.log(`[MessagingSystem] Received ${conversationsList.length} conversations from API`);
-      conversationsList.forEach((conv: Conversation, idx: number) => {
-        console.log(`  [${idx}] Conversation ${conv.id}: last_message=${conv.last_message?.body?.substring(0, 50) || 'none'}..., unread_count=${conv.unread_count}`);
-      });
-      
       setConversations(conversationsList);
       
       // If selectedUserId is provided, find and select that conversation
@@ -303,26 +286,20 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
   };
 
   const fetchMessages = async (conversationId: string) => {
-    console.log(`[MessagingSystem] fetchMessages called for conversation ${conversationId}`);
-    
     if (!conversationId || !currentUser?.id) {
-      console.log(`[MessagingSystem] fetchMessages: Skipping - conversationId=${conversationId}, currentUser.id=${currentUser?.id}`);
       return; // Don't fetch if conversation ID or user is invalid
     }
     
     // Prevent duplicate fetches - check if we're already loading or if this conversation was just fetched
     if (isLoadingMessages) {
-      console.log(`[MessagingSystem] fetchMessages: Already loading messages, skipping`);
       return;
     }
     
     if (lastFetchedConversationId.current === conversationId) {
-      console.log(`[MessagingSystem] fetchMessages: Already fetched conversation ${conversationId}, skipping`);
       return;
     }
     
     // Mark this conversation as being fetched
-    console.log(`[MessagingSystem] fetchMessages: Starting fetch for conversation ${conversationId}`);
     lastFetchedConversationId.current = conversationId;
     setIsLoadingMessages(true);
     
@@ -333,12 +310,6 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
       // Get all messages from the conversation (backend returns all messages chronologically)
       const conversationMessages = conversationDetail.messages || [];
       
-      // Debug: Log received messages (temporary - for debugging)
-      console.log(`[MessagingSystem] Conversation ${conversationId}: Received ${conversationMessages.length} messages from API`);
-      conversationMessages.forEach((msg: Message, idx: number) => {
-        console.log(`  [${idx}] Message ${msg.id}: sender=${msg.sender_email}, created_at=${msg.created_at}, body_preview=${msg.body.substring(0, 50)}...`);
-      });
-      
       // Sort by created_at (oldest first) for chronological display
       const sortedMessages = [...conversationMessages].sort((a, b) => {
         const timeA = new Date(a.created_at).getTime();
@@ -346,7 +317,6 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
         return timeA - timeB;
       });
       
-      console.log(`[MessagingSystem] Setting ${sortedMessages.length} messages to state`);
       setMessages(sortedMessages);
       
       // Update selectedConversation with the conversation data
@@ -377,17 +347,72 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
     ) {
       // Mark as read after a short delay to ensure messages are fully loaded
       const timeoutId = setTimeout(() => {
-        messagingService.markConversationRead(selectedConversation.id)
-          .then(() => {
-            // Refresh conversations to update unread count
-            fetchConversations();
-            // Refresh global unread count badge in ModernDashboardLayout
+        const conversationId = selectedConversation.id;
+        const otherParticipantId = selectedConversation?.other_participant?.id;
+        
+        // Find all conversations with the same user to mark them all as read
+        // This is important because conversations are grouped by user, and unread counts are combined
+        const conversationsToMarkRead = conversations.filter(conv => 
+          conv.other_participant?.id === otherParticipantId && conv.unread_count > 0
+        );
+        
+        // Mark all conversations with this user as read
+        Promise.all(
+          conversationsToMarkRead.map(conv => messagingService.markConversationRead(conv.id))
+        )
+          .then(async () => {
+            // Immediately update conversations list to remove badge from ALL conversations with this user
+            // This ensures the grouped badge disappears immediately
+            setConversations(prevConversations => 
+              prevConversations.map(conv => {
+                // If this conversation is with the same user (other participant), set unread_count to 0
+                if (otherParticipantId && conv.other_participant?.id === otherParticipantId) {
+                  return { ...conv, unread_count: 0 };
+                }
+                return conv;
+              })
+            );
+            
+            // Immediately update selectedConversation state to remove badge
+            // This ensures the badge disappears immediately in the UI
+            setSelectedConversation(prev => {
+              if (prev && prev.id === conversationId) {
+                return { ...prev, unread_count: 0 };
+              }
+              return prev;
+            });
+            
+            // Refresh conversations from API to ensure we have latest data
+            // This is a background refresh to sync with server state
+            try {
+              const conversationsList = await messagingService.getConversations();
+              const conversationsArray = Array.isArray(conversationsList) ? conversationsList : [];
+              
+              // Update conversations list with fresh data from API
+              setConversations(conversationsArray);
+              
+              // Update selectedConversation if it still exists in the refreshed list
+              if (conversationId && conversationId !== 'new') {
+                const updatedConv = conversationsArray.find((c: Conversation) => c.id === conversationId);
+                if (updatedConv) {
+                  setSelectedConversation(updatedConv);
+                }
+              }
+            } catch (error) {
+              console.error('Failed to refresh conversations:', error);
+            }
+            
+            // Immediately refresh global unread count badge in ModernDashboardLayout
+            // This ensures badge is removed immediately when user reads messages
             if (onRefreshUnreadCount) {
+              // Call immediately to update badge synchronously
               onRefreshUnreadCount();
             }
           })
-          .catch(console.error);
-      }, 1000); // Increased delay to ensure messages are loaded
+          .catch((error) => {
+            console.error('Failed to mark conversations as read:', error);
+          });
+      }, 500); // Reduced delay for faster badge update
       
       return () => clearTimeout(timeoutId);
     }
@@ -790,6 +815,47 @@ export function MessagingSystem({ currentUser, selectedUserId, selectedUserName,
                         setMessages([]);
                         // Set the new conversation
                         setSelectedConversation(conv);
+                        // If this conversation has unread messages, mark ALL conversations with this user as read
+                        // This ensures badge disappears when user clicks on conversation
+                        // Important: conversations are grouped by user, so we need to mark all as read
+                        if (conv.unread_count > 0) {
+                          const otherParticipantId = conv.other_participant?.id;
+                          // Find all conversations with the same user
+                          const conversationsToMarkRead = conversations.filter(c => 
+                            c.other_participant?.id === otherParticipantId && c.unread_count > 0
+                          );
+                          
+                          // Mark all conversations with this user as read
+                          Promise.all(
+                            conversationsToMarkRead.map(c => messagingService.markConversationRead(c.id))
+                          )
+                            .then(() => {
+                              // Update conversations list immediately to remove badge from ALL conversations with this user
+                              setConversations(prevConversations => 
+                                prevConversations.map(c => {
+                                  // If this conversation is with the same user (other participant), set unread_count to 0
+                                  if (otherParticipantId && c.other_participant?.id === otherParticipantId) {
+                                    return { ...c, unread_count: 0 };
+                                  }
+                                  return c;
+                                })
+                              );
+                              // Update selected conversation
+                              setSelectedConversation(prev => {
+                                if (prev && prev.id === conv.id) {
+                                  return { ...prev, unread_count: 0 };
+                                }
+                                return prev;
+                              });
+                              // Refresh global badge
+                              if (onRefreshUnreadCount) {
+                                onRefreshUnreadCount();
+                              }
+                            })
+                            .catch((error) => {
+                              console.error('Failed to mark conversation as read:', error);
+                            });
+                        }
                       }
                     }}
                   >

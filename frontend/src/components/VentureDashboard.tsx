@@ -55,6 +55,7 @@ import { messagingService } from '../services/messagingService';
 import { investorService, type InvestorProfile } from '../services/investorService';
 import { mentorService, type MentorProfile } from '../services/mentorService';
 import { productService, type ProductCommitment } from '../services/productService';
+import { ventureService, type VentureUserProfile } from '../services/ventureService';
 import { validateUuid, sanitizeInput } from '../utils/security';
 import { SafeText } from './SafeText';
 
@@ -85,6 +86,10 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [selectedMentor, setSelectedMentor] = useState<MentorProfile | null>(null);
   const [isLoadingMentorProfile, setIsLoadingMentorProfile] = useState(false);
+  
+  // State for venture profile (user-level profile, separate from products/pitch decks)
+  const [ventureProfile, setVentureProfile] = useState<VentureUserProfile | null>(null);
+  const [isLoadingVentureProfile, setIsLoadingVentureProfile] = useState(false);
   
   // State to track if we should auto-open pitch deck creation
   const [autoOpenPitchDeck, setAutoOpenPitchDeck] = useState<string | null>(null);
@@ -122,11 +127,27 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   useEffect(() => {
     if (activeView === 'investors') {
       fetchInvestors();
-      // Also fetch pitch deck share status
+      // Also fetch pitch deck share status to show viewed/not viewed badges
       fetchPitchDeckShareStatus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, searchTerm, filterStage]);
+  
+  // Refresh pitch deck share status when commitments change
+  // This ensures "Viewed" status updates when investor commits
+  useEffect(() => {
+    if (activeView === 'investors' || activeView === 'overview') {
+      // Refresh share status when commitments are updated
+      // This ensures viewed status reflects latest investor activity
+      const hasCommitments = Object.values(productCommitments).some((commitments: unknown) => {
+        return Array.isArray(commitments) && commitments.length > 0;
+      });
+      if (hasCommitments) {
+        fetchPitchDeckShareStatus();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productCommitments, activeView]);
 
   // Fetch mentors when component mounts or view changes to mentors
   useEffect(() => {
@@ -136,7 +157,33 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, searchTerm]);
 
-  // Fetch products for stats
+  // Fetch venture profile on mount (user-level profile data)
+  // Also refetch when user updates profile via EditProfile
+  useEffect(() => {
+    const fetchVentureProfile = async () => {
+      setIsLoadingVentureProfile(true);
+      try {
+        const profile = await ventureService.getMyProfile();
+        setVentureProfile(profile);
+      } catch (error) {
+        console.error('Failed to fetch venture profile:', error);
+        // Profile might not exist yet, that's okay
+        setVentureProfile(null);
+      } finally {
+        setIsLoadingVentureProfile(false);
+      }
+    };
+    fetchVentureProfile();
+  }, [user]); // Refetch when user object changes (e.g., after profile update)
+
+  // Fetch products on mount and when view changes to overview
+  // Always fetch on mount to ensure profile completion check works
+  useEffect(() => {
+    fetchProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Fetch on mount
+
+  // Also refresh products when switching to overview view
   useEffect(() => {
     if (activeView === 'overview') {
       fetchProducts();
@@ -167,12 +214,15 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     }
   };
 
-  // Fetch commitments when products change
+  // Fetch commitments when products change or when viewing overview
+  // Always refresh when viewing overview to ensure latest commitment data is displayed
   useEffect(() => {
     if (activeView === 'overview' || activeView === 'products') {
       const approvedProducts = products.filter((p: any) => p.status === 'APPROVED' && p.is_active);
       approvedProducts.forEach((product: any) => {
-        if (product.id && !productCommitments[product.id]) {
+        if (product.id) {
+          // Always fetch to ensure latest commitment data is displayed
+          // This ensures commitment stages are properly reflected in overview
           fetchProductCommitments(product.id);
         }
       });
@@ -190,8 +240,13 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     try {
       await productService.acceptCommitment(productId, commitmentId);
       toast.success("Commitment accepted! Deal created successfully.");
-      // Refresh commitments
+      // Refresh commitments immediately to reflect latest status in overview
       await fetchProductCommitments(productId);
+      // If on overview, force a re-render to show updated commitment stages
+      if (activeView === 'overview') {
+        // Trigger state update to ensure UI reflects latest commitment data
+        setProductCommitments(prev => ({ ...prev }));
+      }
     } catch (error: any) {
       console.error('Error accepting commitment:', error);
       toast.error(error.message || "Failed to accept commitment");
@@ -213,8 +268,13 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     try {
       await productService.renegotiateCommitment(productId, commitmentId, message.trim());
       toast.success("Renegotiation request sent to investor.");
-      // Refresh commitments
+      // Refresh commitments immediately to reflect latest status in overview
       await fetchProductCommitments(productId);
+      // If on overview, force a re-render to show updated commitment stages
+      if (activeView === 'overview') {
+        // Trigger state update to ensure UI reflects latest commitment data
+        setProductCommitments(prev => ({ ...prev }));
+      }
     } catch (error: any) {
       console.error('Error requesting renegotiation:', error);
       toast.error(error.message || "Failed to request renegotiation");
@@ -692,9 +752,25 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     };
   };
 
+  // Handle profile update - redirect to profile view after successful update
+  const handleProfileUpdate = (updatedUser: FrontendUser) => {
+    // Call the original callback if provided
+    if (onProfileUpdate) {
+      onProfileUpdate(updatedUser);
+    }
+    // Redirect to profile view after update
+    onViewChange?.('profile');
+    // Refresh venture profile data to reflect updates
+    ventureService.getMyProfile()
+      .then(setVentureProfile)
+      .catch(error => {
+        console.error('Failed to refresh venture profile after update:', error);
+      });
+  };
+
   // Handle profile and settings views
   if (activeView === 'edit-profile') {
-    return <EditProfile user={user} onProfileUpdate={onProfileUpdate} onCancel={() => onViewChange?.('profile')} />;
+    return <EditProfile user={user} onProfileUpdate={handleProfileUpdate} onCancel={() => onViewChange?.('profile')} />;
   }
 
   if (activeView === 'settings') {
@@ -712,17 +788,17 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         if (productsArray.length > 0) {
           // Use the first product (prefer approved/active, but use any if available)
           const firstProduct = productsArray.find((p: any) => p.status === 'APPROVED' && p.is_active) || productsArray[0];
-          // Navigate to products view and auto-open manage dialog with documents tab
+          // Navigate to pitch decks view and auto-open manage dialog with documents tab
           setAutoOpenPitchDeck(firstProduct.id);
           onViewChange?.('products');
         } else {
-          // No products exist - navigate to products view to create one first
+          // No pitch decks exist - navigate to pitch decks view to create one first
           onViewChange?.('products');
-          toast.info('Please create a product first, then you can add pitch decks.');
+          toast.info('Please create a pitch deck first, then you can add pitch decks.');
         }
       } catch (error) {
-        console.error('Failed to fetch products:', error);
-        // Still navigate to products view
+        console.error('Failed to fetch pitch decks:', error);
+        // Still navigate to pitch decks view
         onViewChange?.('products');
       }
     };
@@ -741,12 +817,30 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   const fundingData = getFundingFromProducts();
   const pitchDeckMetrics = getPitchDeckMetrics();
 
-  // Calculate stats from real data - only show interested investors if there are products with pitch decks that have been shared
+  // Calculate number of unique investors who have committed
+  // Count investors from all commitments across all products
+  const committedInvestorsCount = (() => {
+    const investorIds = new Set<string>();
+    const commitmentsArray = Object.values(productCommitments) as any[][];
+    commitmentsArray.forEach((commitments: any[]) => {
+      if (Array.isArray(commitments)) {
+        commitments.forEach((commitment: any) => {
+          if (commitment?.investor_id) {
+            investorIds.add(commitment.investor_id);
+          }
+        });
+      }
+    });
+    return investorIds.size;
+  })();
+
+  // Calculate stats from real data
+  // Show number of investors who have committed (instead of just interested investors)
   const stats = {
     fundingGoal: fundingData.fundingGoal,
     fundingRaised: fundingData.fundingRaised,
     fundingProgress: fundingData.fundingProgress,
-    investors: interestedInvestors.length, // Use actual interested investors count (will be 0 if no products/pitch decks)
+    investors: committedInvestorsCount, // Count of investors who have committed (not just interested)
     mentors: mentors.length,
     pitchViews: pitchDeckMetrics.views,
     totalMessages: unreadCount,
@@ -770,7 +864,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     if (approvedProducts.length === 0) {
       return {
         canContact: false,
-        reason: 'You need at least one approved product to contact investors. Please submit and get your product approved first.'
+        reason: 'You need at least one approved pitch deck to contact investors. Please submit and get your pitch deck approved first.'
       };
     }
     return { canContact: true };
@@ -876,7 +970,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           setProducts(productsList);
         } catch (err: any) {
           console.error('Failed to fetch products:', err);
-          toast.error('Failed to load products');
+          toast.error('Failed to load pitch decks');
           return;
         }
       }
@@ -893,7 +987,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
       
       if (approvedProduct) {
         targetProductId = approvedProduct.id;
-        productName = approvedProduct.company_name || approvedProduct.product_name || 'your product';
+        productName = approvedProduct.company_name || approvedProduct.product_name || 'your pitch deck';
         
         // Only find ACTIVE pitch decks (not inactive ones)
         const pitchDeck = approvedProduct.documents.find((doc: any) => 
@@ -907,13 +1001,13 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     }
 
     if (!targetProductId || !targetDocId) {
-      toast.error("No active pitch deck available to share. Please ensure your product is approved and has an active pitch deck.");
+      toast.error("No active pitch deck available to share. Please ensure your pitch deck is approved and has an active pitch deck.");
       return;
     }
 
     // Security: Validate UUIDs
     if (!validateUuid(targetProductId) || !validateUuid(targetDocId)) {
-      toast.error("Invalid product or document ID");
+      toast.error("Invalid pitch deck or document ID");
       return;
     }
 
@@ -974,10 +1068,129 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     }
   };
 
-  const renderOverview = () => (
-    <div className="space-y-6">
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+  // Helper function to check if company profile is complete
+  // This checks the VentureProfile (user-level profile), not products/pitch decks
+  const isCompanyProfileComplete = (): { isComplete: boolean; missingFields: string[] } => {
+    const missingFields: string[] = [];
+
+    // Use ventureProfile from API if available, otherwise fall back to user.profile
+    const profile = ventureProfile || (user.profile ? {
+      company_name: (user.profile as any).companyName,
+      sector: (user.profile as any).sector,
+      short_description: (user.profile as any).shortDescription,
+      website: (user.profile as any).website,
+      linkedin_url: (user.profile as any).linkedinUrl,
+      phone: (user.profile as any).phone,
+    } : null);
+
+    // If no profile data exists at all, all fields are missing
+    if (!profile) {
+      return {
+        isComplete: false,
+        missingFields: ['Company Name', 'Industry Sector', 'Short Description', 'Website', 'LinkedIn URL', 'Phone']
+      };
+    }
+
+    // Check required VentureProfile fields
+    if (!profile.company_name || !profile.company_name.trim()) {
+      missingFields.push('Company Name');
+    }
+    if (!profile.sector || !profile.sector.trim()) {
+      missingFields.push('Industry Sector');
+    }
+    if (!profile.short_description || !profile.short_description.trim()) {
+      missingFields.push('Short Description');
+    }
+    if (!profile.website || !profile.website.trim()) {
+      missingFields.push('Website');
+    }
+    if (!profile.linkedin_url || !profile.linkedin_url.trim()) {
+      missingFields.push('LinkedIn URL');
+    }
+    if (!profile.phone || !profile.phone.trim()) {
+      missingFields.push('Phone');
+    }
+
+    return {
+      isComplete: missingFields.length === 0,
+      missingFields
+    };
+  };
+
+  // Helper function to render profile completion notification
+  // This guides users to complete their VentureProfile (user-level profile data)
+  const renderProfileCompletionNotification = () => {
+    // Don't show notification while venture profile is loading
+    if (isLoadingVentureProfile) {
+      return null;
+    }
+
+    const profileCheck = isCompanyProfileComplete();
+    
+    // Only show notification if profile is incomplete
+    if (profileCheck.isComplete) {
+      return null;
+    }
+
+    return (
+      <Card className="border-amber-200 bg-amber-50 shadow-md">
+        <CardContent className="p-6">
+          <div className="flex items-start justify-between">
+            <div className="flex items-start space-x-4 flex-1">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <AlertCircle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-amber-900 mb-2">
+                  Complete Your Company Profile
+                </h3>
+                <p className="text-sm text-amber-800 mb-3">
+                  Please complete your company profile. Missing fields: {profileCheck.missingFields.join(', ')}
+                </p>
+                <p className="text-sm text-amber-700 mb-4">
+                  You need to complete your company profile information (company name, sector, description, website, LinkedIn, and phone) before you can fully use the platform and connect with investors.
+                </p>
+                <div className="flex items-center gap-3">
+                  <Button
+                    onClick={() => {
+                      // Navigate to edit-profile view to complete VentureProfile
+                      onViewChange?.('edit-profile');
+                      toast.info('Please complete all required company profile fields.');
+                    }}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    Edit Profile
+                  </Button>
+                  <button
+                    onClick={() => {
+                      // Navigate to edit-profile view to complete VentureProfile
+                      onViewChange?.('edit-profile');
+                      toast.info('Please complete all required company profile fields.');
+                    }}
+                    className="text-sm text-amber-700 hover:text-amber-900 underline font-medium flex items-center gap-1"
+                  >
+                    Go to Edit Profile
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderOverview = () => {
+    const profileCheck = isCompanyProfileComplete();
+    
+    return (
+      <div className="space-y-6">
+        {/* Profile Completion Notification - Show prominently at top */}
+        {renderProfileCompletionNotification()}
+      
+        {/* Key Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="hover:shadow-medium transition-shadow">
           <CardContent className="p-6">
             <div className="flex items-center">
@@ -1256,8 +1469,8 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
               {approvedProducts.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-sm">No approved products yet</p>
-                  <p className="text-xs mt-1">Approved products will show investment commitments here</p>
+                  <p className="text-sm">No approved pitch decks yet</p>
+                  <p className="text-xs mt-1">Approved pitch decks will show investment commitments here</p>
                 </div>
               ) : allCommitments.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
@@ -1366,21 +1579,69 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                       <h4 className="text-sm font-semibold text-orange-600">Renegotiation Requests</h4>
                       {allCommitments.filter(c => c.venture_response === 'RENEGOTIATE').map((commitment) => (
                         <div key={commitment.commitment_id} className="p-4 border border-orange-200 bg-orange-50/50 rounded-lg">
-                          <div className="flex items-start justify-between">
+                          <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <div className="flex items-center space-x-2 mb-2">
                                 <h5 className="font-semibold">{commitment.investor_name}</h5>
+                                {commitment.investor_organization && (
+                                  <span className="text-sm text-muted-foreground">• {commitment.investor_organization}</span>
+                                )}
                                 <Badge variant="outline" className="border-orange-500 text-orange-600">
                                   Renegotiation Requested
                                 </Badge>
                               </div>
+                              <p className="text-sm text-muted-foreground mb-2">{commitment.investor_email}</p>
+                              {/* Show current commitment amount (may have been updated by investor) */}
+                              {commitment.amount && (
+                                <p className="text-lg font-bold text-green-600">
+                                  ${parseFloat(commitment.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </p>
+                              )}
+                              {/* Show investor's message if available */}
+                              {commitment.message && (
+                                <div className="mt-2 p-2 bg-white rounded border">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Investor Message:</p>
+                                  <p className="text-sm">{commitment.message}</p>
+                                </div>
+                              )}
+                              {/* Show venture's renegotiation request message */}
                               {commitment.venture_response_message && (
-                                <p className="text-sm text-muted-foreground mt-2">"{commitment.venture_response_message}"</p>
+                                <div className="mt-2 p-2 bg-orange-100 rounded border border-orange-300">
+                                  <p className="text-xs font-medium text-orange-800 mb-1">Your Renegotiation Request:</p>
+                                  <p className="text-sm text-orange-900">"{commitment.venture_response_message}"</p>
+                                </div>
                               )}
                               <p className="text-xs text-muted-foreground mt-2">
-                                Requested {commitment.venture_response_at ? new Date(commitment.venture_response_at).toLocaleDateString() : 'N/A'}
+                                Committed {commitment.committed_at ? new Date(commitment.committed_at).toLocaleDateString() : 'N/A'}
+                                {commitment.venture_response_at && (
+                                  <span> • Renegotiation requested {new Date(commitment.venture_response_at).toLocaleDateString()}</span>
+                                )}
                               </p>
                             </div>
+                          </div>
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleAcceptCommitment(
+                                approvedProducts.find((p: any) => productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id))?.id || '',
+                                commitment.commitment_id
+                              )}
+                            >
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Accept (Create Deal)
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRenegotiateCommitment(
+                                approvedProducts.find((p: any) => productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id))?.id || '',
+                                commitment.commitment_id
+                              )}
+                            >
+                              <AlertCircle className="w-4 h-4 mr-2" />
+                              Request Renegotiation Again
+                            </Button>
                           </div>
                         </div>
                       ))}
@@ -1495,6 +1756,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
       </div>
     </div>
   );
+  };
 
   const renderInvestors = () => {
     // Use real API data with null safety
@@ -1779,12 +2041,13 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     );
   };
 
-  const renderFundraising = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Fundraising</h2>
-        <p className="text-muted-foreground">Track your fundraising progress and investor interactions</p>
-      </div>
+  const renderFundraising = () => {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold">Fundraising</h2>
+          <p className="text-muted-foreground">Track your fundraising progress and investor interactions</p>
+        </div>
 
       {/* Progress Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -2011,7 +2274,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                     <div className="w-3 h-3 bg-yellow-500 rounded-full mt-2"></div>
                     <div className="flex-1">
                       <h4 className="font-medium text-yellow-900">Awaiting Approval</h4>
-                      <p className="text-sm text-yellow-700">Your product is pending admin approval</p>
+                      <p className="text-sm text-yellow-700">Your pitch deck is pending admin approval</p>
                       <p className="text-xs text-yellow-600">
                         {(() => {
                           const diffDays = Math.floor((now.getTime() - submittedDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -2046,8 +2309,9 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           })()}
         </CardContent>
       </Card>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderMentors = () => {
     // Use real API data
@@ -2249,54 +2513,25 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         </div>
       );
     }
-    return <MessagingSystem
-      currentUser={user}
-      selectedUserId={selectedMessagingUserId}
-      selectedUserName={selectedMessagingUserName}
-      selectedUserRole={selectedMessagingUserRole}
-      onRefreshUnreadCount={onRefreshUnreadCount}
-    />;
-  };
-
-  // Render different views based on activeView
-  const renderCurrentView = () => {
-    switch (activeView) {
-      case 'products':
-        // Reset autoOpenPitchDeck after using it to prevent re-opening on re-renders
-        const productIdToOpen = autoOpenPitchDeck;
-        if (autoOpenPitchDeck) {
-          // Clear the flag after a short delay to allow the component to mount
-          setTimeout(() => setAutoOpenPitchDeck(null), 100);
-        }
-        return (
-          <ProductManagement 
-            user={user} 
-            defaultTab={productIdToOpen ? 'documents' : 'company'}
-            autoOpenProductId={productIdToOpen || undefined}
-          />
-        );
-        
-      case 'investors':
-        return renderInvestors();
-        
-      case 'pitch':
-        return renderPitch();
-        
-      case 'fundraising':
-        return renderFundraising();
-        
-      case 'mentors':
-        return renderMentors();
-        
-      case 'mentor-profile':
-        return renderMentorProfile();
-        
-      case 'messages':
-        return renderMessages();
-        
-      default:
-        return renderOverview();
-    }
+    // Convert user to FrontendUser format (matching InvestorDashboard implementation)
+    // This ensures consistent user format handling across dashboards
+    const frontendUser: FrontendUser = {
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role.toLowerCase() as 'venture' | 'investor' | 'mentor' | 'admin',
+    };
+    // Use key prop to force re-render when selectedUserId changes (matching InvestorDashboard)
+    // This ensures MessagingSystem updates correctly when switching conversations
+    return (
+      <MessagingSystem
+        currentUser={frontendUser}
+        selectedUserId={selectedMessagingUserId}
+        selectedUserName={selectedMessagingUserName}
+        selectedUserRole={selectedMessagingUserRole}
+        onRefreshUnreadCount={onRefreshUnreadCount}
+      />
+    );
   };
 
   const renderMentorProfile = () => {
@@ -2387,6 +2622,47 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
         />
       </div>
     );
+  };
+
+  // Render different views based on activeView
+  const renderCurrentView = () => {
+    switch (activeView) {
+      case 'products':
+        // Reset autoOpenPitchDeck after using it to prevent re-opening on re-renders
+        const productIdToOpen = autoOpenPitchDeck;
+        if (autoOpenPitchDeck) {
+          // Clear the flag after a short delay to allow the component to mount
+          setTimeout(() => setAutoOpenPitchDeck(null), 100);
+        }
+        return (
+          <ProductManagement 
+            user={user} 
+            defaultTab={productIdToOpen ? 'documents' : 'company'}
+            autoOpenProductId={productIdToOpen || undefined}
+          />
+        );
+        
+      case 'investors':
+        return renderInvestors();
+        
+      case 'pitch':
+        return renderPitch();
+        
+      case 'fundraising':
+        return renderFundraising();
+        
+      case 'mentors':
+        return renderMentors();
+        
+      case 'mentor-profile':
+        return renderMentorProfile();
+        
+      case 'messages':
+        return renderMessages();
+        
+      default:
+        return renderOverview();
+    }
   };
 
   return renderCurrentView();

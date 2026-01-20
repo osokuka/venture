@@ -183,6 +183,34 @@ export function PitchDeckCRUD({ productId, productStatus, onUpdate }: PitchDeckC
       return;
     }
 
+    // Check if company profile is complete before allowing pitch deck upload
+    if (!product) {
+      toast.error('Product information not loaded. Please refresh the page.');
+      return;
+    }
+
+    const missingFields: string[] = [];
+    if (!product.name || !product.name.trim()) {
+      missingFields.push('Company Name');
+    }
+    if (!product.industry_sector || !product.industry_sector.trim()) {
+      missingFields.push('Industry Sector');
+    }
+    if (!product.website || !product.website.trim()) {
+      missingFields.push('Website');
+    }
+    if (!product.linkedin_url || !product.linkedin_url.trim()) {
+      missingFields.push('LinkedIn URL');
+    }
+    if (!product.short_description || !product.short_description.trim()) {
+      missingFields.push('Short Description');
+    }
+
+    if (missingFields.length > 0) {
+      toast.error(`Please complete your company profile first. Missing fields: ${missingFields.join(', ')}`);
+      return;
+    }
+
     // Security: Validate file
     const validation = validatePitchDeckFile(formData.file);
     if (!validation.isValid) {

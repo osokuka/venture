@@ -144,7 +144,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
       case 'venture':
         return [
           ...baseItems.slice(0, 1), // Overview
-          { id: 'products', icon: Building, label: 'My Products' },
+          { id: 'products', icon: Building, label: 'My Pitch Decks' },
           { id: 'investors', icon: TrendingUp, label: 'Browse Investors' },
           { id: 'mentors', icon: Users, label: 'Browse Mentors' },
           ...baseItems.slice(1) // Messages

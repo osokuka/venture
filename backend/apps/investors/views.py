@@ -685,6 +685,29 @@ def commit_to_invest(request, product_id, doc_id):
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=['last_message_at'])
         
+        # Mark pitch deck share as viewed if investor commits (implies they've viewed it)
+        # This ensures the venture sees "Viewed" status instead of "Not viewed yet"
+        from apps.ventures.models import PitchDeckShare, PitchDeckAccessEvent
+        PitchDeckShare.objects.filter(
+            document=document,
+            investor=request.user,
+            viewed_at__isnull=True
+        ).update(viewed_at=timezone.now())
+        
+        # Also check if investor has viewed via access events (in case they viewed before committing)
+        # If there's a VIEW event, mark share as viewed even if commit happened first
+        has_viewed_event = PitchDeckAccessEvent.objects.filter(
+            document=document,
+            user=request.user,
+            event_type='VIEW'
+        ).exists()
+        if has_viewed_event:
+            PitchDeckShare.objects.filter(
+                document=document,
+                investor=request.user,
+                viewed_at__isnull=True
+            ).update(viewed_at=timezone.now())
+        
         return Response({
             'detail': 'Investment commitment recorded successfully.',
             'commitment_id': str(commitment.id),
@@ -799,6 +822,28 @@ def update_commitment(request, product_id, commitment_id):
         commitment.responded_by = None
         commitment.updated_at = timezone.now()
         commitment.save(update_fields=['amount', 'message', 'venture_response', 'venture_response_at', 'venture_response_message', 'responded_by', 'updated_at'])
+        
+        # Mark pitch deck share as viewed if investor updates commitment (implies they've viewed it)
+        # This ensures the venture sees "Viewed" status instead of "Not viewed yet"
+        from apps.ventures.models import PitchDeckShare, PitchDeckAccessEvent
+        PitchDeckShare.objects.filter(
+            document=commitment.document,
+            investor=request.user,
+            viewed_at__isnull=True
+        ).update(viewed_at=timezone.now())
+        
+        # Also check if investor has viewed via access events
+        has_viewed_event = PitchDeckAccessEvent.objects.filter(
+            document=commitment.document,
+            user=request.user,
+            event_type='VIEW'
+        ).exists()
+        if has_viewed_event:
+            PitchDeckShare.objects.filter(
+                document=commitment.document,
+                investor=request.user,
+                viewed_at__isnull=True
+            ).update(viewed_at=timezone.now())
         
         # Get or create conversation if not already linked
         if not commitment.conversation:

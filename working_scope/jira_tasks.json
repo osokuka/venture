@@ -3159,14 +3159,228 @@
         }
       ],
       "status": "Done"
+    },
+    {
+      "key": "VL-850",
+      "summary": "Revisit Pitch Deck Sharing Workflow, Commitment Stages Display, and Fix Message/Notification Badges",
+      "description": "Comprehensive review and enhancement of the pitch deck sharing workflow between ventures and investors, ensuring commitment stages are properly reflected in the venture overview page, and fixing badge removal for messages and notifications when users read them.\n\n**Issues Identified:**\n\n1. **Pitch Deck Sharing Workflow:**\n   - Current workflow: Venture shares pitch deck → Investor views → Investor commits → Venture accepts/renegotiates\n   - Need to ensure all stages are properly tracked and displayed\n   - Verify that commitment stages (EXPRESSED, COMMITTED, WITHDRAWN, COMPLETED) are correctly reflected\n   - Ensure venture_response (PENDING, ACCEPTED, RENEGOTIATE) is properly tracked\n   - Verify that is_deal status is correctly calculated and displayed\n\n2. **Commitment Stages in Venture Overview:**\n   - Current implementation shows commitments in overview page\n   - Need to ensure latest commitment information is reflected:\n     - Pending commitments (venture_response='PENDING')\n     - Accepted deals (is_deal=True)\n     - Renegotiation requests (venture_response='RENEGOTIATE')\n   - Verify that commitment status updates are immediately reflected\n   - Ensure proper refresh mechanism when commitments change\n   - Check if commitment stages are properly displayed with correct badges and colors\n\n3. **Message Badge Removal:**\n   - Current implementation: Messages are marked as read when conversation is opened\n   - Issue: Badge may not be removed immediately or properly refreshed\n   - Need to ensure:\n     - When user opens a conversation, messages are marked as read\n     - Badge count is immediately updated in all locations (sidebar, header, etc.)\n     - Unread count API returns correct count after marking as read\n     - Badge disappears when all messages in conversation are read\n\n4. **Notification Badge Removal:**\n   - Need to identify notification system (if exists)\n   - If notifications exist, ensure badges are removed when notifications are read\n   - Verify notification read status is properly tracked\n   - Ensure badge count updates immediately when notification is read\n\n**Current Implementation Analysis:**\n\n**Backend:**\n- `PitchDeckShare` model tracks sharing with `viewed_at` timestamp\n- `InvestmentCommitment` model tracks commitments with status and venture_response\n- `mark_conversation_read` endpoint marks messages as read\n- `get_unread_count` endpoint returns unread message count\n\n**Frontend:**\n- `VentureDashboard.tsx` shows commitments in overview\n- `MessagingSystem.tsx` marks conversation as read when opened\n- Badge count is fetched via `getUnreadCount()` and displayed in sidebar/header\n- `onRefreshUnreadCount` callback is used to refresh badge count\n\n**Areas to Investigate:**\n1. Check if commitment data is properly refreshed when commitments change\n2. Verify badge refresh mechanism works correctly after marking as read\n3. Check if there's a notification system that needs badge handling\n4. Ensure all badge locations are updated when count changes\n5. Verify that commitment stages are properly displayed with latest data\n\n**Expected Outcomes:**\n- Pitch deck sharing workflow is clear and all stages are properly tracked\n- Commitment stages are accurately reflected in venture overview with latest information\n- Message badges are removed immediately when user reads messages\n- Notification badges (if applicable) are removed when user reads notifications\n- All badge counts are synchronized across all UI locations",
+      "type": "Story",
+      "priority": "High",
+      "epic": "VL-4",
+      "tasks": [
+        {
+          "summary": "Analyze current pitch deck sharing workflow and commitment tracking",
+          "description": "Review the complete pitch deck sharing workflow from venture to investor:\n\n1. **Review Backend Models:**\n   - `PitchDeckShare` - tracks sharing events\n   - `InvestmentCommitment` - tracks commitment stages\n   - Verify all fields are properly used\n\n2. **Review Backend Endpoints:**\n   - `/api/ventures/products/{id}/documents/{doc_id}/share` - share pitch deck\n   - `/api/investors/products/{product_id}/documents/{doc_id}/commit` - create commitment\n   - `/api/ventures/products/{product_id}/commitments` - list commitments\n   - `/api/ventures/products/{product_id}/commitments/{id}/accept` - accept commitment\n   - `/api/ventures/products/{product_id}/commitments/{id}/renegotiate` - renegotiate\n\n3. **Review Frontend Implementation:**\n   - `VentureDashboard.tsx` - how commitments are displayed\n   - `InvestorDashboard.tsx` - how commitments are created\n   - Verify data flow and state management\n\n4. **Identify Issues:**\n   - Are commitment stages properly tracked?\n   - Is venture_response properly updated?\n   - Is is_deal status correctly calculated?\n   - Are updates reflected immediately in UI?\n\n**Deliverable:** Document current workflow and identify gaps/issues",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Fix commitment stages display in venture overview page",
+          "description": "Ensure commitment stages are properly displayed in `/dashboard/venture/overview`:\n\n1. **Verify Data Fetching:**\n   - Check `fetchProductCommitments()` in `VentureDashboard.tsx`\n   - Ensure commitments are fetched for all approved products\n   - Verify data includes all required fields (status, venture_response, is_deal, etc.)\n\n2. **Fix Display Issues:**\n   - Ensure pending commitments show correctly with amber badge\n   - Ensure accepted deals show correctly with green badge\n   - Ensure renegotiation requests show correctly with orange badge\n   - Verify commitment amounts, dates, and messages are displayed\n\n3. **Implement Refresh Mechanism:**\n   - Add refresh when commitment is accepted/renegotiated\n   - Ensure overview page shows latest commitment status\n   - Verify real-time updates (if applicable)\n\n4. **Update Badge Counts:**\n   - Show pending commitment count badge\n   - Update badge when commitments change\n\n**Files to Modify:**\n- `frontend/src/components/VentureDashboard.tsx`\n- `frontend/src/services/productService.ts` (if needed)\n\n**Deliverable:** Commitment stages properly displayed with latest information",
+          "type": "Task",
+          "estimate": "3h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Fix message badge removal when user reads messages",
+          "description": "Ensure message badges are properly removed when user reads messages:\n\n1. **Review Current Implementation:**\n   - Check `MessagingSystem.tsx` - `markConversationRead()` call\n   - Verify `onRefreshUnreadCount` callback is properly called\n   - Check badge display in `ModernDashboardLayout.tsx` and `DashboardLayout.tsx`\n\n2. **Fix Badge Refresh:**\n   - Ensure badge count is refreshed immediately after marking as read\n   - Verify `getUnreadCount()` API returns correct count\n   - Check if badge refresh happens in all locations (sidebar, header, etc.)\n   - Ensure badge disappears when count reaches 0\n\n3. **Test Edge Cases:**\n   - Multiple conversations with unread messages\n   - Marking one conversation as read should update badge correctly\n   - Opening conversation should mark as read and update badge\n   - Verify badge doesn't show negative numbers\n\n4. **Improve Refresh Mechanism:**\n   - Ensure `onRefreshUnreadCount` callback is called after marking as read\n   - Verify badge updates synchronously (not just on polling interval)\n   - Check if manual refresh is needed or automatic refresh works\n\n**Files to Modify:**\n- `frontend/src/components/MessagingSystem.tsx`\n- `frontend/src/components/ModernDashboardLayout.tsx`\n- `frontend/src/components/DashboardLayout.tsx`\n- `frontend/src/services/messagingService.ts` (if needed)\n\n**Backend Verification:**\n- Verify `mark_conversation_read` endpoint properly marks messages as read\n- Verify `get_unread_count` endpoint excludes read messages\n\n**Deliverable:** Message badges removed immediately when user reads messages",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Investigate and fix notification badge removal (if notification system exists)",
+          "description": "Check if notification system exists and fix badge removal:\n\n1. **Investigate Notification System:**\n   - Search codebase for notification models/endpoints\n   - Check if there's a separate notification system\n   - Verify if notifications are displayed in UI\n   - Check if notification badges exist\n\n2. **If Notifications Exist:**\n   - Review notification read/unread tracking\n   - Implement badge removal when notification is read\n   - Ensure badge count updates immediately\n   - Verify notification read status is properly tracked\n\n3. **If No Notification System:**\n   - Document that no notification system exists\n   - Verify that message badges are the only badges\n   - Confirm task completion\n\n4. **Update Documentation:**\n   - Document notification system (if exists)\n   - Update task status based on findings\n\n**Files to Investigate:**\n- `backend/apps/` - search for notification models\n- `frontend/src/components/` - search for notification components\n- `frontend/src/services/` - search for notification services\n\n**Deliverable:** Notification badges fixed (if system exists) or documented that no system exists",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Test and verify all fixes",
+          "description": "Comprehensive testing of all fixes:\n\n1. **Test Pitch Deck Sharing Workflow:**\n   - Venture shares pitch deck with investor\n   - Investor views pitch deck\n   - Investor creates commitment\n   - Venture sees commitment in overview\n   - Venture accepts/renegotiates commitment\n   - Verify all stages are properly tracked and displayed\n\n2. **Test Commitment Stages Display:**\n   - Verify pending commitments show in overview\n   - Verify accepted deals show in overview\n   - Verify renegotiation requests show in overview\n   - Check that commitment status updates immediately\n   - Verify badges show correct counts\n\n3. **Test Message Badge Removal:**\n   - Send messages between users\n   - Verify badge appears with unread count\n   - Open conversation and verify badge is removed\n   - Check badge updates in all locations (sidebar, header)\n   - Verify badge doesn't show when all messages are read\n\n4. **Test Notification Badge Removal (if applicable):**\n   - Create notification (if system exists)\n   - Verify badge appears\n   - Read notification and verify badge is removed\n   - Check badge updates immediately\n\n5. **Edge Cases:**\n   - Multiple unread conversations\n   - Rapid message sending/receiving\n   - Commitment status changes\n   - Page refresh scenarios\n\n**Deliverable:** All fixes tested and verified working correctly",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-851",
+      "summary": "Analyze: Message Badge Issue Only in Venture Profile, Not Investor Profile",
+      "description": "Investigation into why message badges are not updating correctly in venture profile but work correctly in investor profile.\n\n**Issue Reported:**\n- Badge removal issue only occurs in venture profile (`/dashboard/venture/messages`)\n- Badge removal works correctly in investor profile (`/dashboard/investor/messages`)\n- Badges persist even after messages are read in venture profile\n\n**Analysis Findings:**\n\n1. **Both Dashboards Use Same Components:**\n   - Both `VentureDashboard` and `InvestorDashboard` use `MessagingSystem` component\n   - Both receive `onRefreshUnreadCount` callback from `ModernDashboardLayout`\n   - Both pass the callback to `MessagingSystem` correctly\n   - Badge is displayed in `ModernDashboardLayout` (shared component)\n\n2. **Conversation Grouping Logic:**\n   - `MessagingSystem` groups conversations by user (lines 716-750)\n   - Unread counts are combined from all conversations with the same user (line 746)\n   - When marking one conversation as read, other conversations with same user may still have unread messages\n   - This causes badge to persist if not all conversations are marked as read\n\n3. **Potential Root Causes:**\n   \n   **Hypothesis A: Multiple Conversations with Same User**\n   - Ventures may have multiple conversation threads with the same investor/mentor\n   - When one conversation is marked as read, others with same user still have unread_count > 0\n   - Grouping logic sums all unread counts, so badge persists\n   - **Fix Applied:** Mark ALL conversations with same user as read (implemented in VL-850)\n   \n   **Hypothesis B: Callback Not Being Called**\n   - `onRefreshUnreadCount` callback might not be called in venture profile\n   - Or callback is called but `ModernDashboardLayout` state not updating\n   - **Check:** Verify callback is being called and state updates correctly\n   \n   **Hypothesis C: State Update Timing Issue**\n   - Conversations list update might happen before badge refresh\n   - Or badge refresh happens before conversations are updated\n   - Race condition between state updates\n   - **Check:** Verify update order and timing\n   \n   **Hypothesis D: Venture-Specific Conversation Data**\n   - Ventures might have different conversation structure\n   - Or backend returns different data for ventures vs investors\n   - **Check:** Compare API responses between venture and investor profiles\n\n4. **Code Flow Comparison:**\n   \n   **Venture Dashboard:**\n   - `VentureDashboard` → receives `onRefreshUnreadCount` from `ModernDashboardLayout`\n   - Passes `currentUser={user}` directly (user object as-is)\n   - Passes to `MessagingSystem` → `onRefreshUnreadCount={onRefreshUnreadCount}`\n   - No `key` prop on MessagingSystem\n   - `MessagingSystem` calls callback after marking as read\n   - `ModernDashboardLayout.refreshUnreadCount()` updates badge state\n   \n   **Investor Dashboard:**\n   - `InvestorDashboard` → receives `onRefreshUnreadCount` from `ModernDashboardLayout`\n   - Converts user to `FrontendUser` format before passing\n   - Passes `currentUser={frontendUser}` (converted format)\n   - Uses `key={`messages-${selectedUserId || 'none'}`}` prop on MessagingSystem\n   - Passes to `MessagingSystem` → `onRefreshUnreadCount={onRefreshUnreadCount}`\n   - `MessagingSystem` calls callback after marking as read\n   - `ModernDashboardLayout.refreshUnreadCount()` updates badge state\n   \n   **Key Differences Found:**\n   1. InvestorDashboard converts user to FrontendUser format\n   2. InvestorDashboard uses key prop to force re-render\n   3. VentureDashboard passes user directly\n   4. VentureDashboard doesn't use key prop\n   \n   **Conclusion:** Code flow is similar but there are implementation differences that might affect behavior\n\n5. **Investigation Steps Needed:**\n   \n   a. **Check Conversation Data:**\n      - Log conversations returned from API for venture vs investor\n      - Check if ventures have more duplicate conversations with same user\n      - Verify unread_count values in API response\n   \n   b. **Check Callback Execution:**\n      - Add console.log in `refreshUnreadCount` to verify it's being called\n      - Check if callback is called with correct timing\n      - Verify state updates in `ModernDashboardLayout`\n   \n   c. **Check Badge Display:**\n      - Verify badge reads from correct state (`ModernDashboardLayout.unreadCount`)\n      - Check if badge condition `unreadCount > 0` is correct\n      - Verify badge updates when state changes\n   \n   d. **Check Conversation Grouping:**\n      - Log grouped conversations to see if ventures have more duplicates\n      - Check if unread_count calculation in grouping is correct\n      - Verify all conversations with same user are being marked as read\n\n6. **Most Likely Cause:**\n   Based on the grouping logic and the fact that it works for investors but not ventures:\n   - Ventures likely have multiple conversation threads with the same user (investor/mentor)\n   - When marking one conversation as read, others with same user still have unread messages\n   - The grouping logic combines unread counts, so badge persists\n   - **Fix Applied in VL-850:** Mark ALL conversations with same user as read\n   - **Status:** Fix implemented but may need verification\n\n7. **Implementation Differences Found:**\n   - **InvestorDashboard:** Converts user to `FrontendUser` format, uses `key` prop on MessagingSystem\n   - **VentureDashboard:** Passes user directly, no `key` prop\n   - These differences might affect component re-rendering or state updates\n   - **Recommendation:** Standardize implementation between both dashboards\n\n8. **Verification Needed:**\n   - Test badge removal in venture profile after fix\n   - Verify all conversations with same user are marked as read\n   - Check if badge disappears immediately\n   - Compare behavior between venture and investor profiles\n   - Verify callback is being called correctly\n   - Check if user format conversion affects behavior\n\n**Next Steps:**\n1. Verify the fix from VL-850 is working correctly\n2. Standardize user format handling between VentureDashboard and InvestorDashboard\n3. Add logging to debug callback execution\n4. Compare conversation data between venture and investor\n5. Test badge removal in both profiles\n6. Document findings and solution",
+      "type": "Story",
+      "priority": "High",
+      "epic": "VL-5",
+      "tasks": [
+        {
+          "summary": "Add debug logging to verify callback execution and state updates",
+          "description": "Add console.log statements to track:\n- When `onRefreshUnreadCount` is called\n- When `refreshUnreadCount` in ModernDashboardLayout executes\n- What unread count value is returned from API\n- When badge state updates\n- Compare logs between venture and investor profiles\n\n**Files to Modify:**\n- `frontend/src/components/MessagingSystem.tsx`\n- `frontend/src/components/ModernDashboardLayout.tsx`\n\n**Deliverable:** Debug logs showing callback execution flow",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Compare conversation data structure between venture and investor profiles",
+          "description": "Compare API responses and conversation data:\n- Log conversations returned from API for both profiles\n- Check if ventures have more duplicate conversations\n- Verify unread_count values match backend\n- Check conversation grouping results\n- Identify any differences in data structure\n\n**Files to Check:**\n- `backend/apps/messaging/serializers.py`\n- `backend/apps/messaging/views.py`\n- `frontend/src/components/MessagingSystem.tsx`\n\n**Deliverable:** Comparison report of conversation data",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Verify fix from VL-850 works correctly for venture profile",
+          "description": "Test the fix that marks all conversations with same user as read:\n- Verify all conversations are marked as read via API\n- Check if badge disappears immediately\n- Test with multiple conversations with same user\n- Compare behavior with investor profile\n- Document any remaining issues\n\n**Files to Test:**\n- `frontend/src/components/MessagingSystem.tsx`\n- `frontend/src/components/VentureDashboard.tsx`\n\n**Deliverable:** Test results and verification",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        }
+      ],
+      "status": "In Progress"
+    },
+    {
+      "key": "VL-852",
+      "summary": "Fix Pitch Deck Share Status: Mark as Viewed When Investor Commits",
+      "description": "Fix issue where pitch deck share status shows \"Not viewed yet\" even when investor has committed to invest. When an investor commits, it implies they've viewed the pitch deck, so we should mark it as viewed.\n\n**Issue:**\n- Pitch deck share status shows \"Not viewed yet\" in venture dashboard\n- Investor has committed to invest (indicating they've viewed the pitch deck)\n- `viewed_at` timestamp is only set when investor calls `/view` endpoint\n- If investor commits without explicitly viewing via `/view` endpoint, `viewed_at` remains null\n\n**Root Cause:**\n- `viewed_at` is only updated in `view_pitch_deck` endpoint (lines 1281-1287 in ventures/views.py)\n- `commit_to_invest` endpoint doesn't mark pitch deck as viewed\n- Investor might view pitch deck through PitchDeckDetails component or commit directly\n- Frontend doesn't refresh share status when commitments are made\n\n**Solution:**\n1. **Backend:** When investor commits to invest, also mark pitch deck share as viewed\n   - In `commit_to_invest` endpoint, check if pitch deck was shared with investor\n   - If shared and `viewed_at` is null, set `viewed_at` to current time\n   - This ensures committing implies viewing\n\n2. **Backend:** Also check PitchDeckAccessEvent for VIEW events\n   - If investor has any VIEW events for the pitch deck, mark share as viewed\n   - This handles cases where investor viewed before committing\n\n3. **Frontend:** Refresh share status when viewing investors page\n   - Ensure `fetchPitchDeckShareStatus` is called when investors page loads\n   - Refresh share status after commitments are made (if possible)\n\n**Files to Modify:**\n- `backend/apps/investors/views.py` - `commit_to_invest` endpoint\n- `backend/apps/investors/views.py` - `update_commitment` endpoint (if applicable)\n- `frontend/src/components/VentureDashboard.tsx` - Ensure share status refreshes\n\n**Expected Behavior:**\n- When investor commits to invest, pitch deck share is marked as viewed\n- Venture sees \"Viewed\" status instead of \"Not viewed yet\"\n- Share status reflects actual investor engagement\n- Status updates immediately when commitment is made",
+      "type": "Story",
+      "priority": "High",
+      "epic": "VL-4",
+      "tasks": [
+        {
+          "summary": "Backend: Mark pitch deck as viewed when investor commits",
+          "description": "Update `commit_to_invest` endpoint to mark pitch deck share as viewed:\n\n1. After creating/updating commitment, check if pitch deck was shared with investor\n2. If `PitchDeckShare` exists for this document and investor, and `viewed_at` is null:\n   - Set `viewed_at` to current time\n   - This ensures committing implies viewing\n\n3. Also check for existing VIEW events:\n   - If `PitchDeckAccessEvent` with event_type='VIEW' exists, mark share as viewed\n   - This handles cases where investor viewed before committing\n\n**Files Modified:**\n- `backend/apps/investors/views.py` - `commit_to_invest` function (lines 688-709)\n\n**Implementation:**\n- Added logic to mark PitchDeckShare as viewed when investor commits\n- Checks for existing VIEW events and marks as viewed if found\n- Ensures committing implies viewing\n\n**Deliverable:** ✅ Pitch deck share marked as viewed when investor commits",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Backend: Mark pitch deck as viewed when investor updates commitment",
+          "description": "Update `update_commitment` endpoint to also mark pitch deck as viewed:\n\n1. When investor updates commitment after renegotiation, mark share as viewed\n2. Same logic as commit endpoint - if share exists and not viewed, mark as viewed\n\n**Files Modified:**\n- `backend/apps/investors/views.py` - `update_commitment` function (lines 826-846)\n\n**Implementation:**\n- Added logic to mark PitchDeckShare as viewed when investor updates commitment\n- Checks for existing VIEW events and marks as viewed if found\n- Ensures updating commitment implies viewing\n\n**Deliverable:** ✅ Pitch deck share marked as viewed when investor updates commitment",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        },
+        {
+          "summary": "Frontend: Ensure share status refreshes when viewing investors page",
+          "description": "Ensure pitch deck share status is refreshed when venture views investors page:\n\n1. Check if `fetchPitchDeckShareStatus` is called when investors view loads\n2. Ensure share status is fetched for all approved products with active pitch decks\n3. Verify status updates correctly after investor commits\n\n**Files Modified:**\n- `frontend/src/components/VentureDashboard.tsx` - Added useEffect to refresh share status when commitments change (lines 131-141)\n\n**Implementation:**\n- Added useEffect that refreshes share status when commitments change\n- Ensures \"Viewed\" status updates when investor commits\n- Refreshes when viewing investors or overview pages\n\n**Deliverable:** ✅ Share status refreshes correctly when viewing investors page and when commitments change",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        },
+        {
+          "summary": "Test and verify fix",
+          "description": "Test the complete flow:\n\n1. Venture shares pitch deck with investor\n2. Investor commits to invest (without explicitly viewing)\n3. Verify pitch deck share shows \"Viewed\" status in venture dashboard\n4. Test with investor who views first, then commits\n5. Test with investor who commits, then views\n6. Verify status updates correctly in all scenarios\n\n**Deliverable:** All scenarios tested and verified working",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-853",
+      "summary": "Tech Debt: Edit Profile Page - Form Fields Not Showing Existing Data",
+      "description": "When editing profile at `/dashboard/venture/edit-profile` (and likely other roles), all form fields appear empty even though the user has existing profile data.\n\n**Issue:**\n- Edit profile page shows empty fields when user navigates to edit profile\n- User has existing profile data that should be displayed\n- Fields should be pre-populated with current profile information\n- Currently all fields show as empty/blank\n\n**Root Cause:**\n1. **Initial Form State Issue:**\n   - `EditProfile` component initializes form data via `initializeFormData()` function (line 53-166)\n   - Function tries to access `venture.profile.companyName`, `investor.profile.name`, etc.\n   - The `user` prop passed from dashboards (`VentureDashboard`, `InvestorDashboard`, etc.) likely doesn't have a `profile` property populated\n   - `user` prop is typically just basic info: `{ id, email, full_name, role }`\n   - Since `user.profile` is undefined, all fields default to empty strings (`''`)\n\n2. **API Fetch Timing Issue:**\n   - `useEffect` (lines 173-262) fetches profile data from API on mount\n   - API call is async and takes time to complete\n   - Form renders immediately with empty initial state\n   - Even after API call completes and `setFormData` is called, fields may not update properly\n   - There might be a race condition or state update issue\n\n3. **State Update Issue:**\n   - `setFormData` is called with API data, but form fields might not be properly bound\n   - Or state update happens but component doesn't re-render\n   - Or form fields are reading from stale state\n\n**Current Implementation:**\n- `EditProfile` receives `user` prop (type `FrontendUser`)\n- `initializeFormData()` tries to read from `user.profile.*` (which doesn't exist)\n- `useEffect` fetches profile via `ventureService.getMyProfile()` or `investorService.getMyProfile()`\n- Updates `formData` state with API response\n- Form fields should read from `formData` state\n\n**Expected Behavior:**\n- When user navigates to edit profile, form fields should be pre-populated with existing data\n- Fields should show current values from user's profile\n- User can then edit and save changes\n\n**Impact:**\n- Poor user experience - users see empty fields and think their data is lost\n- Users have to re-enter all information even if they just want to update one field\n- May cause confusion and frustration\n- Affects all user roles (venture, investor, mentor)\n\n**Investigation Needed:**\n1. Check what data is in `user` prop when `EditProfile` is rendered\n2. Verify API call (`getMyProfile`) is successful and returns data\n3. Check if `setFormData` is being called with correct data\n4. Verify form fields are properly bound to `formData` state\n5. Check if there's a timing issue (form renders before API call completes)\n6. Verify state updates trigger re-renders\n\n**Potential Solutions:**\n1. **Pre-fetch Profile Data:**\n   - Fetch profile data before rendering `EditProfile` component\n   - Pass populated profile data as prop\n   - Initialize form with actual data instead of empty strings\n\n2. **Show Loading State:**\n   - Show loading spinner while fetching profile data\n   - Only render form after data is loaded\n   - Prevents showing empty fields\n\n3. **Fix Initial State:**\n   - Don't rely on `user.profile` for initial state (it doesn't exist)\n   - Initialize with empty strings (current behavior)\n   - But ensure `useEffect` properly populates fields after API call\n   - Add proper loading state\n\n4. **Fix State Updates:**\n   - Ensure `setFormData` properly updates all fields\n   - Verify form fields are reading from correct state\n   - Add debugging to track state changes\n\n5. **Combine Approaches:**\n   - Show loading state while fetching\n   - Initialize form with empty strings\n   - Populate form after API call completes\n   - Ensure proper state binding\n\n**Files Affected:**\n- `frontend/src/components/EditProfile.tsx` - Main component with form initialization and API fetch logic\n- `frontend/src/components/VentureDashboard.tsx` - Passes `user` prop to `EditProfile`\n- `frontend/src/components/InvestorDashboard.tsx` - Passes `user` prop to `EditProfile`\n- `frontend/src/components/MentorDashboard.tsx` - Passes `user` prop to `EditProfile`\n- `frontend/src/components/AdminDashboard.tsx` - Passes `user` prop to `EditProfile`\n- `frontend/src/services/ventureService.ts` - `getMyProfile()` method\n- `frontend/src/services/investorService.ts` - `getMyProfile()` method\n- `frontend/src/services/mentorService.ts` - `getMyProfile()` method (if exists)\n\n**Priority:** Medium - Affects user experience but doesn't break core functionality\n\n**Estimated Effort:** 2-4 hours\n\n**Related Issues:**\n- May be related to how `user` object is structured and passed between components\n- May be related to AuthContext user object structure\n- May be related to profile data fetching in AuthContext (lines 168-198 in AuthContext.tsx)",
+      "type": "Story",
+      "priority": "Medium",
+      "epic": "VL-2",
+      "tasks": [
+        {
+          "summary": "Investigate root cause: Check user prop structure and API response",
+          "description": "Debug the issue to understand exactly what's happening:\n\n1. **Check User Prop:**\n   - Log `user` prop when `EditProfile` renders\n   - Verify if `user.profile` exists or is undefined\n   - Check what properties `user` has\n\n2. **Check API Call:**\n   - Add logging to `useEffect` in `EditProfile`\n   - Verify `getMyProfile()` API call succeeds\n   - Log API response data\n   - Check if `profile` object is returned correctly\n\n3. **Check State Updates:**\n   - Log `formData` state before and after `setFormData` call\n   - Verify state updates are happening\n   - Check if form fields are reading from correct state\n\n4. **Check Timing:**\n   - Verify if form renders before API call completes\n   - Check if there's a race condition\n   - Verify loading state is working\n\n**Files to Modify:**\n- `frontend/src/components/EditProfile.tsx` - Add debug logging\n\n**Deliverable:** Debug report with findings",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Fix form initialization: Ensure fields populate after API fetch",
+          "description": "Fix the form to properly display existing data:\n\n1. **Add Loading State:**\n   - Show loading spinner while fetching profile data\n   - Don't render form until data is loaded\n   - Prevents showing empty fields\n\n2. **Fix State Updates:**\n   - Ensure `setFormData` properly updates all form fields\n   - Verify form fields are bound to `formData` state\n   - Add proper state management\n\n3. **Handle Edge Cases:**\n   - Handle case where profile doesn't exist yet\n   - Handle API errors gracefully\n   - Show appropriate error messages\n\n**Files to Modify:**\n- `frontend/src/components/EditProfile.tsx` - Fix form initialization and loading state\n\n**Deliverable:** Form fields properly populate with existing data",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "Pending"
+        },
+        {
+          "summary": "Test fix: Verify form fields show data for all user roles",
+          "description": "Test the fix across all user roles:\n\n1. **Test Venture Profile:**\n   - Navigate to `/dashboard/venture/edit-profile`\n   - Verify all fields are pre-populated\n   - Test editing and saving\n\n2. **Test Investor Profile:**\n   - Navigate to `/dashboard/investor/edit-profile`\n   - Verify all fields are pre-populated\n   - Test editing and saving\n\n3. **Test Mentor Profile:**\n   - Navigate to `/dashboard/mentor/edit-profile`\n   - Verify all fields are pre-populated\n   - Test editing and saving\n\n4. **Test Edge Cases:**\n   - New user with no profile data\n   - User with partial profile data\n   - API errors\n   - Network failures\n\n**Deliverable:** All scenarios tested and verified working",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Pending"
+    },
+    {
+      "key": "VL-854",
+      "summary": "Fix: VentureDashboard.tsx Syntax Error - Missing Closing Brace",
+      "description": "Fix syntax error in VentureDashboard.tsx causing 500 Internal Server Error when loading the component.\n\n**Issue:**\n- Vite dev server returns 500 error: \"Expected '}', got '<eof>'\"\n- Error occurs at line 2584 (end of file)\n- Component fails to compile/load\n- Browser shows: `GET https://ventureuplink.com/src/components/VentureDashboard.tsx?t=... net::ERR_ABORTED 500`\n\n**Root Cause:**\n- `renderFundraising` function used implicit return syntax `() => (` but wasn't properly closed\n- Function should use explicit return syntax `() => { return (...); }` to match other render functions\n- Missing closing brace caused parser to expect '}' at end of file\n\n**Error Details:**\n```\nSyntax Error\nPlugin: vite:react-swc\nFile: /app/src/components/VentureDashboard.tsx\nExpected '}', got '<eof>'\n  ,-[/app/src/components/VentureDashboard.tsx:2584:1]\n2581 |   };\n2582 | \n2583 |   return renderCurrentView();\n2584 | }\n```\n\n**Solution:**\n1. Convert `renderFundraising` from implicit return to explicit return syntax\n2. Change `const renderFundraising = () => (` to `const renderFundraising = () => {`\n3. Add `return (` after opening brace\n4. Change closing `);` to `);` followed by `};`\n\n**Files Modified:**\n- `frontend/src/components/VentureDashboard.tsx`\n  - Line 1961: Changed from `const renderFundraising = () => (` to `const renderFundraising = () => { return (`\n  - Line 2229: Changed from `);` to `); };`\n\n**Verification:**\n- File should compile without syntax errors\n- Component should load correctly\n- No more 500 errors from Vite dev server\n- All render functions use consistent syntax\n\n**Status:** Fixed - Syntax error resolved, component should compile correctly",
+      "type": "Bug",
+      "priority": "Critical",
+      "epic": "VL-1",
+      "tasks": [
+        {
+          "summary": "Fix renderFundraising function syntax",
+          "description": "Convert renderFundraising from implicit return to explicit return syntax:\n\n1. Change function declaration from `() => (` to `() => { return (`\n2. Change closing from `);` to `); };`\n3. Ensure proper indentation\n4. Verify function compiles correctly\n\n**Files Modified:**\n- `frontend/src/components/VentureDashboard.tsx` (lines 1961, 2229)\n\n**Deliverable:** ✅ Function syntax fixed, component compiles correctly",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        },
+        {
+          "summary": "Verify component loads without errors",
+          "description": "Test that VentureDashboard component:\n\n1. Compiles without syntax errors\n2. Loads correctly in browser\n3. No 500 errors from Vite dev server\n4. All render functions work correctly\n5. Component renders properly\n\n**Deliverable:** Component verified working correctly",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-860",
+      "summary": "Tech Debt: Venture Profile Completion Check Using Wrong Data Source",
+      "description": "The `isCompanyProfileComplete()` function in `VentureDashboard.tsx` is incorrectly checking `products` (VentureProduct/pitch decks) instead of the user's `VentureProfile` for profile completion.\n\n**Root Cause:**\n- Backend has separate models: `VentureProfile` (user-level profile) and `VentureProduct` (pitch decks)\n- Frontend profile completion check is using `products[0]` (pitch deck data) instead of `user.profile` (VentureProfile data)\n- API endpoint `/ventures/profile/me` returns VentureProfile with fields: `company_name`, `sector`, `short_description`, `website`, `linkedin_url`, `phone`, `address`, etc.\n- Frontend is checking `product.name`, `product.industry_sector`, etc. which are pitch deck fields, not profile fields\n\n**Impact:**\n- Profile completion notification doesn't show when VentureProfile is incomplete\n- Users with incomplete profiles (missing phone, company info, website links) don't get guided to complete their profile\n- Profile completion check doesn't validate required VentureProfile fields like `phone`\n- Notification only checks pitch deck fields, not user profile fields\n\n**Required Fields Missing from Check:**\n- `phone` (user mentioned this is missing)\n- `company_name` (should check `user.profile.companyName` not `product.name`)\n- `sector` (should check `user.profile.sector` not `product.industry_sector`)\n- `website` (should check `user.profile.website`)\n- `linkedin_url` (should check `user.profile.linkedinUrl`)\n- `short_description` (should check `user.profile.shortDescription`)\n\n**Files Affected:**\n- `frontend/src/components/VentureDashboard.tsx` - `isCompanyProfileComplete()` function\n- Need to fetch VentureProfile on component mount\n- Need to check `user.profile` or fetched venture profile data\n\n**Solution:**\n1. Add state for venture profile: `const [ventureProfile, setVentureProfile] = useState<VentureUserProfile | null>(null)`\n2. Fetch venture profile on mount: `useEffect(() => { ventureService.getMyProfile().then(setVentureProfile); }, [])`\n3. Update `isCompanyProfileComplete()` to check `ventureProfile` or `user.profile` instead of `products[0]`\n4. Add `phone` to required fields check\n5. Update notification to guide users to complete VentureProfile (via EditProfile), not just products",
+      "type": "Story",
+      "epic": "VL-2",
+      "priority": "High",
+      "storyPoints": 3,
+      "acceptanceCriteria": [
+        "Profile completion check validates VentureProfile fields (company_name, sector, short_description, website, linkedin_url, phone)",
+        "Profile completion notification shows when VentureProfile is incomplete",
+        "Notification guides users to EditProfile to complete their VentureProfile",
+        "Phone field is included in required fields check",
+        "Profile completion check uses correct data source (VentureProfile API, not products)"
+      ],
+      "tasks": [
+        {
+          "summary": "Add venture profile state and fetch on mount",
+          "description": "Add `ventureProfile` state and `isLoadingVentureProfile` state. Fetch venture profile using `ventureService.getMyProfile()` on component mount.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Fix isCompanyProfileComplete to check VentureProfile instead of products",
+          "description": "Update `isCompanyProfileComplete()` function to check `ventureProfile` or `user.profile` fields instead of `products[0]`. Check: company_name, sector, short_description, website, linkedin_url, phone. Return appropriate missing fields list.",
+          "type": "Task",
+          "estimate": "2h",
+          "status": "In Progress"
+        },
+        {
+          "summary": "Update notification to guide to EditProfile for VentureProfile completion",
+          "description": "Update `renderProfileCompletionNotification()` to navigate to 'edit-profile' view instead of 'products' view when VentureProfile is incomplete. Update button text and messaging. Change title from 'Complete Your Profile' to 'Complete Your Company Profile'. Add link/button to edit profile.",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        }
+      ],
+      "status": "In Progress"
     }
   ],
   "metadata": {
     "created": "2025-01-27",
     "updated": "2026-01-20",
-    "version": "1.17",
-    "totalStories": 65,
-    "totalTasks": 296,
-    "estimatedStoryPoints": 333
+    "version": "1.21",
+    "totalStories": 71,
+    "totalTasks": 315,
+    "estimatedStoryPoints": 352
   }
 }

@@ -144,7 +144,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
       setProducts(data);
     } catch (err: any) {
       console.error('Failed to fetch products:', err);
-      setError('Failed to load products. Please try again.');
+      setError('Failed to load pitch decks. Please try again.');
       setProducts([]);
     } finally {
       setIsLoading(false);
@@ -158,7 +158,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
 
     // Security: Validate UUID
     if (!validateUuid(selectedProduct.id)) {
-      toast.error('Invalid product ID');
+      toast.error('Invalid pitch deck ID');
       return;
     }
 
@@ -272,7 +272,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
       toast.success(`Product ${!product.is_active ? 'activated' : 'deactivated'} successfully!`);
     } catch (err: any) {
       console.error('Failed to toggle product:', err);
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to update product status.';
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to update pitch deck status.';
       toast.error(errorMsg);
     } finally {
       setIsMutating(false);
@@ -288,14 +288,14 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
       return;
     }
 
-    if (!confirm(`Submit complete package (product + pitch deck) for admin approval?\n\nThis will be reviewed as one complete submission.`)) {
+    if (!confirm(`Submit complete package (pitch deck) for admin approval?\n\nThis will be reviewed as one complete submission.`)) {
       return;
     }
 
     try {
       // Security: Validate UUID
       if (!validateUuid(product.id)) {
-        toast.error('Invalid product ID');
+        toast.error('Invalid pitch deck ID');
         return;
       }
 
@@ -304,8 +304,8 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
       await fetchProducts();
       toast.success('Complete package submitted for approval!');
     } catch (err: any) {
-      console.error('Failed to submit product:', err);
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to submit product.';
+      console.error('Failed to submit pitch deck:', err);
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to submit pitch deck.';
       toast.error(errorMsg);
     } finally {
       setIsMutating(false);
@@ -320,7 +320,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
     try {
       // Security: Validate UUID
       if (!validateUuid(product.id)) {
-        toast.error('Invalid product ID');
+        toast.error('Invalid pitch deck ID');
         return;
       }
 
@@ -329,8 +329,8 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
       await fetchProducts();
       toast.success(`Product "${product.name}" deleted successfully!`);
     } catch (err: any) {
-      console.error('Failed to delete product:', err);
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to delete product.';
+      console.error('Failed to delete pitch deck:', err);
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to delete pitch deck.';
       toast.error(errorMsg);
     } finally {
       setIsMutating(false);
@@ -348,7 +348,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
     try {
       // Security: Validate UUID
       if (!validateUuid(product.id)) {
-        toast.error('Invalid product ID');
+        toast.error('Invalid pitch deck ID');
         return;
       }
 
@@ -374,7 +374,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
     try {
       // Security: Validate UUID
       if (!validateUuid(product.id)) {
-        toast.error('Invalid product ID');
+        toast.error('Invalid pitch deck ID');
         return;
       }
 
@@ -520,7 +520,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
       const documentsData = await productService.getProductDocuments(productId);
       setDocuments(documentsData);
     } catch (err: any) {
-      console.error('Failed to load product details:', err);
+      console.error('Failed to load pitch deck details:', err);
     } finally {
       setIsLoadingDetails(false);
     }
@@ -559,7 +559,7 @@ export function ProductManagement({ user, defaultTab = 'company', autoOpenProduc
   // Pitch deck sharing handler
   const handleSharePitchDeck = async () => {
     if (!selectedProduct || !selectedDocumentId) {
-      toast.error('No product or pitch deck selected');
+      toast.error('No pitch deck selected');
       return;
     }
 

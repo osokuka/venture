@@ -35,10 +35,13 @@ class RegisterView(generics.CreateAPIView):
     """
     User registration endpoint.
     POST /api/auth/register
+    
+    Public endpoint - no authentication required.
     """
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []  # Explicitly disable authentication for registration
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -70,6 +73,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     Sets httpOnly cookies for secure token storage (prevents XSS attacks).
     """
     throttle_classes = [AnonRateThrottle]  # Rate limit: 10/hour for anonymous users
+    authentication_classes = []  # Explicitly disable authentication for login (public endpoint)
     
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -140,6 +144,7 @@ class CustomTokenRefreshView(TokenRefreshView):
     
     Reads refresh token from httpOnly cookie and sets new access token in cookie.
     """
+    authentication_classes = []  # Explicitly disable authentication for refresh (public endpoint)
     def post(self, request, *args, **kwargs):
         # Get refresh token from cookie (preferred) or request body (fallback)
         refresh_token = request.COOKIES.get('refresh_token') or request.data.get('refresh')

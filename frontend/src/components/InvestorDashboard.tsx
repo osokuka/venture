@@ -424,7 +424,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   // Handler for withdrawing commitment
   const handleWithdrawCommitment = useCallback(async (productId: string, commitmentId: string, productName: string) => {
     if (!validateUuid(productId) || !validateUuid(commitmentId)) {
-      toast.error("Invalid product or commitment ID");
+      toast.error("Invalid pitch deck or commitment ID");
       return;
     }
 
@@ -486,7 +486,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   // Handler for following/unfollowing a pitch deck
   const handleFollowPitchDeck = useCallback(async (productId: string, docId: string, isCurrentlyFollowing: boolean) => {
     if (!validateUuid(productId) || !validateUuid(docId)) {
-      toast.error("Invalid product or document ID");
+      toast.error("Invalid pitch deck or document ID");
       return;
     }
 
@@ -509,7 +509,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   // Handler for updating commitment after renegotiation
   const handleUpdateCommitment = useCallback(async (productId: string, commitmentId: string, productName: string, currentAmount?: string) => {
     if (!validateUuid(productId) || !validateUuid(commitmentId)) {
-      toast.error("Invalid product or commitment ID");
+      toast.error("Invalid pitch deck or commitment ID");
       return;
     }
 
@@ -569,7 +569,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   // Handler for committing to invest
   const handleCommitToInvest = useCallback(async (productId: string, docId: string, productName: string) => {
     if (!validateUuid(productId) || !validateUuid(docId)) {
-      toast.error("Invalid product or document ID");
+      toast.error("Invalid pitch deck or document ID");
       return;
     }
 
@@ -606,7 +606,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const handleRequestPitch = async (productId: string) => {
     // Security: Validate UUID
     if (!validateUuid(productId)) {
-      toast.error("Invalid product ID");
+      toast.error("Invalid pitch deck ID");
       return;
     }
 
@@ -617,7 +617,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       // Find the product and its first pitch deck
       const product = venturesArray.find(v => v.id === productId);
       if (!product || !product.documents || product.documents.length === 0) {
-        toast.error("No pitch deck available for this product");
+        toast.error("No pitch deck available");
         return;
       }
 
@@ -930,7 +930,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                     <div className="flex items-start justify-between">
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center space-x-2">
-                          <h3 className="font-semibold text-lg">{safeDisplayText(share.product_name || 'Unknown Product')}</h3>
+                          <h3 className="font-semibold text-lg">{safeDisplayText(share.product_name || 'Unknown Pitch Deck')}</h3>
                           {share.is_new && (
                             <Badge variant="default" className="bg-blue-600">
                               New
@@ -974,7 +974,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                           size="sm"
                           onClick={() => {
                             if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
-                              toast.error("Invalid product or document ID");
+                              toast.error("Invalid pitch deck or document ID");
                               return;
                             }
                             navigate(`/dashboard/investor/pitch-deck/${share.product_id}/${share.document_id}`);
@@ -1015,7 +1015,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                                   toast.error("Unable to contact venture");
                                 });
                             } else {
-                              toast.error("Invalid product ID");
+                              toast.error("Invalid pitch deck ID");
                             }
                           }}
                         >
@@ -1027,7 +1027,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                           size="sm"
                           onClick={() => {
                             if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
-                              toast.error("Invalid product or document ID");
+                              toast.error("Invalid pitch deck or document ID");
                               return;
                             }
                             handleFollowPitchDeck(share.product_id, share.document_id, share.is_following || false);
@@ -1046,7 +1046,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                             className="bg-green-600 hover:bg-green-700"
                             onClick={() => {
                               if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
-                                toast.error("Invalid product or document ID");
+                                toast.error("Invalid pitch deck or document ID");
                                 return;
                               }
                               handleCommitToInvest(share.product_id, share.document_id, share.product_name || 'Venture');
@@ -1069,7 +1069,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                             className="bg-orange-600 hover:bg-orange-700"
                             onClick={() => {
                               if (!validateUuid(share.product_id) || !validateUuid(share.commitment_id)) {
-                                toast.error("Invalid product or commitment ID");
+                                toast.error("Invalid pitch deck or commitment ID");
                                 return;
                               }
                               handleUpdateCommitment(
@@ -1096,7 +1096,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                             size="sm"
                             onClick={() => {
                               if (!validateUuid(share.product_id) || !validateUuid(share.commitment_id)) {
-                                toast.error("Invalid product or commitment ID");
+                                toast.error("Invalid pitch deck or commitment ID");
                                 return;
                               }
                               handleWithdrawCommitment(
@@ -1533,7 +1533,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                         size="sm"
                         onClick={() => {
                           if (!validateUuid(company.product_id) || !validateUuid(company.document_id)) {
-                            toast.error("Invalid product or document ID");
+                            toast.error("Invalid pitch deck or document ID");
                             return;
                           }
                           navigate(`/dashboard/investor/pitch-deck/${company.product_id}/${company.document_id}`);
@@ -1577,7 +1577,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                         className="bg-orange-600 hover:bg-orange-700"
                         onClick={() => {
                           if (!validateUuid(company.product_id) || !validateUuid(company.commitment_id)) {
-                            toast.error("Invalid product or commitment ID");
+                            toast.error("Invalid pitch deck or commitment ID");
                             return;
                           }
                           handleUpdateCommitment(
@@ -1605,7 +1605,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                         size="sm"
                         onClick={() => {
                           if (!validateUuid(company.product_id) || !validateUuid(company.commitment_id)) {
-                            toast.error("Invalid product or commitment ID");
+                            toast.error("Invalid pitch deck or commitment ID");
                             return;
                           }
                           handleWithdrawCommitment(
@@ -1917,108 +1917,132 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                     {/* Commitment Actions Row - Check if this venture has been shared and has commitment */}
                     {(() => {
                       // Check if this venture is in shared pitch decks (has commitment info)
-                      const sharedDeck = sharedPitchDecks.find(s => s.product_id === venture.id);
+                      // Use string comparison to handle UUID string matching
+                      const sharedDeck = Array.isArray(sharedPitchDecks) ? sharedPitchDecks.find(s => 
+                        String(s.product_id) === String(venture.id)
+                      ) : null;
                       const pitchDeck = venture.documents?.find((doc: any) => doc.document_type === 'PITCH_DECK');
                       
-                      if (!sharedDeck || !pitchDeck) {
-                        // Not shared yet - show commit button if pitch deck exists
-                        if (pitchDeck && validateUuid(venture.id) && validateUuid(pitchDeck.id)) {
-                          return (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="w-full bg-green-600 hover:bg-green-700"
-                              onClick={() => {
-                                handleCommitToInvest(venture.id, pitchDeck.id, venture.name || 'Venture');
-                              }}
-                              disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
-                            >
-                              <DollarSign className="w-4 h-4 mr-2" />
-                              Commit to Invest
-                            </Button>
-                          );
-                        }
+                      // Debug logging in development
+                      if (import.meta.env.DEV) {
+                        console.log('Commit button check:', {
+                          venture_id: venture.id,
+                          venture_name: venture.name,
+                          has_sharedDeck: !!sharedDeck,
+                          has_pitchDeck: !!pitchDeck,
+                          sharedPitchDecks_count: Array.isArray(sharedPitchDecks) ? sharedPitchDecks.length : 0,
+                          commitment_status: sharedDeck?.commitment_status,
+                          isLoading: isLoadingPortfolio || isLoadingSharedPitchDecks
+                        });
+                      }
+                      
+                      // Must have a pitch deck to show commit button
+                      if (!pitchDeck || !validateUuid(venture.id) || !validateUuid(pitchDeck.id)) {
                         return null;
                       }
-
-                      // Has commitment info - show all commitment actions
+                      
+                      // If pitch deck is shared, use shared deck info; otherwise use venture's pitch deck
+                      if (sharedDeck) {
+                        // Has shared pitch deck - show commitment actions based on status
+                        const commitmentStatus = sharedDeck.commitment_status;
+                        const canCommit = commitmentStatus !== 'COMMITTED' && 
+                                         commitmentStatus !== 'WITHDRAWN' &&
+                                         commitmentStatus !== 'COMPLETED';
+                        
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            {/* Commit to Invest - Show if not committed or withdrawn */}
+                            {canCommit && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="flex-1 bg-green-600 hover:bg-green-700"
+                                onClick={() => {
+                                  if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.document_id)) {
+                                    toast.error("Invalid pitch deck or document ID");
+                                    return;
+                                  }
+                                  handleCommitToInvest(sharedDeck.product_id, sharedDeck.document_id, sharedDeck.product_name || 'Venture');
+                                }}
+                                disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
+                              >
+                                <DollarSign className="w-4 h-4 mr-2" />
+                                Commit to Invest
+                              </Button>
+                            )}
+                            
+                            {/* Update Commitment - Show if renegotiation requested */}
+                            {commitmentStatus === 'COMMITTED' && 
+                             sharedDeck.commitment_id && 
+                             sharedDeck.product_id && 
+                             sharedDeck.venture_response === 'RENEGOTIATE' && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                onClick={() => {
+                                  if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.commitment_id)) {
+                                    toast.error("Invalid pitch deck or commitment ID");
+                                    return;
+                                  }
+                                  handleUpdateCommitment(
+                                    sharedDeck.product_id,
+                                    sharedDeck.commitment_id,
+                                    sharedDeck.product_name || 'Venture',
+                                    sharedDeck.commitment_amount || undefined
+                                  );
+                                }}
+                                disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
+                              >
+                                <DollarSign className="w-4 h-4 mr-2" />
+                                Update Commitment
+                              </Button>
+                            )}
+                            
+                            {/* Retract Commitment - Show if committed and not accepted deal */}
+                            {commitmentStatus === 'COMMITTED' && 
+                             sharedDeck.commitment_id && 
+                             sharedDeck.product_id && 
+                             sharedDeck.venture_response !== 'ACCEPTED' && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => {
+                                  if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.commitment_id)) {
+                                    toast.error("Invalid pitch deck or commitment ID");
+                                    return;
+                                  }
+                                  handleWithdrawCommitment(
+                                    sharedDeck.product_id,
+                                    sharedDeck.commitment_id,
+                                    sharedDeck.product_name || 'Venture'
+                                  );
+                                }}
+                                disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Retract Commitment
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      // Not shared yet - show commit button for public ventures
                       return (
-                        <div className="flex flex-wrap gap-2">
-                          {/* Commit to Invest - Show if not committed or withdrawn */}
-                          {sharedDeck.commitment_status !== 'COMMITTED' && sharedDeck.commitment_status !== 'WITHDRAWN' && (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="flex-1 bg-green-600 hover:bg-green-700"
-                              onClick={() => {
-                                if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.document_id)) {
-                                  toast.error("Invalid product or document ID");
-                                  return;
-                                }
-                                handleCommitToInvest(sharedDeck.product_id, sharedDeck.document_id, sharedDeck.product_name || 'Venture');
-                              }}
-                              disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
-                            >
-                              <DollarSign className="w-4 h-4 mr-2" />
-                              Commit to Invest
-                            </Button>
-                          )}
-                          
-                          {/* Update Commitment - Show if renegotiation requested */}
-                          {sharedDeck.commitment_status === 'COMMITTED' && 
-                           sharedDeck.commitment_id && 
-                           sharedDeck.product_id && 
-                           sharedDeck.venture_response === 'RENEGOTIATE' && (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="flex-1 bg-orange-600 hover:bg-orange-700"
-                              onClick={() => {
-                                if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.commitment_id)) {
-                                  toast.error("Invalid product or commitment ID");
-                                  return;
-                                }
-                                handleUpdateCommitment(
-                                  sharedDeck.product_id,
-                                  sharedDeck.commitment_id,
-                                  sharedDeck.product_name || 'Venture',
-                                  sharedDeck.commitment_amount || undefined
-                                );
-                              }}
-                              disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
-                            >
-                              <DollarSign className="w-4 h-4 mr-2" />
-                              Update Commitment
-                            </Button>
-                          )}
-                          
-                          {/* Retract Commitment - Show if committed and not accepted deal */}
-                          {sharedDeck.commitment_status === 'COMMITTED' && 
-                           sharedDeck.commitment_id && 
-                           sharedDeck.product_id && 
-                           sharedDeck.venture_response !== 'ACCEPTED' && (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              className="flex-1"
-                              onClick={() => {
-                                if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.commitment_id)) {
-                                  toast.error("Invalid product or commitment ID");
-                                  return;
-                                }
-                                handleWithdrawCommitment(
-                                  sharedDeck.product_id,
-                                  sharedDeck.commitment_id,
-                                  sharedDeck.product_name || 'Venture'
-                                );
-                              }}
-                              disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
-                            >
-                              <X className="w-4 h-4 mr-2" />
-                              Retract Commitment
-                            </Button>
-                          )}
-                        </div>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="w-full bg-green-600 hover:bg-green-700"
+                          onClick={() => {
+                            handleCommitToInvest(venture.id, pitchDeck.id, venture.name || 'Venture');
+                          }}
+                          disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
+                        >
+                          <DollarSign className="w-4 h-4 mr-2" />
+                          Commit to Invest
+                        </Button>
                       );
                     })()}
                   </div>

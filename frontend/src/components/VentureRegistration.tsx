@@ -51,6 +51,7 @@ export function VentureRegistration() {
 
   const updateFormData = (field: string, value: any) => {
     // Security: Sanitize inputs based on field type (no validation on change)
+    // Validation only happens on button press, not inline
     let sanitizedValue = value;
     
     if (field === 'email') {
@@ -64,15 +65,7 @@ export function VentureRegistration() {
       sanitizedValue = sanitizeInput(value, 10000);
     }
     
-    // Clear validation error for this field when user types
-    if (validationErrors[field as keyof ValidationErrors]) {
-      setValidationErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[field as keyof ValidationErrors];
-        return newErrors;
-      });
-    }
-    
+    // Do NOT clear validation errors on change - validation only on button press
     setFormData(prev => ({ ...prev, [field]: sanitizedValue }));
   };
 

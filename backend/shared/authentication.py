@@ -12,6 +12,9 @@ class CookieJWTAuthentication(JWTAuthentication):
     Falls back to Authorization header for backward compatibility.
     
     Security: httpOnly cookies prevent XSS attacks from stealing tokens.
+    
+    Important: Returns None (not raises exception) when no token is found.
+    This allows AllowAny permission classes to work correctly.
     """
     
     def authenticate(self, request):
@@ -21,6 +24,8 @@ class CookieJWTAuthentication(JWTAuthentication):
         Priority:
         1. Cookie (httpOnly, more secure)
         2. Authorization header (backward compatibility)
+        
+        Returns None if no valid token is found (allows AllowAny to work).
         """
         # Try to get token from cookie first (more secure)
         raw_token = request.COOKIES.get('access_token')
@@ -34,4 +39,9 @@ class CookieJWTAuthentication(JWTAuthentication):
                 pass
         
         # Fall back to Authorization header (backward compatibility)
-        return super().authenticate(request)
+        # Important: Catch exceptions and return None to allow AllowAny to work
+        try:
+            return super().authenticate(request)
+        except (InvalidToken, TokenError):
+            # No valid token found - return None to allow AllowAny permission
+            return None

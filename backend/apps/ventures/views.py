@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from shared.permissions import IsApprovedUser, IsAdminOrReviewer, IsApprovedOrSubmittedUser
 from apps.ventures.models import (
@@ -575,7 +575,7 @@ class VentureProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveUp
     PATCH /api/ventures/profile/me - Update own profile
     """
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]  # Support file uploads for logo
+    parser_classes = [JSONParser, MultiPartParser, FormParser]  # Support both JSON and file uploads for logo
     
     def get_object(self):
         """Get venture profile for current user."""

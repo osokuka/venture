@@ -11,7 +11,8 @@ import { Switch } from "./ui/switch";
 import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, ArrowRight, CheckCircle, Clock, Eye, EyeOff, Mail } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, Clock, Eye, EyeOff, Mail, AlertCircle } from "lucide-react";
+import { validateEmail, validatePassword } from '../utils/security';
 
 interface MentorFormData {
   // Step 1: Account Creation
@@ -43,11 +44,28 @@ interface MentorFormData {
   isVisible: boolean;
 }
 
+interface ValidationErrors {
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  name?: string;
+  jobTitle?: string;
+  company?: string;
+  linkedinUrl?: string;
+  expertise?: string;
+  experienceYears?: string;
+  bio?: string;
+  availabilityType?: string;
+  sessionFormat?: string;
+  frequency?: string;
+}
+
 export function MentorRegistration() {
   const navigate = useNavigate();
   const { completeRegistration, startRegistration } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [formData, setFormData] = useState<MentorFormData>({
     email: '', password: '', confirmPassword: '',
     name: '', jobTitle: '', company: '', linkedinUrl: '', phone: '', location: '',
@@ -64,6 +82,7 @@ export function MentorRegistration() {
     startRegistration('mentor');
   }, [startRegistration]);
 
+  // No inline validation - validation only on button press
   const updateFormData = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -76,19 +95,108 @@ export function MentorRegistration() {
     updateFormData(array, updated);
   };
 
+  // Validate current step - only called on button press
+  const validateCurrentStep = (): boolean => {
+    const errors: ValidationErrors = {};
+
+    if (currentStep === 1) {
+      // Step 1: Account Creation
+      if (!formData.email.trim()) {
+        errors.email = 'Email address is required';
+      } else if (!validateEmail(formData.email)) {
+        errors.email = 'Please enter a valid email address';
+      }
+
+      if (!formData.password) {
+        errors.password = 'Password is required';
+      } else {
+        const passwordValidation = validatePassword(formData.password);
+        if (!passwordValidation.isValid) {
+          errors.password = passwordValidation.errors.join('. ') || 'Password does not meet requirements';
+        }
+      }
+
+      if (!formData.confirmPassword) {
+        errors.confirmPassword = 'Please confirm your password';
+      } else if (formData.password !== formData.confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match';
+      }
+    } else if (currentStep === 2) {
+      // Step 2: Profile Information
+      if (!formData.name.trim()) {
+        errors.name = 'Full name is required';
+      }
+
+      if (!formData.jobTitle.trim()) {
+        errors.jobTitle = 'Job title is required';
+      }
+
+      if (!formData.company.trim()) {
+        errors.company = 'Company name is required';
+      }
+
+      if (!formData.linkedinUrl.trim()) {
+        errors.linkedinUrl = 'LinkedIn profile URL is required';
+      }
+    } else if (currentStep === 3) {
+      // Step 3: Expertise Areas
+      if (formData.expertise.length === 0) {
+        errors.expertise = 'Please select at least one area of expertise';
+      }
+
+      if (!formData.experienceYears) {
+        errors.experienceYears = 'Years of experience is required';
+      }
+
+      if (!formData.bio.trim()) {
+        errors.bio = 'Professional bio is required';
+      }
+    } else if (currentStep === 4) {
+      // Step 4: Availability & Preferences
+      if (formData.availabilityType.length === 0) {
+        errors.availabilityType = 'Please select at least one mentoring type';
+      }
+
+      if (formData.sessionFormat.length === 0) {
+        errors.sessionFormat = 'Please select at least one session format';
+      }
+
+      if (!formData.frequency) {
+        errors.frequency = 'Availability frequency is required';
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const nextStep = () => {
+    // Validate before moving to next step
+    if (!validateCurrentStep()) {
+      return;
+    }
+    
     if (currentStep < totalSteps) {
       setCurrentStep(prev => prev + 1);
+      // Clear validation errors when moving to next step
+      setValidationErrors({});
     }
   };
 
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(prev => prev - 1);
+      // Clear validation errors when going back
+      setValidationErrors({});
     }
   };
 
   const handleSubmit = async () => {
+    // Validate step 4 before submission
+    if (!validateCurrentStep()) {
+      return;
+    }
+
     setIsSubmitting(true);
     setCurrentStep(5);
     
@@ -121,8 +229,14 @@ export function MentorRegistration() {
                 value={formData.email}
                 onChange={(e) => updateFormData('email', e.target.value)}
                 placeholder="Enter your email"
-                required
+                className={validationErrors.email ? 'border-red-500' : ''}
               />
+              {validationErrors.email && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.email}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="password">Password *</Label>
@@ -132,8 +246,14 @@ export function MentorRegistration() {
                 value={formData.password}
                 onChange={(e) => updateFormData('password', e.target.value)}
                 placeholder="Create a strong password"
-                required
+                className={validationErrors.password ? 'border-red-500' : ''}
               />
+              {validationErrors.password && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.password}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="confirmPassword">Confirm Password *</Label>
@@ -143,8 +263,14 @@ export function MentorRegistration() {
                 value={formData.confirmPassword}
                 onChange={(e) => updateFormData('confirmPassword', e.target.value)}
                 placeholder="Confirm your password"
-                required
+                className={validationErrors.confirmPassword ? 'border-red-500' : ''}
               />
+              {validationErrors.confirmPassword && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.confirmPassword}</span>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -159,8 +285,14 @@ export function MentorRegistration() {
                 value={formData.name}
                 onChange={(e) => updateFormData('name', e.target.value)}
                 placeholder="Your full name"
-                required
+                className={validationErrors.name ? 'border-red-500' : ''}
               />
+              {validationErrors.name && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.name}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="jobTitle">Current Job Title *</Label>
@@ -169,8 +301,14 @@ export function MentorRegistration() {
                 value={formData.jobTitle}
                 onChange={(e) => updateFormData('jobTitle', e.target.value)}
                 placeholder="e.g., VP of Sales, CTO, Founder, etc."
-                required
+                className={validationErrors.jobTitle ? 'border-red-500' : ''}
               />
+              {validationErrors.jobTitle && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.jobTitle}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="company">Current Company *</Label>
@@ -179,8 +317,14 @@ export function MentorRegistration() {
                 value={formData.company}
                 onChange={(e) => updateFormData('company', e.target.value)}
                 placeholder="Your current or most recent company"
-                required
+                className={validationErrors.company ? 'border-red-500' : ''}
               />
+              {validationErrors.company && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.company}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="linkedinUrl">LinkedIn Profile *</Label>
@@ -189,8 +333,14 @@ export function MentorRegistration() {
                 value={formData.linkedinUrl}
                 onChange={(e) => updateFormData('linkedinUrl', e.target.value)}
                 placeholder="https://linkedin.com/in/yourname"
-                required
+                className={validationErrors.linkedinUrl ? 'border-red-500' : ''}
               />
+              {validationErrors.linkedinUrl && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.linkedinUrl}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="phone">Phone Number</Label>
@@ -234,6 +384,12 @@ export function MentorRegistration() {
                   </div>
                 ))}
               </div>
+              {validationErrors.expertise && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.expertise}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -258,7 +414,7 @@ export function MentorRegistration() {
             <div>
               <Label htmlFor="experienceYears">Years of Relevant Experience *</Label>
               <Select onValueChange={(value) => updateFormData('experienceYears', value)}>
-                <SelectTrigger>
+                <SelectTrigger className={validationErrors.experienceYears ? 'border-red-500' : ''}>
                   <SelectValue placeholder="Select experience range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -269,6 +425,12 @@ export function MentorRegistration() {
                   <SelectItem value="20+">20+ years</SelectItem>
                 </SelectContent>
               </Select>
+              {validationErrors.experienceYears && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.experienceYears}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -279,8 +441,14 @@ export function MentorRegistration() {
                 onChange={(e) => updateFormData('bio', e.target.value)}
                 placeholder="Tell startups about your background, achievements, and what unique value you can provide as a mentor..."
                 rows={4}
-                required
+                className={validationErrors.bio ? 'border-red-500' : ''}
               />
+              {validationErrors.bio && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.bio}</span>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -309,6 +477,12 @@ export function MentorRegistration() {
                   </div>
                 ))}
               </div>
+              {validationErrors.availabilityType && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.availabilityType}</span>
+                </div>
+              )}
             </div>
 
             {formData.availabilityType.includes('paid') && (
@@ -337,12 +511,18 @@ export function MentorRegistration() {
                   </div>
                 ))}
               </div>
+              {validationErrors.sessionFormat && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.sessionFormat}</span>
+                </div>
+              )}
             </div>
 
             <div>
               <Label htmlFor="frequency">Availability Frequency *</Label>
               <Select onValueChange={(value) => updateFormData('frequency', value)}>
-                <SelectTrigger>
+                <SelectTrigger className={validationErrors.frequency ? 'border-red-500' : ''}>
                   <SelectValue placeholder="How often can you mentor?" />
                 </SelectTrigger>
                 <SelectContent>
@@ -354,6 +534,12 @@ export function MentorRegistration() {
                   <SelectItem value="one-time">One-time consultations only</SelectItem>
                 </SelectContent>
               </Select>
+              {validationErrors.frequency && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.frequency}</span>
+                </div>
+              )}
             </div>
 
             <div>

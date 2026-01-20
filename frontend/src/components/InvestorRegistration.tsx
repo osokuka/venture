@@ -11,7 +11,8 @@ import { Switch } from "./ui/switch";
 import { Progress } from "./ui/progress";
 import { Badge } from "./ui/badge";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, ArrowRight, CheckCircle, Clock, Eye, EyeOff, Mail } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle, Clock, Eye, EyeOff, Mail, AlertCircle } from "lucide-react";
+import { validateEmail, validatePassword } from '../utils/security';
 
 interface InvestorFormData {
   // Step 1: Account Creation
@@ -44,11 +45,25 @@ interface InvestorFormData {
   allowDirectContact: boolean;
 }
 
+interface ValidationErrors {
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  name?: string;
+  organizationName?: string;
+  linkedinUrl?: string;
+  investmentStages?: string;
+  industries?: string;
+  bio?: string;
+  investmentPhilosophy?: string;
+}
+
 export function InvestorRegistration() {
   const navigate = useNavigate();
   const { completeRegistration, startRegistration } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [formData, setFormData] = useState<InvestorFormData>({
     email: '', password: '', confirmPassword: '',
     investorType: 'individual', name: '', organizationName: '', website: '', linkedinUrl: '', phone: '', address: '',
@@ -66,6 +81,7 @@ export function InvestorRegistration() {
   }, [startRegistration]);
 
   // Keep form updates typed to reduce registration tech debt.
+  // No inline validation - validation only on button press
   const updateFormData = <K extends keyof InvestorFormData>(field: K, value: InvestorFormData[K]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
@@ -78,19 +94,96 @@ export function InvestorRegistration() {
     updateFormData(field, updated as InvestorFormData[typeof field]);
   };
 
+  // Validate current step - only called on button press
+  const validateCurrentStep = (): boolean => {
+    const errors: ValidationErrors = {};
+
+    if (currentStep === 1) {
+      // Step 1: Account Creation
+      if (!formData.email.trim()) {
+        errors.email = 'Email address is required';
+      } else if (!validateEmail(formData.email)) {
+        errors.email = 'Please enter a valid email address';
+      }
+
+      if (!formData.password) {
+        errors.password = 'Password is required';
+      } else {
+        const passwordValidation = validatePassword(formData.password);
+        if (!passwordValidation.isValid) {
+          errors.password = passwordValidation.errors.join('. ') || 'Password does not meet requirements';
+        }
+      }
+
+      if (!formData.confirmPassword) {
+        errors.confirmPassword = 'Please confirm your password';
+      } else if (formData.password !== formData.confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match';
+      }
+    } else if (currentStep === 2) {
+      // Step 2: Personal/Organization Info
+      if (!formData.name.trim()) {
+        errors.name = 'Name is required';
+      }
+
+      if (formData.investorType !== 'individual' && !formData.organizationName?.trim()) {
+        errors.organizationName = 'Organization name is required';
+      }
+
+      if (!formData.linkedinUrl?.trim()) {
+        errors.linkedinUrl = 'LinkedIn profile URL is required';
+      }
+    } else if (currentStep === 3) {
+      // Step 3: Investment Preferences
+      if (formData.investmentStages.length === 0) {
+        errors.investmentStages = 'Please select at least one investment stage';
+      }
+
+      if (formData.industries.length === 0) {
+        errors.industries = 'Please select at least one industry';
+      }
+    } else if (currentStep === 4) {
+      // Step 4: Profile & Visibility
+      if (!formData.bio.trim()) {
+        errors.bio = 'Professional bio is required';
+      }
+
+      if (!formData.investmentPhilosophy.trim()) {
+        errors.investmentPhilosophy = 'Investment philosophy is required';
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const nextStep = () => {
+    // Validate before moving to next step
+    if (!validateCurrentStep()) {
+      return;
+    }
+    
     if (currentStep < totalSteps) {
       setCurrentStep(prev => prev + 1);
+      // Clear validation errors when moving to next step
+      setValidationErrors({});
     }
   };
 
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(prev => prev - 1);
+      // Clear validation errors when going back
+      setValidationErrors({});
     }
   };
 
   const handleSubmit = async () => {
+    // Validate step 4 before submission
+    if (!validateCurrentStep()) {
+      return;
+    }
+
     setIsSubmitting(true);
     setCurrentStep(5);
     
@@ -132,8 +225,14 @@ export function InvestorRegistration() {
                 value={formData.email}
                 onChange={(e) => updateFormData('email', e.target.value)}
                 placeholder="Enter your email"
-                required
+                className={validationErrors.email ? 'border-red-500' : ''}
               />
+              {validationErrors.email && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.email}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="password">Password *</Label>
@@ -143,8 +242,14 @@ export function InvestorRegistration() {
                 value={formData.password}
                 onChange={(e) => updateFormData('password', e.target.value)}
                 placeholder="Create a strong password"
-                required
+                className={validationErrors.password ? 'border-red-500' : ''}
               />
+              {validationErrors.password && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.password}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="confirmPassword">Confirm Password *</Label>
@@ -154,8 +259,14 @@ export function InvestorRegistration() {
                 value={formData.confirmPassword}
                 onChange={(e) => updateFormData('confirmPassword', e.target.value)}
                 placeholder="Confirm your password"
-                required
+                className={validationErrors.confirmPassword ? 'border-red-500' : ''}
               />
+              {validationErrors.confirmPassword && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.confirmPassword}</span>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -195,8 +306,14 @@ export function InvestorRegistration() {
                   value={formData.organizationName || ''}
                   onChange={(e) => updateFormData('organizationName', e.target.value)}
                   placeholder="Your firm/organization name"
-                  required
+                  className={validationErrors.organizationName ? 'border-red-500' : ''}
                 />
+                {validationErrors.organizationName && (
+                  <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{validationErrors.organizationName}</span>
+                  </div>
+                )}
               </div>
             )}
             <div>
@@ -215,8 +332,14 @@ export function InvestorRegistration() {
                 value={formData.linkedinUrl || ''}
                 onChange={(e) => updateFormData('linkedinUrl', e.target.value)}
                 placeholder="https://linkedin.com/in/yourname"
-                required
+                className={validationErrors.linkedinUrl ? 'border-red-500' : ''}
               />
+              {validationErrors.linkedinUrl && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.linkedinUrl}</span>
+                </div>
+              )}
             </div>
             <div>
               <Label htmlFor="phone">Phone Number</Label>
@@ -257,6 +380,12 @@ export function InvestorRegistration() {
                   </div>
                 ))}
               </div>
+              {validationErrors.investmentStages && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.investmentStages}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -273,6 +402,12 @@ export function InvestorRegistration() {
                   </div>
                 ))}
               </div>
+              {validationErrors.industries && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.industries}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -352,8 +487,14 @@ export function InvestorRegistration() {
                 onChange={(e) => updateFormData('bio', e.target.value)}
                 placeholder="Tell startups about your background, experience, and what makes you a valuable investor..."
                 rows={4}
-                required
+                className={validationErrors.bio ? 'border-red-500' : ''}
               />
+              {validationErrors.bio && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.bio}</span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -364,8 +505,14 @@ export function InvestorRegistration() {
                 onChange={(e) => updateFormData('investmentPhilosophy', e.target.value)}
                 placeholder="What drives your investment decisions? What do you look for in startups?"
                 rows={4}
-                required
+                className={validationErrors.investmentPhilosophy ? 'border-red-500' : ''}
               />
+              {validationErrors.investmentPhilosophy && (
+                <div className="flex items-center space-x-2 text-sm text-red-600 mt-1">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{validationErrors.investmentPhilosophy}</span>
+                </div>
+              )}
             </div>
 
             <div>
