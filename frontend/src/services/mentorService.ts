@@ -74,8 +74,14 @@ export const mentorService = {
   async getMyProfile(): Promise<MentorProfile> {
     try {
       const response = await apiClient.get('/mentors/profile/me');
-      return response.data;
-    } catch (error) {
+      // Backend now returns 200 OK with null when profile doesn't exist (instead of 404)
+      // Return null if response data is null/empty
+      return response.data || null as any;
+    } catch (error: any) {
+      // Handle 404 for backward compatibility (in case backend hasn't been updated)
+      if (error?.response?.status === 404) {
+        return null as any;
+      }
       throw new Error(getErrorMessage(error));
     }
   },

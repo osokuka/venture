@@ -98,12 +98,16 @@ export const ventureService = {
   async getMyProfile(): Promise<VentureUserProfile> {
     try {
       const response = await apiClient.get('/ventures/profile/me');
-      return response.data;
+      // Backend now returns 200 OK with null when profile doesn't exist (instead of 404)
+      // Return null if response data is null/empty
+      return response.data || null as any;
     } catch (error: any) {
-      // Return null if profile doesn't exist (404), throw for other errors
+      // Handle 404 for backward compatibility (in case backend hasn't been updated)
       if (error?.response?.status === 404) {
         return null as any;
       }
+      // Log and throw for other errors (network issues, server errors, etc.)
+      console.error('Error fetching venture profile:', error);
       throw new Error(getErrorMessage(error));
     }
   },

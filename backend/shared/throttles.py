@@ -83,7 +83,7 @@ class CurrentUserRateThrottle(SimpleRateThrottle):
     Allows more requests since this is a lightweight read-only endpoint
     that's frequently called to check authentication status.
     
-    Rate: 1000 requests/hour for authenticated users (vs default 100/hour)
+    Rate: 1000 requests/hour for authenticated users (vs default 5000/hour, but this endpoint is called very frequently)
     This prevents legitimate users from hitting rate limits during normal usage.
     """
     scope = 'current_user'

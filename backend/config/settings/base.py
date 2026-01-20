@@ -148,7 +148,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/hour',  # Anonymous users: 20 requests per hour (increased for login)
-        'user': '100/hour',  # Authenticated users: 100 requests per hour (default)
+        'user': '5000/hour',  # Authenticated users: 5000 requests per hour (increased to prevent throttling issues)
         'password_reset': '1/hour',  # Password reset: 1 request per hour per email
         'current_user': '1000/hour',  # /api/auth/me endpoint: 1000 requests per hour (frequently called)
     },

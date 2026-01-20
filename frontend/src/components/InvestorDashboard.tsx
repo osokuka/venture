@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -86,6 +86,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   // IMPORTANT: All hooks must be called unconditionally before any early returns
   // This follows React's Rules of Hooks
   const navigate = useNavigate();
+  const location = useLocation(); // Track route changes to force data refetch
   const [searchParams] = useSearchParams();
   const [ventures, setVentures] = useState<VentureProduct[]>([]);
   const [sharedPitchDecks, setSharedPitchDecks] = useState<SharedPitchDeck[]>([]);
@@ -99,6 +100,12 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const [filterStage, setFilterStage] = useState('all');
   const [filterFunding, setFilterFunding] = useState('all');
   const [profileRefreshTrigger, setProfileRefreshTrigger] = useState(0);
+  
+  // Refs to track last fetch time and prevent duplicate/rapid API calls
+  // This prevents rate limiting issues when navigating between routes
+  const lastFetchRef = useRef<{ [key: string]: number }>({});
+  const isFetchingRef = useRef<{ [key: string]: boolean }>({});
+  const lastPathnameRef = useRef<{ [key: string]: string }>({}); // Track last pathname per fetch key to detect route changes
   
   // Get selected user info from URL params (for messaging)
   const selectedUserId = searchParams.get('userId');
@@ -147,7 +154,20 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
 
   // Memoize fetchSharedPitchDecks to prevent unnecessary re-renders
   const fetchSharedPitchDecks = useCallback(async () => {
+    const fetchKey = 'sharedPitchDecks';
+    const now = Date.now();
+    const lastFetch = lastFetchRef.current[fetchKey] || 0;
+    const minInterval = 2000; // Minimum 2 seconds between fetches to prevent rate limiting
+    
+    // Skip if already fetching or if called too recently
+    if (isFetchingRef.current[fetchKey] || (now - lastFetch < minInterval)) {
+      return;
+    }
+    
+    isFetchingRef.current[fetchKey] = true;
+    lastFetchRef.current[fetchKey] = now;
     setIsLoadingSharedPitchDecks(true);
+    
     try {
       const data = await investorService.getSharedPitchDecks();
       // Ensure data is always an array - handle all possible response formats
@@ -170,6 +190,12 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       setSharedPitchDecks(validShares);
     } catch (error: any) {
       console.error('Failed to fetch shared pitch decks:', error);
+      // Handle rate limiting gracefully - don't spam errors
+      if (error?.response?.status === 429) {
+        console.warn('Rate limited on shared pitch decks. Will retry when view changes.');
+        // Reset last fetch time so it can retry after a delay
+        lastFetchRef.current[fetchKey] = now - minInterval + 5000; // Allow retry after 5 seconds
+      }
       // Don't show error toast - just set empty array to prevent component crash
       setSharedPitchDecks([]);
       // Only log error details in development
@@ -182,24 +208,54 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       }
     } finally {
       setIsLoadingSharedPitchDecks(false);
+      isFetchingRef.current[fetchKey] = false;
     }
   }, []); // Empty deps - function doesn't depend on any props/state
 
   // Fetch shared pitch decks on component mount and when overview is active
+  // Track pathname changes to ensure data is fetched on navigation, but throttle to prevent rate limiting
   useEffect(() => {
+    const fetchKey = 'sharedPitchDecks';
+    const currentPathname = location.pathname;
+    const lastPathname = lastPathnameRef.current[fetchKey] || '';
+    const pathnameChanged = lastPathname !== currentPathname;
+    
     if (activeView === 'overview' || activeView === 'discover') {
-      fetchSharedPitchDecks();
+      if (pathnameChanged || !lastFetchRef.current[fetchKey]) {
+        // Fetch if pathname changed (user navigated) or on initial mount
+        lastPathnameRef.current[fetchKey] = currentPathname;
+        fetchSharedPitchDecks();
+      }
     }
-  }, [activeView, fetchSharedPitchDecks]);
+  }, [activeView, fetchSharedPitchDecks, location.pathname]);
 
   // Fetch portfolio investments
   const fetchPortfolio = useCallback(async () => {
+    const fetchKey = 'portfolio';
+    const now = Date.now();
+    const lastFetch = lastFetchRef.current[fetchKey] || 0;
+    const minInterval = 2000; // Minimum 2 seconds between fetches to prevent rate limiting
+    
+    // Skip if already fetching or if called too recently
+    if (isFetchingRef.current[fetchKey] || (now - lastFetch < minInterval)) {
+      return;
+    }
+    
+    isFetchingRef.current[fetchKey] = true;
+    lastFetchRef.current[fetchKey] = now;
     setIsLoadingPortfolio(true);
+    
     try {
       const data = await investorService.getPortfolio();
       setPortfolioInvestments(data.results || []);
     } catch (error: any) {
       console.error('Failed to fetch portfolio:', error);
+      // Handle rate limiting gracefully - don't spam errors
+      if (error?.response?.status === 429) {
+        console.warn('Rate limited on portfolio. Will retry when view changes.');
+        // Reset last fetch time so it can retry after a delay
+        lastFetchRef.current[fetchKey] = now - minInterval + 5000; // Allow retry after 5 seconds
+      }
       setPortfolioInvestments([]);
       if (import.meta.env.DEV) {
         console.error('Portfolio error details:', {
@@ -210,15 +266,26 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       }
     } finally {
       setIsLoadingPortfolio(false);
+      isFetchingRef.current[fetchKey] = false;
     }
   }, []);
 
   // Fetch portfolio when portfolio view is active or when commitments change
+  // Track pathname changes to ensure data is fetched on navigation, but throttle to prevent rate limiting
   useEffect(() => {
+    const fetchKey = 'portfolio';
+    const currentPathname = location.pathname;
+    const lastPathname = lastPathnameRef.current[fetchKey] || '';
+    const pathnameChanged = lastPathname !== currentPathname;
+    
     if (activeView === 'portfolio' || activeView === 'overview') {
-      fetchPortfolio();
+      if (pathnameChanged || !lastFetchRef.current[fetchKey]) {
+        // Fetch if pathname changed (user navigated) or on initial mount
+        lastPathnameRef.current[fetchKey] = currentPathname;
+        fetchPortfolio();
+      }
     }
-  }, [activeView, fetchPortfolio]);
+  }, [activeView, fetchPortfolio, location.pathname]);
 
   // Memoize fetchVentures to prevent unnecessary re-renders and fix hooks violation
   const fetchVentures = useCallback(async () => {
@@ -284,31 +351,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     setProfileRefreshTrigger(prev => prev + 1);
   }, [onProfileUpdate]);
 
-  // Handle profile and settings views
-  if (activeView === 'edit-profile') {
-    return <EditProfile user={user} onProfileUpdate={handleProfileUpdate} />;
-  }
-
-  if (activeView === 'settings') {
-    return <Settings user={user} />;
-  }
-
-  if (activeView === 'profile') {
-    // Pass refreshTrigger to force UserProfile to re-fetch data when profile is updated
-    return (
-      <UserProfile 
-        key={`${user.id}-${profileRefreshTrigger}`}
-        user={user} 
-        onEdit={() => onViewChange?.('edit-profile')} 
-        isOwnProfile={true}
-        refreshTrigger={profileRefreshTrigger}
-      />
-    );
-  }
-
   // Calculate total committed amount from portfolio investments only
   // Note: We use portfolioInvestments as the single source of truth to avoid double-counting
   // (sharedPitchDecks also shows commitment_status, but that's just for display)
+  // IMPORTANT: All hooks (including useMemo) must be called BEFORE any conditional returns
   const totalCommittedAmount = React.useMemo(() => {
     let total = 0;
     // Sum from portfolio investments only (single source of truth)
@@ -324,18 +370,6 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     }
     return total;
   }, [portfolioInvestments]);
-
-  // Real stats - using actual data or showing empty states
-  const stats = {
-    totalInvestments: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
-    totalInvested: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
-    totalCommitted: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
-    activeDeals: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
-    avgReturn: '0%', // TODO: Calculate from portfolio API data when available
-    portfolioValue: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
-    pipeline: Array.isArray(sharedPitchDecks) ? sharedPitchDecks.filter(pd => pd.is_new).length : 0, // New shared pitch decks count
-    totalMessages: unreadCount
-  };
 
   // Portfolio companies from committed investments (including withdrawn for display)
   const portfolioCompanies: any[] = React.useMemo(() => {
@@ -368,11 +402,26 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       }));
   }, [portfolioInvestments]);
 
+  // Real stats - using actual data or showing empty states
+  // IMPORTANT: Calculate stats AFTER all hooks are called but BEFORE conditional returns
+  const stats = {
+    totalInvestments: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
+    totalInvested: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
+    totalCommitted: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
+    activeDeals: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
+    avgReturn: '0%', // TODO: Calculate from portfolio API data when available
+    portfolioValue: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
+    pipeline: Array.isArray(sharedPitchDecks) ? sharedPitchDecks.filter(pd => pd.is_new).length : 0, // New shared pitch decks count
+    totalMessages: unreadCount
+  };
+
   // Empty arrays for now - will be populated when APIs are available
   const recentActivity: any[] = [];
   const pipelineDeals: any[] = [];
   const performanceMetrics: any[] = [];
 
+  // IMPORTANT: All hooks (useCallback, useMemo, etc.) must be called BEFORE any conditional returns
+  // Handler for withdrawing commitment
   const handleWithdrawCommitment = useCallback(async (productId: string, commitmentId: string, productName: string) => {
     if (!validateUuid(productId) || !validateUuid(commitmentId)) {
       toast.error("Invalid product or commitment ID");
@@ -2015,6 +2064,31 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       />
     );
   };
+
+  // Handle profile and settings views - AFTER all hooks are called
+  // These conditional returns must come after all hooks (useState, useEffect, useCallback, useMemo)
+  if (activeView === 'edit-profile') {
+    return <EditProfile user={user} onProfileUpdate={handleProfileUpdate} />;
+  }
+
+  if (activeView === 'settings') {
+    return <Settings user={user} />;
+  }
+
+  if (activeView === 'profile') {
+    // Pass refreshTrigger and location.pathname to force UserProfile to re-fetch data on navigation
+    // Using location.pathname in the key ensures the component remounts when navigating to profile view
+    // This fixes the issue where navigating to /dashboard/investor/profile doesn't show data
+    return (
+      <UserProfile 
+        key={`${user.id}-${profileRefreshTrigger}-${location.pathname}`}
+        user={user} 
+        onEdit={() => onViewChange?.('edit-profile')} 
+        isOwnProfile={true}
+        refreshTrigger={profileRefreshTrigger}
+      />
+    );
+  }
 
   // Main render logic
   switch (activeView) {

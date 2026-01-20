@@ -3127,14 +3127,46 @@
         }
       ],
       "status": "Done"
+    },
+    {
+      "key": "VL-849",
+      "summary": "Authentication Verification: Unified JWT with httpOnly Cookies Across All User Types",
+      "description": "Verified that all user types (venture, investor, mentor, admin) use the same unified JWT authentication with httpOnly cookies. No inconsistencies found.\n\n**Verification Results:**\n✅ **Backend Authentication:**\n- All endpoints use `DEFAULT_AUTHENTICATION_CLASSES` with `CookieJWTAuthentication` (httpOnly cookies) as primary\n- Fallback to `JWTAuthentication` (Authorization header) for backward compatibility\n- All protected endpoints use `IsAuthenticated` permission class\n- No custom authentication classes found per app\n- All user types use the same `/api/auth/login` endpoint\n- Login, refresh, and logout endpoints all set/clear httpOnly cookies consistently\n\n✅ **Frontend Authentication:**\n- All API calls use `apiClient` with `withCredentials: true` for cookies\n- `authService` doesn't store tokens in localStorage (prevents XSS)\n- All user types (venture, investor, mentor, admin) use the same `authService.login()` method\n- No localStorage/sessionStorage token storage found\n- Token refresh handled automatically via httpOnly cookies\n\n✅ **Security:**\n- httpOnly cookies prevent XSS attacks\n- Secure flag enabled in production (HTTPS only)\n- SameSite=Lax for CSRF protection\n- Domain set to `.ventureuplink.com` for cross-subdomain support in production\n- Tokens removed from response body (only in cookies)\n\n✅ **Consistency:**\n- Venture users: Use `/api/auth/login` → httpOnly cookies → all endpoints\n- Investor users: Use `/api/auth/login` → httpOnly cookies → all endpoints\n- Mentor users: Use `/api/auth/login` → httpOnly cookies → all endpoints\n- Admin users: Use `/api/auth/login` → httpOnly cookies → all endpoints\n\n**No Shortcomings Found:**\n- All user types use identical authentication flow\n- No role-specific authentication differences\n- No localStorage/sessionStorage token storage\n- No inconsistencies in cookie settings\n- All endpoints properly protected\n\n**Public Endpoints (Correctly Using AllowAny):**\n- `/api/auth/register` - Registration (AllowAny)\n- `/api/auth/login` - Login (AllowAny, but sets cookies)\n- `/api/auth/verify-email` - Email verification (AllowAny)\n- `/api/auth/password-reset-request` - Password reset request (AllowAny)\n- `/api/auth/password-reset-confirm` - Password reset confirm (AllowAny)\n\n**Conclusion:**\nAuthentication is fully unified across all user types. All users (venture, investor, mentor, admin) use the same JWT authentication with httpOnly cookies. No changes needed.",
+      "type": "Story",
+      "priority": "High",
+      "epic": "VL-1",
+      "tasks": [
+        {
+          "summary": "Backend: Verify all endpoints use unified CookieJWTAuthentication",
+          "description": "Verified that all backend endpoints use `DEFAULT_AUTHENTICATION_CLASSES` which includes `CookieJWTAuthentication` (httpOnly cookies) as primary authentication method.\n\n**Verification:**\n- Checked `backend/config/settings/base.py` - `DEFAULT_AUTHENTICATION_CLASSES` includes `CookieJWTAuthentication`\n- Searched for `authentication_classes` overrides - None found\n- All views use `IsAuthenticated` permission (except public endpoints)\n- All apps (ventures, investors, mentors, messaging, approvals, matching, content) inherit default authentication\n- No custom authentication classes found\n\n**Result:** ✅ All endpoints use unified authentication",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        },
+        {
+          "summary": "Frontend: Verify all user types use same authService and httpOnly cookies",
+          "description": "Verified that all frontend user types (venture, investor, mentor, admin) use the same authentication service and httpOnly cookies.\n\n**Verification:**\n- Checked `frontend/src/services/api.ts` - `withCredentials: true` configured\n- Checked `frontend/src/services/authService.ts` - No localStorage token storage\n- Checked `frontend/src/components/AuthContext.tsx` - All user types use `authService.login()`\n- Searched for localStorage/sessionStorage token storage - None found\n- All API calls go through same `apiClient` instance\n- Token refresh handled automatically via cookies\n\n**Result:** ✅ All user types use unified authentication",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        },
+        {
+          "summary": "Security: Verify httpOnly cookie configuration and security flags",
+          "description": "Verified that httpOnly cookies are properly configured with security flags.\n\n**Verification:**\n- `CustomTokenObtainPairView` sets httpOnly cookies with Secure flag in production\n- `CustomTokenRefreshView` reads from cookies and sets new cookies\n- `logout_view` clears cookies properly\n- Cookie domain set to `.ventureuplink.com` for cross-subdomain support\n- SameSite=Lax for CSRF protection\n- Tokens removed from response body\n\n**Result:** ✅ Security configuration correct",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        }
+      ],
+      "status": "Done"
     }
   ],
   "metadata": {
     "created": "2025-01-27",
     "updated": "2026-01-20",
-    "version": "1.16",
-    "totalStories": 64,
-    "totalTasks": 293,
-    "estimatedStoryPoints": 332
+    "version": "1.17",
+    "totalStories": 65,
+    "totalTasks": 296,
+    "estimatedStoryPoints": 333
   }
 }

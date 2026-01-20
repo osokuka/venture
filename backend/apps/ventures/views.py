@@ -622,9 +622,12 @@ class VentureProfileCreateUpdateView(generics.CreateAPIView, generics.RetrieveUp
         """Get own venture profile."""
         profile = self.get_object()
         if not profile:
+            # Return 200 OK with null instead of 404 for missing profiles
+            # This is more user-friendly since profiles are optional and might not exist yet
+            # Frontend can check for null/empty response instead of handling 404 errors
             return Response(
-                {'detail': 'Venture profile not found. Create one first.'},
-                status=status.HTTP_404_NOT_FOUND
+                None,
+                status=status.HTTP_200_OK
             )
         
         serializer = self.get_serializer(profile)

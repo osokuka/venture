@@ -245,7 +245,7 @@ def verify_email(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@throttle_classes([UserRateThrottle])  # Rate limit: 100/hour for authenticated users
+@throttle_classes([UserRateThrottle])  # Rate limit: 5000/hour for authenticated users (default)
 def resend_verification(request):
     """
     Resend verification email.

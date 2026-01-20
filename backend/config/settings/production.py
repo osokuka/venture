@@ -7,7 +7,17 @@ from .base import *
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',')
+# Parse ALLOWED_HOSTS from environment variable
+allowed_hosts_env = os.environ.get('DJANGO_ALLOWED_HOSTS', '')
+if allowed_hosts_env and allowed_hosts_env.strip():
+    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
+else:
+    # Default production hosts
+    ALLOWED_HOSTS = [
+        'ventureuplink.com',
+        'www.ventureuplink.com',
+        'backend.ventureuplink.com',
+    ]
 
 # Security settings for production - TLS 1.3+ enforced
 SECURE_SSL_REDIRECT = True
@@ -31,10 +41,16 @@ CSRF_USE_SESSIONS = False
 
 # CSRF Trusted Origins - Allow requests from these origins
 # Can be set via environment variable CSRF_TRUSTED_ORIGINS (comma-separated)
-CSRF_TRUSTED_ORIGINS = os.environ.get(
-    'CSRF_TRUSTED_ORIGINS',
-    'https://ventureuplink.com,https://www.ventureuplink.com,https://backend.ventureuplink.com'
-).split(',')
+csrf_origins_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if csrf_origins_env and csrf_origins_env.strip():
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins_env.split(',') if origin.strip()]
+else:
+    # Default production origins
+    CSRF_TRUSTED_ORIGINS = [
+        'https://ventureuplink.com',
+        'https://www.ventureuplink.com',
+        'https://backend.ventureuplink.com',
+    ]
 
 # TLS 1.3+ Security Headers
 SECURE_HSTS_SECONDS = 31536000  # 1 year
