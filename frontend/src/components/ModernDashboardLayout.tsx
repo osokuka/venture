@@ -257,7 +257,7 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
                   style={{ maxWidth: '75px', maxHeight: '75px' }}
                 />
                 <div className="hidden sm:block">
-                  <h1 className="text-xl font-bold text-gray-900">VentureUP Link</h1>
+                  <h1 className="text-xl font-bold text-gray-900">VentureLink</h1>
                   <p className="text-xs text-gray-600 capitalize">{user.role} Portal</p>
                 </div>
               </div>
@@ -428,9 +428,6 @@ export function ModernDashboardLayout({ children, user }: ModernDashboardLayoutP
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{getPageTitle()}</h1>
-              <p className="text-gray-600 mt-1">
-                Welcome back, {getUserDisplayName()}
-              </p>
             </div>
           </div>
         </div>

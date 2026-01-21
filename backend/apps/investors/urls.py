@@ -13,6 +13,7 @@ from .views import (
     commit_to_invest,
     update_commitment,
     withdraw_commitment,
+    complete_deal,
     get_investor_portfolio
 )
 
@@ -34,6 +35,7 @@ urlpatterns = [
     path('products/<uuid:product_id>/documents/<uuid:doc_id>/commit', commit_to_invest, name='investor_commit_to_invest'),
     path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/update', update_commitment, name='investor_update_commitment'),
     path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/withdraw', withdraw_commitment, name='investor_withdraw_commitment'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/complete', complete_deal, name='investor_complete_deal'),
     
     # Public investor views (approved users only)
     path('public', PublicInvestorListView.as_view(), name='public_investors'),

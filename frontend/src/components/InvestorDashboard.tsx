@@ -106,6 +106,9 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   const lastFetchRef = useRef<{ [key: string]: number }>({});
   const isFetchingRef = useRef<{ [key: string]: boolean }>({});
   const lastPathnameRef = useRef<{ [key: string]: string }>({}); // Track last pathname per fetch key to detect route changes
+  const lastActiveViewRef = useRef<string>(''); // Track last activeView to detect tab switches
+  const completionInfoRef = useRef<HTMLDivElement | null>(null); // Anchor for deal completion info
+  const [showCompletionInfo, setShowCompletionInfo] = useState(false); // Toggle completion info visibility
   
   // Get selected user info from URL params (for messaging)
   const selectedUserId = searchParams.get('userId');
@@ -270,20 +273,26 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     }
   }, []);
 
-  // Fetch portfolio when portfolio view is active or when commitments change
+  // Fetch portfolio when portfolio view is active, overview, or discover (for badges)
   // Track pathname changes to ensure data is fetched on navigation, but throttle to prevent rate limiting
   useEffect(() => {
     const fetchKey = 'portfolio';
     const currentPathname = location.pathname;
     const lastPathname = lastPathnameRef.current[fetchKey] || '';
     const pathnameChanged = lastPathname !== currentPathname;
+    const viewChanged = lastActiveViewRef.current !== activeView;
     
-    if (activeView === 'portfolio' || activeView === 'overview') {
-      if (pathnameChanged || !lastFetchRef.current[fetchKey]) {
-        // Fetch if pathname changed (user navigated) or on initial mount
+    // Fetch portfolio for overview, portfolio, and discover tabs (discover needs it for badges)
+    if (activeView === 'portfolio' || activeView === 'overview' || activeView === 'discover') {
+      // Fetch if switching to these tabs or pathname changed
+      if (viewChanged || pathnameChanged || !lastFetchRef.current[fetchKey]) {
         lastPathnameRef.current[fetchKey] = currentPathname;
+        lastActiveViewRef.current = activeView;
         fetchPortfolio();
       }
+    } else {
+      // Update lastActiveView even when not on these tabs
+      lastActiveViewRef.current = activeView;
     }
   }, [activeView, fetchPortfolio, location.pathname]);
 
@@ -318,11 +327,27 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
   }, [searchTerm, filterSector]); // Include dependencies
 
   // Fetch ventures when discover view is active
+  // Track activeView changes to ensure data is fetched when switching to discover tab
   useEffect(() => {
+    const fetchKey = 'ventures';
+    const now = Date.now();
+    const lastFetch = lastFetchRef.current[fetchKey] || 0;
+    const minInterval = 1000; // Minimum 1 second between fetches to prevent rate limiting
+    const viewChanged = lastActiveViewRef.current !== activeView;
+    
     if (activeView === 'discover') {
-      fetchVentures();
+      // Always fetch when switching to discover tab (view changed to 'discover')
+      // Or if enough time has passed since last fetch (to handle filter changes)
+      if (viewChanged || (now - lastFetch > minInterval)) {
+        lastFetchRef.current[fetchKey] = now;
+        lastActiveViewRef.current = activeView;
+        fetchVentures();
+      }
+    } else {
+      // Update lastActiveView even when not on discover tab
+      lastActiveViewRef.current = activeView;
     }
-  }, [activeView, fetchVentures, filterStage]); // Include fetchVentures in dependencies
+  }, [activeView, fetchVentures, filterStage]); // Include filterStage to refetch when filter changes
   
   // Note: All modals have been removed. Actions now open new tabs instead.
   // This follows the platform rule: "No modals - use new tabs for detailed views"
@@ -411,14 +436,65 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
     activeDeals: Array.isArray(portfolioInvestments) ? portfolioInvestments.filter(inv => inv.status === 'COMMITTED').length : 0,
     avgReturn: '0%', // TODO: Calculate from portfolio API data when available
     portfolioValue: totalCommittedAmount > 0 ? `$${totalCommittedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '$0',
-    pipeline: Array.isArray(sharedPitchDecks) ? sharedPitchDecks.filter(pd => pd.is_new).length : 0, // New shared pitch decks count
+    pipeline: Array.isArray(sharedPitchDecks) ? sharedPitchDecks.filter((pd: any) => pd.is_new && !pd.is_deal).length : 0, // New shared pitch decks count (excluding deals)
     totalMessages: unreadCount
   };
 
   // Empty arrays for now - will be populated when APIs are available
   const recentActivity: any[] = [];
-  const pipelineDeals: any[] = [];
   const performanceMetrics: any[] = [];
+  
+  // Deal Pipeline: Show deals that are committed/negotiating but not yet closed
+  const pipelineDeals = React.useMemo(() => {
+    if (!Array.isArray(portfolioInvestments)) return [];
+    
+    return portfolioInvestments
+      .filter((inv: any) => {
+        // Include if:
+        // 1. Status is COMMITTED or EXPRESSED (committed to invest)
+        // 2. Venture response is PENDING or RENEGOTIATE (negotiating)
+        // 3. Not closed (status !== 'COMPLETED' and status !== 'WITHDRAWN')
+        const isCommitted = inv.status === 'COMMITTED' || inv.status === 'EXPRESSED';
+        const isNegotiating = inv.venture_response === 'PENDING' || inv.venture_response === 'RENEGOTIATE';
+        const isNotClosed = inv.status !== 'COMPLETED' && inv.status !== 'WITHDRAWN';
+        
+        return (isCommitted || isNegotiating) && isNotClosed;
+      })
+      .map((inv: any) => ({
+        id: inv.commitment_id || inv.product_id,
+        company: inv.product_name || 'Unknown',
+        stage: inv.funding_stage || 'N/A',
+        amount: inv.amount ? `$${parseFloat(inv.amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : 'N/A',
+        status: inv.status,
+        venture_response: inv.venture_response || 'PENDING',
+        is_deal: inv.is_deal || false,
+        committed_at: inv.committed_at,
+        product_id: inv.product_id,
+        document_id: inv.document_id,
+        product_user_id: inv.product_user_id,
+        commitment_id: inv.commitment_id,
+        investor_completed_at: inv.investor_completed_at,
+        venture_completed_at: inv.venture_completed_at,
+        completed_at: inv.completed_at,
+        // Calculate progress based on status
+        progress: inv.completed_at ? 100 : inv.is_deal ? 75 : inv.venture_response === 'RENEGOTIATE' ? 50 : inv.venture_response === 'PENDING' ? 25 : 10,
+        nextStep: inv.completed_at ? 'Deal completed' :
+                  inv.investor_completed_at && !inv.venture_completed_at ? 'Waiting for venture to complete' :
+                  inv.venture_completed_at && !inv.investor_completed_at ? 'Waiting for investor to complete' :
+                  inv.is_deal 
+          ? 'Deal accepted - awaiting completion'
+          : inv.venture_response === 'RENEGOTIATE'
+          ? 'Renegotiation in progress'
+          : inv.venture_response === 'PENDING'
+          ? 'Awaiting venture response'
+          : 'Commitment submitted',
+        dueDate: inv.venture_response_at 
+          ? new Date(inv.venture_response_at).toLocaleDateString()
+          : inv.committed_at
+          ? new Date(inv.committed_at).toLocaleDateString()
+          : 'N/A'
+      }));
+  }, [portfolioInvestments]);
 
   // IMPORTANT: All hooks (useCallback, useMemo, etc.) must be called BEFORE any conditional returns
   // Handler for withdrawing commitment
@@ -602,6 +678,54 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       toast.error(error.message || "Failed to record investment commitment");
     }
   }, [fetchSharedPitchDecks, fetchPortfolio]);
+
+  // Toggle completion info visibility
+  const toggleCompletionInfo = useCallback(() => {
+    setShowCompletionInfo(prev => !prev);
+  }, []);
+
+  // Handler for completing a deal
+  const handleCompleteDeal = useCallback(async (productId: string, commitmentId: string, productName: string) => {
+    if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+      toast.error("Invalid product or commitment ID");
+      return;
+    }
+
+    // Confirm completion
+    const confirmed = window.confirm(
+      `Mark this deal as completed for ${productName}?\n\n` +
+      `This indicates that contracts have been signed and funds have been transferred. ` +
+      `The deal will only be fully completed when both you and the venture mark it as completed.`
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsLoadingPortfolio(true);
+      setIsLoadingSharedPitchDecks(true);
+      
+      const result = await investorService.completeDeal(productId, commitmentId);
+      
+      if (result.fully_completed) {
+        toast.success("Deal completed! Both parties have confirmed completion.");
+      } else {
+        toast.success("Deal marked as completed. Waiting for venture to confirm.");
+      }
+      
+      // Refresh portfolio and shared pitch decks to update status
+      await fetchPortfolio();
+      await fetchSharedPitchDecks();
+    } catch (error: any) {
+      console.error('Error completing deal:', error);
+      const errorMessage = error?.response?.data?.detail || error?.message || "Failed to complete deal";
+      toast.error(errorMessage);
+    } finally {
+      setIsLoadingPortfolio(false);
+      setIsLoadingSharedPitchDecks(false);
+    }
+  }, [fetchPortfolio, fetchSharedPitchDecks]);
 
   const handleRequestPitch = async (productId: string) => {
     // Security: Validate UUID
@@ -895,32 +1019,39 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
       </div>
 
       {/* Shared Pitch Decks Section */}
-      {Array.isArray(sharedPitchDecks) && sharedPitchDecks.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <FileText className="w-5 h-5" />
-                <span>Shared Pitch Decks</span>
-                {Array.isArray(sharedPitchDecks) && sharedPitchDecks.filter(pd => pd.is_new).length > 0 && (
-                  <Badge variant="default" className="ml-2">
-                    {sharedPitchDecks.filter(pd => pd.is_new).length} New
-                  </Badge>
-                )}
-              </div>
-            </CardTitle>
-            <CardDescription>
-              Pitch decks that have been shared with you by ventures
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingSharedPitchDecks ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {(Array.isArray(sharedPitchDecks) ? sharedPitchDecks : []).slice(0, 5).map((share) => (
+      {/* Filter out deals - they should only appear in Portfolio */}
+      {(() => {
+        // Filter out deals (is_deal = true) from shared pitch decks
+        const activeSharedPitchDecks = Array.isArray(sharedPitchDecks) 
+          ? sharedPitchDecks.filter((pd: any) => !pd.is_deal)
+          : [];
+        
+        return activeSharedPitchDecks.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-5 h-5" />
+                  <span>Shared Pitch Decks</span>
+                  {activeSharedPitchDecks.filter((pd: any) => pd.is_new).length > 0 && (
+                    <Badge variant="default" className="ml-2">
+                      {activeSharedPitchDecks.filter((pd: any) => pd.is_new).length} New
+                    </Badge>
+                  )}
+                </div>
+              </CardTitle>
+              <CardDescription>
+                Pitch decks that have been shared with you by ventures (deals are shown in Portfolio)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingSharedPitchDecks ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {activeSharedPitchDecks.slice(0, 5).map((share) => (
                   <div
                     key={share.share_id}
                     className={`p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
@@ -1172,21 +1303,22 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                       </div>
                     )}
                   </div>
-                ))}
-                {Array.isArray(sharedPitchDecks) && sharedPitchDecks.length > 5 && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => onViewChange?.('discover')}
-                  >
-                    View All Shared Pitch Decks
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                  ))}
+                  {activeSharedPitchDecks.length > 5 && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => onViewChange?.('discover')}
+                    >
+                      View All Shared Pitch Decks
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Portfolio Performance and Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1330,6 +1462,60 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 p-3 border border-blue-200 bg-blue-50 rounded-lg space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-blue-800">
+                <Info className="w-4 h-4" />
+                <span>For completing this deal see the information here.</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleCompletionInfo}
+                  className="border-blue-300 text-blue-800 hover:bg-blue-100"
+                >
+                  {showCompletionInfo ? 'Hide' : 'View'} completion service
+                </Button>
+              </div>
+              <p className="text-xs text-blue-700">
+                We can facilitate contract preparation and signature collection. Both parties may retract before completion; once both mark completed, terms are locked unless both agree to changes.
+              </p>
+              {showCompletionInfo && (
+                <div className="mt-4 pt-4 border-t border-blue-200">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900 mb-2">When is a deal considered completed?</p>
+                      <ul className="text-sm text-blue-900 list-disc list-inside space-y-1">
+                        <li>Both parties click <strong>Complete Deal</strong> after contracts and funds are finalized.</li>
+                        <li>If our agents are involved and both parties sign and complete their obligations, we will consider the deal as completed and will change the status to completed automatically.</li>
+                        <li>Until both confirm, either side can retract their offer.</li>
+                        <li>After completion, changes require mutual agreement and will follow the signed contract terms.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-900 mb-2">Agent-facilitated closing</p>
+                      <ul className="text-sm text-emerald-900 list-disc list-inside space-y-1">
+                        <li>Our agent prepares the contract and collects signatures.</li>
+                        <li>We coordinate signature collection for both parties.</li>
+                        <li>Fees: 300 EUR for investments up to $10,000; 2.5% for investments up to $50K; 1% for the portion above $50K.</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 mb-2">Completion steps</p>
+                      <ol className="text-sm text-slate-900 list-decimal list-inside space-y-1">
+                        <li>Confirm terms and funding amount with the venture.</li>
+                        <li>Request agent facilitation; our agent drafts the contract.</li>
+                        <li>Both parties review and sign; we collect signatures.</li>
+                        <li>Funds transfer and documents filed.</li>
+                        <li>If agents are involved: Once both parties sign and complete obligations, the deal status will be automatically changed to completed.</li>
+                        <li>If no agents: Both parties click <strong>Complete Deal</strong> to finalize on the platform.</li>
+                      </ol>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Need help? Message the venture or our support via the messaging tab.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             {pipelineDeals.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p>No deals in pipeline</p>
@@ -1338,13 +1524,33 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
             ) : (
               <div className="space-y-4">
                 {pipelineDeals.map((deal) => (
-                  <div key={deal.id} className="p-4 border rounded-lg space-y-3">
+                  <div key={deal.id} className="p-4 border rounded-lg space-y-3 hover:bg-muted/50 transition-colors">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm">{deal.company}</p>
-                        <p className="text-sm text-muted-foreground">{deal.stage}</p>
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <p className="font-medium text-sm">{safeDisplayText(deal.company)}</p>
+                          {deal.is_deal && (
+                            <Badge variant="default" className="bg-green-600 text-white text-xs">
+                              Deal
+                            </Badge>
+                          )}
+                          {deal.venture_response === 'RENEGOTIATE' && (
+                            <Badge variant="outline" className="border-orange-500 text-orange-600 text-xs">
+                              Negotiating
+                            </Badge>
+                          )}
+                          {deal.venture_response === 'PENDING' && !deal.is_deal && (
+                            <Badge variant="outline" className="border-amber-500 text-amber-600 text-xs">
+                              Pending
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{safeDisplayText(deal.stage)}</p>
                       </div>
-                      <p className="font-semibold">{deal.amount}</p>
+                      <div className="text-right">
+                        <p className="font-semibold">{safeDisplayText(deal.amount)}</p>
+                        <p className="text-xs text-muted-foreground">Committed</p>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1354,32 +1560,167 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                       <Progress value={deal.progress} className="h-2" />
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{deal.nextStep}</span>
-                      <span className="font-medium">{deal.dueDate}</span>
+                      <span className="text-muted-foreground">{safeDisplayText(deal.nextStep)}</span>
+                      <span className="font-medium">{safeDisplayText(deal.dueDate)}</span>
+                    </div>
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2 pt-2 border-t">
+                      {deal.document_id && deal.product_id && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (!validateUuid(deal.product_id) || !validateUuid(deal.document_id)) {
+                              toast.error("Invalid pitch deck or document ID");
+                              return;
+                            }
+                            navigate(`/dashboard/investor/pitch-deck/${deal.product_id}/${deal.document_id}`);
+                          }}
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          View Pitch Deck
+                        </Button>
+                      )}
+                      {deal.product_user_id && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (deal.product_user_id && validateUuid(deal.product_user_id)) {
+                              const params = new URLSearchParams({
+                                userId: deal.product_user_id,
+                                userName: deal.company || 'Venture',
+                                userRole: 'venture',
+                              });
+                              navigate(`/dashboard/investor/messages?${params.toString()}`);
+                            }
+                          }}
+                        >
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          Contact Venture
+                        </Button>
+                      )}
+                      {deal.is_deal && deal.commitment_id && deal.product_id && !deal.completed_at && !deal.investor_completed_at && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="w-full text-white font-medium"
+                          style={{ backgroundColor: '#059669', borderColor: '#059669' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#047857'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#059669'; }}
+                          onClick={() => {
+                            if (!validateUuid(deal.product_id) || !validateUuid(deal.commitment_id)) {
+                              toast.error("Invalid product or commitment ID");
+                              return;
+                            }
+                            handleCompleteDeal(deal.product_id, deal.commitment_id, deal.company || 'Venture');
+                          }}
+                          disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Complete Deal
+                        </Button>
+                      )}
+                      {deal.is_deal && deal.investor_completed_at && !deal.completed_at && (
+                        <Badge variant="outline" className="border-green-500 text-green-600 text-xs">
+                          You completed - Waiting for venture
+                        </Badge>
+                      )}
+                      {/* Retract Commitment - Show for deals not yet completed */}
+                      {deal.is_deal && deal.commitment_id && deal.product_id && !deal.completed_at && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="w-full text-white font-medium"
+                          style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#b91c1c'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dc2626'; }}
+                          onClick={() => {
+                            if (!validateUuid(deal.product_id) || !validateUuid(deal.commitment_id)) {
+                              toast.error("Invalid product or commitment ID");
+                              return;
+                            }
+                            const confirmed = window.confirm(
+                              `Retract your investment commitment for ${deal.company}?\n\n` +
+                              `This will withdraw your offer. The venture will be notified.`
+                            );
+                            if (confirmed) {
+                              handleWithdrawCommitment(deal.product_id, deal.commitment_id, deal.company || 'Venture');
+                            }
+                          }}
+                          disabled={isLoadingPortfolio || isLoadingSharedPitchDecks}
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Retract Offer
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
-                <button 
-                  className="btn-chrome-secondary w-full mt-4"
+                <Button
+                  variant="outline"
+                  className="w-full mt-4"
                   onClick={() => onViewChange?.('discover')}
                 >
                   Explore More Opportunities
-                </button>
+                </Button>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+      
+      <Card ref={completionInfoRef} id="deal-completion-info">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Info className="w-5 h-5 text-blue-600" />
+            <span>Deal Completion Service (Agent-Facilitated)</span>
+          </CardTitle>
+          <CardDescription>
+            How we finalize deals, fees, and what happens before/after completion.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg bg-blue-50 border border-blue-100 space-y-2">
+              <p className="text-sm font-semibold text-blue-900">When is a deal considered completed?</p>
+              <ul className="text-sm text-blue-900 list-disc list-inside space-y-1">
+                <li>Both parties click <strong>Complete Deal</strong> after contracts and funds are finalized.</li>
+                <li>If our agents are involved and both parties sign and complete their obligations, we will consider the deal as completed and will change the status to completed automatically.</li>
+                <li>Until both confirm, either side can retract their offer.</li>
+                <li>After completion, changes require mutual agreement and will follow the signed contract terms.</li>
+              </ul>
+            </div>
+            <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100 space-y-2">
+              <p className="text-sm font-semibold text-emerald-900">Agent-facilitated closing</p>
+              <ul className="text-sm text-emerald-900 list-disc list-inside space-y-1">
+                <li>Our agent prepares the contract and collects signatures.</li>
+                <li>We coordinate signature collection for both parties.</li>
+                <li>Fees: 300 EUR for investments up to $10,000; 2.5% for investments up to $50K; 1% for the portion above $50K.</li>
+              </ul>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+            <p className="text-sm font-semibold text-slate-900">Completion steps</p>
+            <ol className="text-sm text-slate-900 list-decimal list-inside space-y-1">
+              <li>Confirm terms and funding amount with the venture.</li>
+              <li>Request agent facilitation; our agent drafts the contract.</li>
+              <li>Both parties review and sign; we collect signatures.</li>
+              <li>Funds transfer and documents filed.</li>
+              <li>If agents are involved: Once both parties sign and complete obligations, the deal status will be automatically changed to completed.</li>
+              <li>If no agents: Both parties click <strong>Complete Deal</strong> to finalize on the platform.</li>
+            </ol>
+            <p className="text-xs text-muted-foreground">
+              Need help? Message the venture or our support via the messaging tab.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderPortfolio = () => (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Portfolio Management</h2>
-        <p className="text-muted-foreground">Manage and track your portfolio company investments</p>
-      </div>
-
       {/* Portfolio Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
@@ -1621,12 +1962,12 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                       </Button>
                     )}
                     
-                    {/* Retract Commitment Button - Show only if not accepted deal and not already withdrawn */}
+                    {/* Retract Commitment Button - Show if not completed and not already withdrawn */}
                     {company.commitment_id && 
                      company.product_id && 
                      company.status !== 'WITHDRAWN' && 
-                     company.status === 'COMMITTED' &&
-                     company.venture_response !== 'ACCEPTED' && (
+                     company.status !== 'COMPLETED' && 
+                     company.status === 'COMMITTED' && (
                       <Button
                         variant="destructive"
                         size="sm"
@@ -1680,11 +2021,6 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
 
     return (
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold">Discover Startups</h2>
-          <p className="text-muted-foreground">Find investment opportunities that match your criteria</p>
-        </div>
-
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
@@ -1789,7 +2125,92 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                         <AvatarFallback>{safeDisplayText(venture.name)?.[0] || '?'}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 space-y-1">
-                        <h3 className="font-semibold text-lg">{safeDisplayText(venture.name)}</h3>
+                        <div className="flex items-center space-x-2">
+                          <h3 className="font-semibold text-lg">{safeDisplayText(venture.name)}</h3>
+                          {/* Portfolio/Negotiation Status Badges */}
+                          {(() => {
+                            // Check if this venture is in portfolio
+                            const portfolioItem = portfolioInvestments.find((inv: any) => 
+                              String(inv.product_id) === String(venture.id)
+                            );
+                            
+                            // Check if this venture has a shared pitch deck with commitment
+                            const sharedDeck = sharedPitchDecks.find((s: any) => 
+                              String(s.product_id) === String(venture.id)
+                            );
+                            
+                            // Determine status - check both portfolio and shared pitch decks
+                            const isInPortfolio = !!portfolioItem;
+                            const isNegotiating = (portfolioItem && (
+                              portfolioItem.venture_response === 'PENDING' || 
+                              portfolioItem.venture_response === 'RENEGOTIATE'
+                            )) || (sharedDeck && (
+                              sharedDeck.venture_response === 'PENDING' || 
+                              sharedDeck.venture_response === 'RENEGOTIATE'
+                            ));
+                            const isDeal = portfolioItem?.is_deal || sharedDeck?.is_deal;
+                            // Check commitment status from both sources
+                            const portfolioCommitted = portfolioItem?.status === 'COMMITTED' || 
+                                                      portfolioItem?.status === 'EXPRESSED' ||
+                                                      portfolioItem?.status === 'WITHDRAWN';
+                            const sharedDeckCommitted = sharedDeck?.commitment_status === 'COMMITTED' ||
+                                                         sharedDeck?.commitment_status === 'EXPRESSED';
+                            const isCommitted = portfolioCommitted || sharedDeckCommitted;
+                            
+                            // Debug logging in development
+                            if (import.meta.env.DEV) {
+                              console.log('Badge check for venture:', {
+                                venture_id: venture.id,
+                                venture_name: venture.name,
+                                has_portfolioItem: !!portfolioItem,
+                                has_sharedDeck: !!sharedDeck,
+                                portfolio_status: portfolioItem?.status,
+                                sharedDeck_commitment_status: sharedDeck?.commitment_status,
+                                isDeal,
+                                isCommitted,
+                                isInPortfolio,
+                                isNegotiating
+                              });
+                            }
+                            
+                            return (
+                              <div className="flex items-center space-x-2">
+                                {isDeal && (
+                                  <Badge variant="default" className="bg-green-600 text-white">
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Deal
+                                  </Badge>
+                                )}
+                                {isNegotiating && !isDeal && (
+                                  <Badge variant="outline" className="border-orange-500 text-orange-600">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    Negotiating
+                                  </Badge>
+                                )}
+                                {isInPortfolio && !isNegotiating && !isDeal && (
+                                  <Badge variant="outline" className="border-blue-500 text-blue-600">
+                                    <Briefcase className="w-3 h-3 mr-1" />
+                                    In Portfolio
+                                  </Badge>
+                                )}
+                                {/* Show Committed badge if committed but not showing other badges, or if deal is committed */}
+                                {isCommitted && !isInPortfolio && !isDeal && (
+                                  <Badge variant="outline" className="border-green-500 text-green-600">
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Committed
+                                  </Badge>
+                                )}
+                                {/* Also show Committed badge alongside Deal if it's a committed deal */}
+                                {isDeal && isCommitted && (
+                                  <Badge variant="outline" className="border-green-500 text-green-600">
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Committed
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                         <p className="text-muted-foreground">{safeDisplayText(venture.short_description)}</p>
                         <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                           <div className="flex items-center space-x-1">

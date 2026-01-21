@@ -439,6 +439,23 @@ class InvestmentCommitment(models.Model):
         help_text="Linked conversation for negotiation correspondence"
     )
     
+    # Deal completion tracking (both parties must complete)
+    investor_completed_at = models.DateTimeField(
+        blank=True, 
+        null=True, 
+        help_text="When investor marked the deal as completed (contracts signed, funds transferred, etc.)"
+    )
+    venture_completed_at = models.DateTimeField(
+        blank=True, 
+        null=True, 
+        help_text="When venture marked the deal as completed (contracts signed, funds received, etc.)"
+    )
+    completed_at = models.DateTimeField(
+        blank=True, 
+        null=True, 
+        help_text="When both parties completed the deal (automatically set when both complete)"
+    )
+    
     class Meta:
         db_table = 'investment_commitments'
         unique_together = [['document', 'investor']]
@@ -458,3 +475,39 @@ class InvestmentCommitment(models.Model):
     def is_deal(self):
         """Returns True if commitment has been accepted by venture (becomes a deal)."""
         return self.venture_response == 'ACCEPTED' and self.status == 'COMMITTED'
+    
+    def mark_investor_completed(self):
+        """Mark deal as completed by investor. Returns True if both parties have now completed."""
+        from django.utils import timezone
+        if not self.is_deal:
+            raise ValueError("Can only complete deals (accepted commitments)")
+        
+        self.investor_completed_at = timezone.now()
+        
+        # If venture also completed, mark as fully completed
+        if self.venture_completed_at:
+            self.status = 'COMPLETED'
+            self.completed_at = timezone.now()
+            self.save(update_fields=['investor_completed_at', 'status', 'completed_at', 'updated_at'])
+            return True
+        else:
+            self.save(update_fields=['investor_completed_at', 'updated_at'])
+            return False
+    
+    def mark_venture_completed(self):
+        """Mark deal as completed by venture. Returns True if both parties have now completed."""
+        from django.utils import timezone
+        if not self.is_deal:
+            raise ValueError("Can only complete deals (accepted commitments)")
+        
+        self.venture_completed_at = timezone.now()
+        
+        # If investor also completed, mark as fully completed
+        if self.investor_completed_at:
+            self.status = 'COMPLETED'
+            self.completed_at = timezone.now()
+            self.save(update_fields=['venture_completed_at', 'status', 'completed_at', 'updated_at'])
+            return True
+        else:
+            self.save(update_fields=['venture_completed_at', 'updated_at'])
+            return False

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -17,6 +17,7 @@ import {
   DollarSign, 
   Building, 
   Eye,
+  Info,
   Calendar,
   Star,
   ArrowUpRight,
@@ -113,6 +114,12 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   // State for investment commitments
   const [productCommitments, setProductCommitments] = useState<Record<string, any[]>>({});
   const [isLoadingCommitments, setIsLoadingCommitments] = useState<Record<string, boolean>>({});
+  const completionInfoRef = useRef<HTMLDivElement | null>(null);
+  const [showCompletionInfo, setShowCompletionInfo] = useState(false); // Toggle completion info visibility
+
+  const toggleCompletionInfo = useCallback(() => {
+    setShowCompletionInfo(prev => !prev);
+  }, []);
   
   // Security: Sanitize search term
   const handleSearchChange = (value: string) => {
@@ -278,6 +285,49 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     } catch (error: any) {
       console.error('Error requesting renegotiation:', error);
       toast.error(error.message || "Failed to request renegotiation");
+    }
+  };
+
+  // Handler to complete a deal
+  const handleCompleteDeal = async (productId: string, commitmentId: string, investorName: string) => {
+    if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+      toast.error("Invalid product or commitment ID");
+      return;
+    }
+
+    // Confirm completion
+    const confirmed = window.confirm(
+      `Mark this deal as completed with ${investorName}?\n\n` +
+      `This indicates that contracts have been signed and funds have been received. ` +
+      `The deal will only be fully completed when both you and the investor mark it as completed.`
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsLoadingCommitments(prev => ({ ...prev, [productId]: true }));
+      const result = await productService.completeDeal(productId, commitmentId);
+      
+      if (result.fully_completed) {
+        toast.success("Deal completed! Both parties have confirmed completion.");
+      } else {
+        toast.success("Deal marked as completed. Waiting for investor to confirm.");
+      }
+      
+      // Refresh commitments immediately to reflect latest status in overview
+      await fetchProductCommitments(productId);
+      // If on overview, force a re-render to show updated commitment stages
+      if (activeView === 'overview') {
+        // Trigger state update to ensure UI reflects latest commitment data
+        setProductCommitments(prev => ({ ...prev }));
+      }
+    } catch (error: any) {
+      console.error('Error completing deal:', error);
+      toast.error(error.message || "Failed to complete deal");
+    } finally {
+      setIsLoadingCommitments(prev => ({ ...prev, [productId]: false }));
     }
   };
 
@@ -1466,6 +1516,60 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 p-3 border border-blue-200 bg-blue-50 rounded-lg space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-blue-800">
+                  <Info className="w-4 h-4" />
+                  <span>For completing this deal see the information here.</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleCompletionInfo}
+                    className="border-blue-300 text-blue-800 hover:bg-blue-100"
+                  >
+                    {showCompletionInfo ? 'Hide' : 'View'} completion service
+                  </Button>
+                </div>
+                <p className="text-xs text-blue-700">
+                  We can facilitate contract preparation and signature collection. Both parties may retract before completion; once both mark completed, terms are locked unless both agree to changes.
+                </p>
+                {showCompletionInfo && (
+                  <div className="mt-4 pt-4 border-t border-blue-200">
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-blue-900 mb-2">When is a deal considered completed?</p>
+                        <ul className="text-sm text-blue-900 list-disc list-inside space-y-1">
+                          <li>Both parties click <strong>Complete Deal</strong> after contracts and funds are finalized.</li>
+                          <li>If our agents are involved and both parties sign and complete their obligations, we will consider the deal as completed and will change the status to completed automatically.</li>
+                          <li>Until both confirm, either side can retract their offer.</li>
+                          <li>After completion, changes require mutual agreement and will follow the signed contract terms.</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-emerald-900 mb-2">Agent-facilitated closing</p>
+                        <ul className="text-sm text-emerald-900 list-disc list-inside space-y-1">
+                          <li>Our agent prepares the contract and collects signatures.</li>
+                          <li>We coordinate signature collection for both parties.</li>
+                          <li>Fees: 300 EUR for investments up to $10,000; 2.5% for investments up to $50K; 1% for the portion above $50K.</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 mb-2">Completion steps</p>
+                        <ol className="text-sm text-slate-900 list-decimal list-inside space-y-1">
+                          <li>Confirm terms and funding amount with the investor.</li>
+                          <li>Request agent facilitation; our agent drafts the contract.</li>
+                          <li>Both parties review and sign; we collect signatures.</li>
+                          <li>Funds transfer and documents filed.</li>
+                          <li>If agents are involved: Once both parties sign and complete obligations, the deal status will be automatically changed to completed.</li>
+                          <li>If no agents: Both parties click <strong>Complete Deal</strong> to finalize on the platform.</li>
+                        </ol>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Need help? Message the investor or our support via the messaging tab.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
               {approvedProducts.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
@@ -1566,8 +1670,100 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
                               <p className="text-xs text-muted-foreground mt-2">
                                 Accepted {commitment.venture_response_at ? new Date(commitment.venture_response_at).toLocaleDateString() : 'N/A'}
                               </p>
+                              {commitment.completed_at && (
+                                <Badge variant="default" className="bg-green-700 mt-2">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Deal Completed
+                                </Badge>
+                              )}
+                              {commitment.venture_completed_at && !commitment.completed_at && (
+                                <Badge variant="outline" className="border-green-500 text-green-600 mt-2">
+                                  You completed - Waiting for investor
+                                </Badge>
+                              )}
+                              {commitment.investor_completed_at && !commitment.completed_at && !commitment.venture_completed_at && (
+                                <Badge variant="outline" className="border-amber-500 text-amber-600 mt-2">
+                                  Investor completed - Waiting for you
+                                </Badge>
+                              )}
                             </div>
                           </div>
+                          {!commitment.completed_at && (
+                            <div className="mt-3 space-y-2">
+                              {!commitment.venture_completed_at && (
+                                <Button
+                                  variant="default"
+                                  size="sm"
+                                  className="w-full text-white font-medium"
+                                  style={{ backgroundColor: '#059669', borderColor: '#059669' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#047857'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#059669'; }}
+                                  onClick={() => {
+                                    const product = approvedProducts.find((p: any) => 
+                                      productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id)
+                                    );
+                                    if (product?.id) {
+                                      handleCompleteDeal(product.id, commitment.commitment_id, commitment.investor_name);
+                                    }
+                                  }}
+                                  disabled={isLoadingCommitments[approvedProducts.find((p: any) => 
+                                    productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id)
+                                  )?.id || ''] || false}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Complete Deal
+                                </Button>
+                              )}
+                              {/* Retract Acceptance - Show for deals not yet completed */}
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="w-full text-white font-medium"
+                                style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#b91c1c'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dc2626'; }}
+                                onClick={async () => {
+                                  const product = approvedProducts.find((p: any) => 
+                                    productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id)
+                                  );
+                                  if (!product?.id) {
+                                    toast.error("Product not found");
+                                    return;
+                                  }
+                                  
+                                  const confirmed = window.confirm(
+                                    `Retract your acceptance of ${commitment.investor_name}'s investment commitment?\n\n` +
+                                    `This will revert the deal back to pending status. The investor will be notified.`
+                                  );
+                                  
+                                  if (!confirmed) {
+                                    return;
+                                  }
+                                  
+                                  try {
+                                    setIsLoadingCommitments(prev => ({ ...prev, [product.id]: true }));
+                                    await productService.retractAcceptance(product.id, commitment.commitment_id);
+                                    toast.success("Acceptance retracted successfully. Deal reverted to pending.");
+                                    await fetchProductCommitments(product.id);
+                                    if (activeView === 'overview') {
+                                      setProductCommitments(prev => ({ ...prev }));
+                                    }
+                                  } catch (error: any) {
+                                    console.error('Error retracting acceptance:', error);
+                                    toast.error(error.message || "Failed to retract acceptance");
+                                  } finally {
+                                    setIsLoadingCommitments(prev => ({ ...prev, [product.id]: false }));
+                                  }
+                                }}
+                                disabled={isLoadingCommitments[approvedProducts.find((p: any) => 
+                                  productCommitments[p.id]?.some((c: ProductCommitment) => c.commitment_id === commitment.commitment_id)
+                                )?.id || ''] || false}
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Retract Acceptance
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1653,6 +1849,53 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
           </Card>
         );
       })()}
+
+      <Card ref={completionInfoRef} id="deal-completion-info">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Info className="w-5 h-5 text-blue-600" />
+            <span>Deal Completion Service (Agent-Facilitated)</span>
+          </CardTitle>
+          <CardDescription>
+            How we finalize deals, fees, and what happens before/after completion.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg bg-blue-50 border border-blue-100 space-y-2">
+              <p className="text-sm font-semibold text-blue-900">When is a deal considered completed?</p>
+              <ul className="text-sm text-blue-900 list-disc list-inside space-y-1">
+                <li>Both parties click <strong>Complete Deal</strong> after contracts and funds are finalized.</li>
+                <li>If our agents are involved and both parties sign and complete their obligations, we will consider the deal as completed and will change the status to completed automatically.</li>
+                <li>Until both confirm, either side can retract their offer.</li>
+                <li>After completion, changes require mutual agreement and will follow the signed contract terms.</li>
+              </ul>
+            </div>
+            <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100 space-y-2">
+              <p className="text-sm font-semibold text-emerald-900">Agent-facilitated closing</p>
+              <ul className="text-sm text-emerald-900 list-disc list-inside space-y-1">
+                <li>Our agent prepares the contract and collects signatures.</li>
+                <li>We coordinate signature collection for both parties.</li>
+                <li>Fees: 300 EUR for investments up to $10,000; 2.5% for investments up to $50K; 1% for the portion above $50K.</li>
+              </ul>
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+            <p className="text-sm font-semibold text-slate-900">Completion steps</p>
+            <ol className="text-sm text-slate-900 list-decimal list-inside space-y-1">
+              <li>Confirm terms and funding amount with the investor.</li>
+              <li>Request agent facilitation; our agent drafts the contract.</li>
+              <li>Both parties review and sign; we collect signatures.</li>
+              <li>Funds transfer and documents filed.</li>
+              <li>If agents are involved: Once both parties sign and complete obligations, the deal status will be automatically changed to completed.</li>
+              <li>If no agents: Both parties click <strong>Complete Deal</strong> to finalize on the platform.</li>
+            </ol>
+            <p className="text-xs text-muted-foreground">
+              Need help? Message the investor or our support via the messaging tab.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Pitch Deck Performance and Current Mentors */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

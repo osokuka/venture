@@ -288,7 +288,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                 <Target className="w-5 h-5 text-primary-foreground" />
               </div>
               <div>
-                <h2 className="text-lg">VentureUP Link</h2>
+                <h2 className="text-lg">VentureLink</h2>
                 <p className="text-xs text-muted-foreground capitalize">{user.role} Portal</p>
               </div>
             </div>

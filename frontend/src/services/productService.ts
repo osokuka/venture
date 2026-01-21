@@ -717,6 +717,66 @@ export const productService = {
       throw new Error(error.response?.data?.detail || error.message || 'Failed to request renegotiation');
     }
   },
+
+  /**
+   * Mark a deal as completed by venture
+   * POST /api/ventures/products/{product_id}/commitments/{commitment_id}/complete
+   */
+  async completeDeal(
+    productId: string,
+    commitmentId: string,
+    message?: string
+  ): Promise<{ 
+    detail: string; 
+    commitment_id: string; 
+    status: string; 
+    investor_completed: boolean;
+    venture_completed: boolean;
+    fully_completed: boolean;
+    conversation_id?: string 
+  }> {
+    try {
+      if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+        throw new Error('Invalid product or commitment ID');
+      }
+      const response = await apiClient.post(
+        `/ventures/products/${productId}/commitments/${commitmentId}/complete`,
+        message ? { message } : {}
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.detail || error.message || 'Failed to complete deal');
+    }
+  },
+
+  /**
+   * Retract venture's acceptance of a commitment (revert deal back to pending)
+   * POST /api/ventures/products/{product_id}/commitments/{commitment_id}/retract-acceptance
+   */
+  async retractAcceptance(
+    productId: string,
+    commitmentId: string,
+    message?: string
+  ): Promise<{ 
+    detail: string; 
+    commitment_id: string; 
+    venture_response: string;
+    is_deal: boolean;
+    conversation_id?: string 
+  }> {
+    try {
+      if (!validateUuid(productId) || !validateUuid(commitmentId)) {
+        throw new Error('Invalid product or commitment ID');
+      }
+      const response = await apiClient.post(
+        `/ventures/products/${productId}/commitments/${commitmentId}/retract-acceptance`,
+        message ? { message } : {}
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.detail || error.message || 'Failed to retract acceptance');
+    }
+  },
 };
 
 // Product commitment interface (for ventures)
@@ -736,4 +796,7 @@ export interface ProductCommitment {
   responded_by_name: string | null;
   document_id: string | null;
   is_deal: boolean;  // True if venture_response === 'ACCEPTED'
+  investor_completed_at: string | null;
+  venture_completed_at: string | null;
+  completed_at: string | null;
 }

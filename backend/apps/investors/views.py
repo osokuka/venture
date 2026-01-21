@@ -898,6 +898,143 @@ def update_commitment(request, product_id, commitment_id):
             'venture_response': commitment.venture_response,
             'conversation_id': str(conversation.id)
         }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in update_commitment: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while updating investment commitment.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_deal(request, product_id, commitment_id):
+    """
+    Mark a deal as completed by investor (contracts signed, funds transferred, etc.).
+    
+    POST /api/investors/products/{product_id}/commitments/{commitment_id}/complete
+    Body: {
+        "message": "Optional message about completion"  # Optional
+    }
+    Only the investor who made the commitment can mark it as completed.
+    Deal is only fully completed when both investor and venture mark it as completed.
+    """
+    try:
+        # Security: Only investors can complete deals
+        if request.user.role != 'INVESTOR':
+            return Response(
+                {'detail': 'Only investors can complete deals.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate UUIDs
+        try:
+            product = VentureProduct.objects.get(id=product_id)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product,
+                investor=request.user
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found or you do not have permission.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if it's a deal (must be accepted)
+        if not commitment.is_deal:
+            return Response(
+                {'detail': 'Can only complete deals (accepted commitments).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if already completed
+        if commitment.status == 'COMPLETED':
+            return Response(
+                {'detail': 'This deal has already been completed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if investor already marked as completed
+        if commitment.investor_completed_at:
+            return Response(
+                {'detail': 'You have already marked this deal as completed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional message
+        message = request.data.get('message', '').strip()
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Mark investor as completed
+        both_completed = commitment.mark_investor_completed()
+        
+        # Create system message if conversation exists
+        if commitment.conversation:
+            from apps.messaging.models import Message
+            amount_str = f"${commitment.amount:,.0f}" if commitment.amount else "Amount not specified"
+            
+            if both_completed:
+                body = f"✅ Deal completed! Both parties have confirmed completion. {amount_str} investment finalized for {product.name}."
+            else:
+                body = f"✅ Investor marked deal as completed. {amount_str} for {product.name}."
+                if message:
+                    body += f"\n\nMessage: {message}"
+                body += "\n\nWaiting for venture to confirm completion."
+            
+            system_message = Message.objects.create(
+                conversation=commitment.conversation,
+                sender=product.user,  # Use venture user as sender for system messages
+                body=body
+            )
+            
+            # Update conversation's last_message_at
+            commitment.conversation.last_message_at = timezone.now()
+            commitment.conversation.save(update_fields=['last_message_at'])
+        
+        return Response({
+            'detail': 'Deal marked as completed by investor.' if not both_completed else 'Deal fully completed! Both parties have confirmed.',
+            'commitment_id': str(commitment.id),
+            'status': commitment.status,
+            'investor_completed': True,
+            'venture_completed': bool(commitment.venture_completed_at),
+            'fully_completed': both_completed,
+            'conversation_id': str(commitment.conversation.id) if commitment.conversation else None
+        }, status=status.HTTP_200_OK)
+        
+    except ValueError as e:
+        return Response(
+            {'detail': str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in complete_deal: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while completing the deal.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
         
     except Exception as e:
         import logging
@@ -955,12 +1092,12 @@ def withdraw_commitment(request, product_id, commitment_id):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Check if commitment can be withdrawn (cannot withdraw accepted deals)
-        if commitment.venture_response == 'ACCEPTED':
+        # Check if deal is already completed (cannot withdraw after both parties complete)
+        if commitment.status == 'COMPLETED':
             return Response(
                 {
-                    'detail': 'Cannot withdraw an accepted commitment. The deal has already been created. Please contact the venture directly.',
-                    'current_status': commitment.venture_response
+                    'detail': 'Cannot withdraw a completed deal. The deal has been finalized by both parties.',
+                    'current_status': commitment.status
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -989,12 +1126,20 @@ def withdraw_commitment(request, product_id, commitment_id):
         previous_status = commitment.status
         previous_amount = commitment.amount
         
+        # Reset completion timestamps if they exist (since we're withdrawing)
+        commitment.investor_completed_at = None
+        commitment.venture_completed_at = None
+        commitment.completed_at = None
+        
         # Withdraw the commitment
         commitment.status = 'WITHDRAWN'
         if message:
             commitment.message = message  # Update message with withdrawal reason
         commitment.updated_at = timezone.now()
-        commitment.save(update_fields=['status', 'message', 'updated_at'])
+        commitment.save(update_fields=[
+            'status', 'message', 'investor_completed_at', 'venture_completed_at', 
+            'completed_at', 'updated_at'
+        ])
         
         # Get or create conversation if not already linked
         if not commitment.conversation:
@@ -1124,6 +1269,10 @@ def get_investor_portfolio(request):
                 'document_type': document.document_type if document else None,
                 'funding_amount': document.funding_amount if document else None,
                 'funding_stage': document.funding_stage if document else None,
+                # Completion tracking
+                'investor_completed_at': commitment.investor_completed_at.isoformat() if commitment.investor_completed_at else None,
+                'venture_completed_at': commitment.venture_completed_at.isoformat() if commitment.venture_completed_at else None,
+                'completed_at': commitment.completed_at.isoformat() if commitment.completed_at else None,
             })
         
         return Response({

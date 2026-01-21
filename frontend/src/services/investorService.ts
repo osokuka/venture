@@ -329,6 +329,34 @@ export const investorService = {
       throw new Error(getErrorMessage(error));
     }
   },
+
+  /**
+   * Mark a deal as completed by investor
+   * POST /api/investors/products/{product_id}/commitments/{commitment_id}/complete
+   */
+  async completeDeal(
+    productId: string,
+    commitmentId: string,
+    message?: string
+  ): Promise<{ 
+    detail: string; 
+    commitment_id: string; 
+    status: string; 
+    investor_completed: boolean;
+    venture_completed: boolean;
+    fully_completed: boolean;
+    conversation_id?: string 
+  }> {
+    try {
+      const response = await apiClient.post(
+        `/investors/products/${productId}/commitments/${commitmentId}/complete`,
+        message ? { message } : {}
+      );
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error));
+    }
+  },
 };
 
 // Portfolio investment interface
@@ -353,4 +381,7 @@ export interface PortfolioInvestment {
   document_type: string | null;
   funding_amount: string | null;
   funding_stage: string | null;
+  investor_completed_at: string | null;
+  venture_completed_at: string | null;
+  completed_at: string | null;
 }

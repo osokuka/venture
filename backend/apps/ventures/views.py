@@ -2188,6 +2188,9 @@ def list_product_commitments(request, product_id):
                 'responded_by_name': commitment.responded_by.full_name if commitment.responded_by else None,
                 'document_id': str(commitment.document.id) if commitment.document else None,
                 'is_deal': commitment.is_deal,
+                'investor_completed_at': commitment.investor_completed_at.isoformat() if commitment.investor_completed_at else None,
+                'venture_completed_at': commitment.venture_completed_at.isoformat() if commitment.venture_completed_at else None,
+                'completed_at': commitment.completed_at.isoformat() if commitment.completed_at else None,
             })
         
         return Response({
@@ -2402,6 +2405,258 @@ def renegotiate_commitment(request, product_id, commitment_id):
         return Response(
             {
                 'detail': 'An error occurred while requesting renegotiation.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_deal(request, product_id, commitment_id):
+    """
+    Mark a deal as completed by venture (contracts signed, funds received, etc.).
+    
+    POST /api/ventures/products/{product_id}/commitments/{commitment_id}/complete
+    Body: {
+        "message": "Optional message about completion"  # Optional
+    }
+    Only the product owner (venture) can mark it as completed.
+    Deal is only fully completed when both investor and venture mark it as completed.
+    """
+    try:
+        # Security: Only product owner can complete deals
+        try:
+            product = VentureProduct.objects.get(id=product_id)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check ownership
+        if product.user != request.user and request.user.role != 'ADMIN':
+            return Response(
+                {'detail': 'You do not have permission to complete deals for this product.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get commitment
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if it's a deal (must be accepted)
+        if not commitment.is_deal:
+            return Response(
+                {'detail': 'Can only complete deals (accepted commitments).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if already completed
+        if commitment.status == 'COMPLETED':
+            return Response(
+                {'detail': 'This deal has already been completed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if venture already marked as completed
+        if commitment.venture_completed_at:
+            return Response(
+                {'detail': 'You have already marked this deal as completed.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional message
+        message = request.data.get('message', '').strip()
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Mark venture as completed
+        both_completed = commitment.mark_venture_completed()
+        
+        # Create system message if conversation exists
+        if commitment.conversation:
+            from apps.messaging.models import Message
+            amount_str = f"${commitment.amount:,.0f}" if commitment.amount else "Amount not specified"
+            
+            if both_completed:
+                body = f"✅ Deal completed! Both parties have confirmed completion. {amount_str} investment finalized for {product.name}."
+            else:
+                body = f"✅ Venture marked deal as completed. {amount_str} for {product.name}."
+                if message:
+                    body += f"\n\nMessage: {message}"
+                body += "\n\nWaiting for investor to confirm completion."
+            
+            system_message = Message.objects.create(
+                conversation=commitment.conversation,
+                sender=product.user,  # Use venture user as sender for system messages
+                body=body
+            )
+            
+            # Update conversation's last_message_at
+            commitment.conversation.last_message_at = timezone.now()
+            commitment.conversation.save(update_fields=['last_message_at'])
+        
+        return Response({
+            'detail': 'Deal marked as completed by venture.' if not both_completed else 'Deal fully completed! Both parties have confirmed.',
+            'commitment_id': str(commitment.id),
+            'status': commitment.status,
+            'investor_completed': bool(commitment.investor_completed_at),
+            'venture_completed': True,
+            'fully_completed': both_completed,
+            'conversation_id': str(commitment.conversation.id) if commitment.conversation else None
+        }, status=status.HTTP_200_OK)
+        
+    except ValueError as e:
+        return Response(
+            {'detail': str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in complete_deal: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while completing the deal.',
+                'error': str(e) if settings.DEBUG else None
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def retract_acceptance(request, product_id, commitment_id):
+    """
+    Retract venture's acceptance of an investment commitment (revert deal back to pending).
+    
+    POST /api/ventures/products/{product_id}/commitments/{commitment_id}/retract-acceptance
+    Body: {
+        "message": "Optional reason for retracting acceptance"  # Optional
+    }
+    Only the product owner (venture) can retract their acceptance.
+    Cannot retract if deal has been completed by both parties.
+    """
+    try:
+        # Security: Only product owner can retract acceptance
+        try:
+            product = VentureProduct.objects.get(id=product_id)
+        except VentureProduct.DoesNotExist:
+            return Response(
+                {'detail': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check ownership
+        if product.user != request.user and request.user.role != 'ADMIN':
+            return Response(
+                {'detail': 'You do not have permission to retract acceptance for this product.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get commitment
+        try:
+            commitment = InvestmentCommitment.objects.get(
+                id=commitment_id,
+                product=product
+            )
+        except InvestmentCommitment.DoesNotExist:
+            return Response(
+                {'detail': 'Commitment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if deal is already completed (cannot retract after both parties complete)
+        if commitment.status == 'COMPLETED':
+            return Response(
+                {
+                    'detail': 'Cannot retract acceptance of a completed deal. The deal has been finalized by both parties.',
+                    'current_status': commitment.status
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if commitment was actually accepted
+        if commitment.venture_response != 'ACCEPTED':
+            return Response(
+                {
+                    'detail': f'Cannot retract acceptance. Current status is: {commitment.venture_response.lower()}.',
+                    'current_response': commitment.venture_response
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional message
+        message = request.data.get('message', '').strip()
+        if message and len(message) > 2000:
+            return Response(
+                {'detail': 'Message must be 2,000 characters or less.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Reset completion timestamps if they exist (since we're retracting)
+        commitment.investor_completed_at = None
+        commitment.venture_completed_at = None
+        commitment.completed_at = None
+        
+        # Retract acceptance (revert to pending)
+        commitment.venture_response = 'PENDING'
+        commitment.venture_response_at = None
+        commitment.venture_response_message = message if message else None
+        commitment.responded_by = None
+        commitment.updated_at = timezone.now()
+        commitment.save(update_fields=[
+            'venture_response', 'venture_response_at', 'venture_response_message', 
+            'responded_by', 'investor_completed_at', 'venture_completed_at', 
+            'completed_at', 'updated_at'
+        ])
+        
+        # Create system message if conversation exists
+        if commitment.conversation:
+            from apps.messaging.models import Message
+            amount_str = f"${commitment.amount:,.0f}" if commitment.amount else "Amount not specified"
+            
+            body = f"🔄 Venture retracted acceptance of the deal. {amount_str} investment for {product.name} is now pending again."
+            if message:
+                body += f"\n\nReason: {message}"
+            
+            system_message = Message.objects.create(
+                conversation=commitment.conversation,
+                sender=product.user,  # Use venture user as sender for system messages
+                body=body
+            )
+            
+            # Update conversation's last_message_at
+            commitment.conversation.last_message_at = timezone.now()
+            commitment.conversation.save(update_fields=['last_message_at'])
+        
+        return Response({
+            'detail': 'Acceptance retracted successfully. Deal reverted to pending status.',
+            'commitment_id': str(commitment.id),
+            'venture_response': commitment.venture_response,
+            'is_deal': commitment.is_deal,
+            'conversation_id': str(commitment.conversation.id) if commitment.conversation else None
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f'Error in retract_acceptance: {str(e)}', exc_info=True)
+        return Response(
+            {
+                'detail': 'An error occurred while retracting acceptance.',
                 'error': str(e) if settings.DEBUG else None
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

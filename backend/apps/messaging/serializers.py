@@ -91,6 +91,9 @@ class ConversationSerializer(serializers.ModelSerializer):
                 'product_id': str(commitment.product.id),
                 'product_name': commitment.product.name,
                 'is_deal': commitment.is_deal,
+                'investor_completed_at': commitment.investor_completed_at.isoformat() if commitment.investor_completed_at else None,
+                'venture_completed_at': commitment.venture_completed_at.isoformat() if commitment.venture_completed_at else None,
+                'completed_at': commitment.completed_at.isoformat() if commitment.completed_at else None,
                 # Include user-specific actions
                 'can_update': (
                     request.user == commitment.investor and 
@@ -103,6 +106,14 @@ class ConversationSerializer(serializers.ModelSerializer):
                 'can_renegotiate': (
                     request.user == commitment.product.user and 
                     commitment.venture_response == 'PENDING'
+                ),
+                'can_complete': (
+                    commitment.is_deal and 
+                    commitment.status != 'COMPLETED' and
+                    (
+                        (request.user == commitment.investor and not commitment.investor_completed_at) or
+                        (request.user == commitment.product.user and not commitment.venture_completed_at)
+                    )
                 ),
             }
         except Exception:

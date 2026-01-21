@@ -3373,14 +3373,123 @@
         }
       ],
       "status": "In Progress"
+    },
+    {
+      "key": "VL-854",
+      "summary": "Mark Portfolio and Negotiating Startups in Discover Tab",
+      "description": "Add visual indicators (badges) to startups in the Discover tab that are in the investor's portfolio or currently being negotiated.\n\n**Requirement:**\n- In the Discover Startups tab (`/dashboard/investor/discover`), mark startups with visual badges:\n  - **\"In Portfolio\"** badge (blue) - For startups where investor has committed (status: COMMITTED, WITHDRAWN, or EXPRESSED)\n  - **\"Negotiating\"** badge (orange) - For startups where venture_response is PENDING or RENEGOTIATE\n  - **\"Deal\"** badge (green) - For startups where venture_response is ACCEPTED (is_deal = true)\n  - **\"Committed\"** badge (green outline) - For startups with commitment status COMMITTED but not yet in portfolio\n\n**Implementation Details:**\n1. **Check Portfolio Status:**\n   - Match ventures in Discover tab with `portfolioInvestments` array\n   - Check if `product_id` matches `venture.id`\n   - Determine status based on `venture_response` and `status` fields\n\n2. **Check Shared Pitch Decks:**\n   - Also check `sharedPitchDecks` array for commitment status\n   - Match by `product_id` to `venture.id`\n   - Use `commitment_status` and `is_deal` fields\n\n3. **Visual Indicators:**\n   - Display badges next to startup name in the card header\n   - Use appropriate colors and icons:\n     - Deal: Green badge with CheckCircle icon\n     - Negotiating: Orange outline badge with Clock icon\n     - In Portfolio: Blue outline badge with Briefcase icon\n     - Committed: Green outline badge with CheckCircle icon\n\n4. **Priority Logic:**\n   - Deal badge takes highest priority (if is_deal = true)\n   - Negotiating badge shows if venture_response is PENDING or RENEGOTIATE (and not a deal)\n   - In Portfolio badge shows if in portfolio but not negotiating or deal\n   - Committed badge shows if committed but not in portfolio\n\n**Files to Modify:**\n- `frontend/src/components/InvestorDashboard.tsx` - Add badge logic in Discover tab render (around line 1787-1812)\n\n**Expected Behavior:**\n- Investors can quickly identify which startups they're already engaged with\n- Visual distinction between different engagement levels\n- Clear indication of negotiation status\n- Helps investors prioritize their discovery process\n\n**Acceptance Criteria:**\n- ✅ Badges appear next to startup names in Discover tab\n- ✅ Correct badges show based on portfolio/commitment status\n- ✅ Badges update when status changes\n- ✅ Badges are visually distinct and easy to understand\n- ✅ No performance impact from badge calculations",
+      "type": "Story",
+      "priority": "Medium",
+      "epic": "VL-4",
+      "tasks": [
+        {
+          "summary": "Add badge logic to check portfolio and commitment status",
+          "description": "Implement logic to determine which badges to show for each startup:\n\n1. Check if startup is in `portfolioInvestments` array\n2. Check if startup has shared pitch deck with commitment\n3. Determine status based on:\n   - `is_deal` (highest priority)\n   - `venture_response` (PENDING, RENEGOTIATE = Negotiating)\n   - `status` (COMMITTED, WITHDRAWN, EXPRESSED = In Portfolio)\n   - `commitment_status` from shared pitch decks\n\n**Files Modified:**\n- `frontend/src/components/InvestorDashboard.tsx` - Add badge determination logic\n\n**Deliverable:** Logic to determine which badges to display",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Add visual badges to startup cards in Discover tab",
+          "description": "Display badges next to startup names:\n\n1. Add badge components in the card header (next to startup name)\n2. Use appropriate colors:\n   - Deal: Green (`bg-green-600`)\n   - Negotiating: Orange outline (`border-orange-500 text-orange-600`)\n   - In Portfolio: Blue outline (`border-blue-500 text-blue-600`)\n   - Committed: Green outline (`border-green-500 text-green-600`)\n3. Add icons:\n   - Deal/Negotiating: CheckCircle or Clock\n   - In Portfolio: Briefcase\n   - Committed: CheckCircle\n\n**Files Modified:**\n- `frontend/src/components/InvestorDashboard.tsx` - Add badge rendering in Discover tab (around line 1791-1812)\n\n**Deliverable:** ✅ Visual badges displayed correctly",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Test badge display and status updates",
+          "description": "Test the badge functionality:\n\n1. Test with startups in portfolio (different statuses)\n2. Test with startups being negotiated (PENDING, RENEGOTIATE)\n3. Test with deals (ACCEPTED)\n4. Test with committed startups not in portfolio\n5. Verify badges update when status changes\n6. Test with multiple startups having different statuses\n7. Verify no performance issues with badge calculations\n\n**Deliverable:** All scenarios tested and verified working",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Done"
+    },
+    {
+      "key": "VL-855",
+      "summary": "Tech Debt: Committed Badge Not Showing in Discover Tab for Deals",
+      "description": "When switching to Discover Startups tab, startups that have reached deal status show \"Deal\" badge but don't show \"Committed\" badge, even though the investor has committed to them.\n\n**Issue:**\n- In Discover tab, startups with deals show \"Deal\" badge correctly\n- However, \"Committed\" badge doesn't show alongside \"Deal\" badge\n- Portfolio data might not be loaded when switching to Discover tab\n- Badge logic doesn't check shared pitch decks for commitment status when portfolio item exists\n\n**Root Cause:**\n1. **Portfolio Not Fetched for Discover Tab:**\n   - Portfolio is only fetched when `activeView === 'portfolio' || activeView === 'overview'`\n   - When switching to Discover tab, portfolio data might not be loaded\n   - Badge logic relies on `portfolioInvestments` array which might be empty\n\n2. **Badge Logic Issue:**\n   - Current logic: `isCommitted && !isInPortfolio` - doesn't show committed badge if in portfolio\n   - When deal exists, `isInPortfolio` is true, so committed badge is hidden\n   - Logic doesn't check `sharedPitchDecks` for commitment status when portfolio item exists\n   - Deal badge takes priority but doesn't show that investor is committed\n\n3. **Missing Commitment Status Check:**\n   - Badge logic only checks `portfolioItem?.status === 'COMMITTED'`\n   - Doesn't check `EXPRESSED` or `WITHDRAWN` statuses which also indicate commitment\n   - Doesn't check `sharedDeck?.commitment_status` when portfolio item exists\n\n**Solution:**\n1. **Fetch Portfolio for Discover Tab:**\n   - Update useEffect to also fetch portfolio when `activeView === 'discover'`\n   - Ensures portfolio data is available for badge calculations\n   - Use same view change tracking as other tabs\n\n2. **Fix Badge Logic:**\n   - Check commitment status from both `portfolioInvestments` and `sharedPitchDecks`\n   - Include `EXPRESSED` and `WITHDRAWN` statuses as committed states\n   - Show \"Committed\" badge alongside \"Deal\" badge when both conditions are true\n   - Check `sharedDeck` for commitment status even when portfolio item exists\n\n3. **Improve Status Detection:**\n   - Check `portfolioItem?.status` for COMMITTED, EXPRESSED, WITHDRAWN\n   - Check `sharedDeck?.commitment_status` for COMMITTED, EXPRESSED\n   - Show committed badge if either source indicates commitment\n\n**Files to Modify:**\n- `frontend/src/components/InvestorDashboard.tsx`:\n  - Update portfolio fetch useEffect to include 'discover' view (line ~282)\n  - Fix badge logic in Discover tab to show committed badge for deals (line ~1831-1865)\n  - Add debug logging to help diagnose badge display issues\n\n**Expected Behavior:**\n- When switching to Discover tab, portfolio data is loaded\n- Startups with deals show both \"Deal\" and \"Committed\" badges\n- Startups that are committed but not deals show \"Committed\" badge\n- Badges update correctly when switching between tabs\n\n**Acceptance Criteria:**\n- ✅ Portfolio data is fetched when switching to Discover tab\n- ✅ \"Committed\" badge shows for deals in Discover tab\n- ✅ \"Committed\" badge shows for committed startups (not just deals)\n- ✅ Badge logic checks both portfolio and shared pitch decks\n- ✅ Badges update correctly when data changes\n\n**Priority:** Medium - Tech Debt\n**Estimated Effort:** 1-2 hours",
+      "type": "Story",
+      "priority": "Medium",
+      "epic": "VL-4",
+      "tasks": [
+        {
+          "summary": "Fetch portfolio data when switching to Discover tab",
+          "description": "Update portfolio fetch useEffect to include 'discover' view:\n\n1. Add 'discover' to the condition: `activeView === 'portfolio' || activeView === 'overview' || activeView === 'discover'`\n2. Use view change tracking to detect tab switches\n3. Ensure portfolio data is loaded before rendering badges\n\n**Files Modified:**\n- `frontend/src/components/InvestorDashboard.tsx` - Update portfolio fetch useEffect (line ~276-289)\n\n**Deliverable:** ✅ Portfolio data fetched when switching to Discover tab",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Done"
+        },
+        {
+          "summary": "Fix badge logic to show Committed badge for deals",
+          "description": "Update badge logic in Discover tab:\n\n1. Check commitment status from both `portfolioInvestments` and `sharedPitchDecks`\n2. Include EXPRESSED and WITHDRAWN statuses as committed states\n3. Show \"Committed\" badge alongside \"Deal\" badge when both are true\n4. Check `sharedDeck` for commitment status even when portfolio item exists\n5. Add debug logging for development\n\n**Files Modified:**\n- `frontend/src/components/InvestorDashboard.tsx` - Fix badge logic (line ~1831-1865)\n\n**Deliverable:** ✅ Committed badge shows correctly for deals and committed startups",
+          "type": "Task",
+          "estimate": "1h",
+          "status": "Done"
+        },
+        {
+          "summary": "Test badge display in Discover tab",
+          "description": "Test the badge functionality:\n\n1. Switch from Dashboard to Discover tab\n2. Verify portfolio data loads\n3. Check that deals show both \"Deal\" and \"Committed\" badges\n4. Check that committed startups (not deals) show \"Committed\" badge\n5. Verify badges update when switching tabs\n6. Test with different commitment statuses (COMMITTED, EXPRESSED, WITHDRAWN)\n\n**Deliverable:** All scenarios tested and verified working",
+          "type": "Task",
+          "estimate": "0.5h",
+          "status": "Pending"
+        }
+      ],
+      "status": "Done"
     }
   ],
   "metadata": {
     "created": "2025-01-27",
     "updated": "2026-01-20",
-    "version": "1.21",
-    "totalStories": 71,
-    "totalTasks": 315,
-    "estimatedStoryPoints": 352
+    "version": "1.24",
+    "totalStories": 74,
+    "totalTasks": 325,
+    "estimatedStoryPoints": 356
+  },
+  {
+    "key": "VL-856",
+    "summary": "Deal Completion Feature - Both Parties Must Complete",
+      "description": "When investors and startups exchange contracts, transfer funds, and complete all deal formalities, they should be able to mark the deal as completed. The deal will only be considered fully completed when both parties have clicked \"Complete Deal\".\n\n**Requirements:**\n1. Add completion tracking fields to InvestmentCommitment model:\n   - `investor_completed_at`: Timestamp when investor marks deal as completed\n   - `venture_completed_at`: Timestamp when venture marks deal as completed\n   - `completed_at`: Timestamp when both parties have completed (automatically set)\n   - `status` should be set to 'COMPLETED' only when both parties have completed\n\n2. Backend Endpoints:\n   - `POST /api/investors/products/{product_id}/commitments/{commitment_id}/complete` - Mark deal as completed by investor\n   - `POST /api/ventures/products/{product_id}/commitments/{commitment_id}/complete` - Mark deal as completed by venture\n   - Both endpoints should:\n     - Only allow completion if deal is accepted (is_deal = true)\n     - Prevent duplicate completions (check if already completed by that party)\n     - Automatically set status to COMPLETED when both parties complete\n     - Create system message in conversation when completed\n\n3. Frontend Implementation:\n   - Add \"Complete Deal\" button in Investor Dashboard (Deal Pipeline section)\n   - Add \"Complete Deal\" button in Venture Dashboard (Accepted Deals section)\n   - Show completion status badges:\n     - \"You completed - Waiting for [other party]\" when one party completes\n     - \"Deal Completed\" when both parties complete\n   - Update progress indicators to show 100% when completed\n   - Disable Complete Deal button once that party has completed\n\n4. UI/UX:\n   - Confirmation dialog before completing deal\n   - Clear messaging about what completion means (contracts signed, funds transferred)\n   - Visual indicators showing completion status\n   - Progress bars showing deal completion progress\n\n5. Completion Instructions & Facilitation Service:\n   - Before both parties click Complete Deal, either side can retract their offer.\n   - After both parties complete, changes require mutual agreement and follow the signed contract.\n   - Offer an agent-facilitated closing: our agent prepares the contract and collects signatures.\n   - Fees: 2.5% for investments up to $50K; 1% for the portion above $50K.\n   - Show an information banner/tag linking to a completion info section outlining steps, fees, retraction rules, and post-completion terms for both parties.\n\n**Files Modified:**\n- `backend/apps/ventures/models.py` - Add completion tracking fields and methods\n- `backend/apps/ventures/migrations/0011_add_deal_completion_tracking.py` - Migration for new fields\n- `backend/apps/investors/views.py` - Add complete_deal endpoint for investors\n- `backend/apps/ventures/views.py` - Add complete_deal endpoint for ventures\n- `backend/apps/investors/urls.py` - Add route for investor completion\n- `backend/apps/ventures/urls.py` - Add route for venture completion\n- `frontend/src/services/investorService.ts` - Add completeDeal function and update PortfolioInvestment interface\n- `frontend/src/services/productService.ts` - Add completeDeal function and update ProductCommitment interface\n- `frontend/src/components/InvestorDashboard.tsx` - Add Complete Deal button, info banner, and completion info section\n- `frontend/src/components/VentureDashboard.tsx` - Add Complete Deal button, info banner, and completion info section\n\n**Acceptance Criteria:**\n- ✅ Completion tracking fields added to InvestmentCommitment model\n- ✅ Backend endpoints created for both investor and venture\n- ✅ Deal status set to COMPLETED only when both parties complete\n- ✅ Complete Deal button added to Investor Dashboard\n- ✅ Complete Deal button added to Venture Dashboard\n- ✅ Completion status badges display correctly\n- ✅ Progress indicators update when deal is completed\n- ✅ System messages created when deal is completed\n- ✅ Confirmation dialogs prevent accidental completions\n- ✅ UI clearly shows completion status for both parties\n- ✅ Information banner + detailed completion section explains fees, retraction, and post-completion rules\n\n**Priority:** High\n**Estimated Effort:** 3-4 hours",
+    "type": "Story",
+    "priority": "High",
+    "epic": "VL-4",
+    "tasks": [
+      {
+        "summary": "Add completion tracking fields to InvestmentCommitment model",
+        "description": "Add three new DateTime fields to track deal completion:\n- `investor_completed_at`: When investor marks deal as completed\n- `venture_completed_at`: When venture marks deal as completed\n- `completed_at`: When both parties have completed (auto-set)\n\nAdd methods:\n- `mark_investor_completed()`: Mark investor as completed, return True if both completed\n- `mark_venture_completed()`: Mark venture as completed, return True if both completed\n\n**Files Modified:**\n- `backend/apps/ventures/models.py`\n- Create migration: `backend/apps/ventures/migrations/0011_add_deal_completion_tracking.py`\n\n**Deliverable:** ✅ Model updated with completion tracking fields",
+        "type": "Task",
+        "estimate": "1h",
+        "status": "Done"
+      },
+      {
+        "summary": "Create backend endpoints for deal completion",
+        "description": "Create two endpoints:\n1. `POST /api/investors/products/{product_id}/commitments/{commitment_id}/complete`\n2. `POST /api/ventures/products/{product_id}/commitments/{commitment_id}/complete`\n\nBoth endpoints should:\n- Validate user permissions (investor can only complete their own commitments, venture can only complete their product commitments)\n- Check if deal is accepted (is_deal = true)\n- Prevent duplicate completions\n- Call model methods to mark completion\n- Create system message in conversation\n- Return completion status (investor_completed, venture_completed, fully_completed)\n\n**Files Modified:**\n- `backend/apps/investors/views.py` - Add complete_deal function\n- `backend/apps/ventures/views.py` - Add complete_deal function\n- `backend/apps/investors/urls.py` - Add route\n- `backend/apps/ventures/urls.py` - Add route\n- Update serializers to include completion fields\n\n**Deliverable:** ✅ Both endpoints created and tested",
+        "type": "Task",
+        "estimate": "1.5h",
+        "status": "Done"
+      },
+      {
+        "summary": "Add Complete Deal button to Investor Dashboard",
+        "description": "Add \"Complete Deal\" button to Deal Pipeline section in Investor Dashboard:\n\n1. Update `pipelineDeals` useMemo to include completion fields\n2. Add `handleCompleteDeal` handler function\n3. Add Complete Deal button in pipeline deals rendering:\n   - Show button only if deal is accepted and not completed\n   - Hide button if investor already completed\n   - Show badge \"You completed - Waiting for venture\" if investor completed but venture hasn't\n   - Update progress to 100% when completed\n\n**Files Modified:**\n- `frontend/src/services/investorService.ts` - Add completeDeal function, update PortfolioInvestment interface\n- `frontend/src/components/InvestorDashboard.tsx` - Add handler and button\n\n**Deliverable:** ✅ Complete Deal button added to Investor Dashboard",
+        "type": "Task",
+        "estimate": "1h",
+        "status": "Done"
+      },
+      {
+        "summary": "Add Complete Deal button to Venture Dashboard",
+        "description": "Add \"Complete Deal\" button to Accepted Deals section in Venture Dashboard:\n\n1. Update ProductCommitment interface to include completion fields\n2. Add `handleCompleteDeal` handler function\n3. Add Complete Deal button in accepted deals rendering:\n   - Show button only if deal is accepted and not completed\n   - Hide button if venture already completed\n   - Show badge \"You completed - Waiting for investor\" if venture completed but investor hasn't\n   - Show badge \"Investor completed - Waiting for you\" if investor completed but venture hasn't\n   - Show badge \"Deal Completed\" when both parties completed\n\n**Files Modified:**\n- `frontend/src/services/productService.ts` - Add completeDeal function, update ProductCommitment interface\n- `frontend/src/components/VentureDashboard.tsx` - Add handler and button\n\n**Deliverable:** ✅ Complete Deal button added to Venture Dashboard",
+        "type": "Task",
+        "estimate": "1h",
+        "status": "Done"
+      },
+      {
+        "summary": "Test deal completion workflow",
+        "description": "Test the complete deal completion workflow:\n\n1. Create a deal (investor commits, venture accepts)\n2. Investor clicks \"Complete Deal\" - verify:\n   - Button disappears\n   - Badge shows \"You completed - Waiting for venture\"\n   - Progress shows appropriate status\n   - System message created in conversation\n3. Venture clicks \"Complete Deal\" - verify:\n   - Button disappears\n   - Badge shows \"Deal Completed\"\n   - Status changes to COMPLETED\n   - Progress shows 100%\n   - System message created\n4. Test reverse order (venture completes first, then investor)\n5. Verify that completed deals don't show Complete Deal button\n6. Verify that non-deals (pending/renegotiate) don't show Complete Deal button\n\n**Deliverable:** ✅ All scenarios tested and verified working",
+        "type": "Task",
+        "estimate": "0.5h",
+        "status": "Pending"
+      }
+    ]
   }
 }

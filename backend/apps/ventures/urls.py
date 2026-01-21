@@ -36,7 +36,9 @@ from .views import (
     get_pitch_deck_analytics,
     list_product_commitments,
     accept_commitment,
-    renegotiate_commitment
+    renegotiate_commitment,
+    complete_deal,
+    retract_acceptance
 )
 
 urlpatterns = [
@@ -84,6 +86,8 @@ urlpatterns = [
     path('products/<uuid:product_id>/commitments', list_product_commitments, name='list_product_commitments'),
     path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/accept', accept_commitment, name='accept_commitment'),
     path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/renegotiate', renegotiate_commitment, name='renegotiate_commitment'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/retract-acceptance', retract_acceptance, name='retract_acceptance'),
+    path('products/<uuid:product_id>/commitments/<uuid:commitment_id>/complete', complete_deal, name='complete_deal'),
     
     # Team member management
     path('products/<uuid:product_id>/team-members', TeamMemberListCreateView.as_view(), name='team_member_list_create'),
