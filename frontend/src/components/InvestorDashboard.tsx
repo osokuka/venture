@@ -1038,13 +1038,30 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                         </Button>
                         
                         {/* Commitment Actions - Inline with Primary Actions */}
-                        {/* Commit to Invest - Show if not committed or withdrawn */}
-                        {share.commitment_status !== 'COMMITTED' && share.commitment_status !== 'WITHDRAWN' && (
+                        {/* Commit to Invest - Show if not committed, withdrawn, or completed */}
+                        {/* Default behavior: Show button unless explicitly committed/withdrawn/completed */}
+                        {share.product_id && share.document_id && 
+                         share.commitment_status !== 'COMMITTED' && 
+                         share.commitment_status !== 'WITHDRAWN' && 
+                         share.commitment_status !== 'COMPLETED' && (
                           <Button
                             variant="default"
                             size="sm"
-                            className="bg-green-600 hover:bg-green-700"
+                            className="text-white font-medium"
+                            style={{ backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#15803d'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#16a34a'; }}
                             onClick={() => {
+                              // Debug logging
+                              if (import.meta.env.DEV) {
+                                console.log('Commit button clicked:', {
+                                  product_id: share.product_id,
+                                  document_id: share.document_id,
+                                  product_name: share.product_name,
+                                  commitment_status: share.commitment_status
+                                });
+                              }
+                              
                               if (!validateUuid(share.product_id) || !validateUuid(share.document_id)) {
                                 toast.error("Invalid pitch deck or document ID");
                                 return;
@@ -1066,7 +1083,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                           <Button
                             variant="default"
                             size="sm"
-                            className="bg-orange-600 hover:bg-orange-700"
+                            className="text-white font-medium"
+                            style={{ backgroundColor: '#ea580c', borderColor: '#ea580c' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#c2410c'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ea580c'; }}
                             onClick={() => {
                               if (!validateUuid(share.product_id) || !validateUuid(share.commitment_id)) {
                                 toast.error("Invalid pitch deck or commitment ID");
@@ -1094,6 +1114,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                           <Button
                             variant="destructive"
                             size="sm"
+                            className="text-white font-medium"
+                            style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#b91c1c'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dc2626'; }}
                             onClick={() => {
                               if (!validateUuid(share.product_id) || !validateUuid(share.commitment_id)) {
                                 toast.error("Invalid pitch deck or commitment ID");
@@ -1574,7 +1598,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                       <Button
                         variant="default"
                         size="sm"
-                        className="bg-orange-600 hover:bg-orange-700"
+                        className="text-white font-medium"
+                        style={{ backgroundColor: '#ea580c', borderColor: '#ea580c' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#c2410c'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ea580c'; }}
                         onClick={() => {
                           if (!validateUuid(company.product_id) || !validateUuid(company.commitment_id)) {
                             toast.error("Invalid pitch deck or commitment ID");
@@ -1603,6 +1630,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                       <Button
                         variant="destructive"
                         size="sm"
+                        className="text-white font-medium"
+                        style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#b91c1c'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dc2626'; }}
                         onClick={() => {
                           if (!validateUuid(company.product_id) || !validateUuid(company.commitment_id)) {
                             toast.error("Invalid pitch deck or commitment ID");
@@ -1956,7 +1987,7 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                               <Button
                                 variant="default"
                                 size="sm"
-                                className="flex-1 bg-green-600 hover:bg-green-700"
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium"
                                 onClick={() => {
                                   if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.document_id)) {
                                     toast.error("Invalid pitch deck or document ID");
@@ -1979,7 +2010,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                               <Button
                                 variant="default"
                                 size="sm"
-                                className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                className="flex-1 text-white font-medium"
+                                style={{ backgroundColor: '#ea580c', borderColor: '#ea580c' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#c2410c'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ea580c'; }}
                                 onClick={() => {
                                   if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.commitment_id)) {
                                     toast.error("Invalid pitch deck or commitment ID");
@@ -2007,7 +2041,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                               <Button
                                 variant="destructive"
                                 size="sm"
-                                className="flex-1"
+                                className="flex-1 text-white font-medium"
+                                style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#b91c1c'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#dc2626'; }}
                                 onClick={() => {
                                   if (!validateUuid(sharedDeck.product_id) || !validateUuid(sharedDeck.commitment_id)) {
                                     toast.error("Invalid pitch deck or commitment ID");
@@ -2034,7 +2071,10 @@ export function InvestorDashboard({ user, activeView = 'overview', onViewChange,
                         <Button
                           variant="default"
                           size="sm"
-                          className="w-full bg-green-600 hover:bg-green-700"
+                          className="w-full text-white font-medium"
+                          style={{ backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#15803d'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#16a34a'; }}
                           onClick={() => {
                             handleCommitToInvest(venture.id, pitchDeck.id, venture.name || 'Venture');
                           }}
