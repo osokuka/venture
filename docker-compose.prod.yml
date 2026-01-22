@@ -118,7 +118,7 @@ services:
     build:
       context: ./backend
     container_name: venturelink_celery_prod
-    command: celery -A config worker --loglevel=info --concurrency=2
+    entrypoint: /bin/sh -c "mkdir -p /app/logs && touch /app/logs/django.log && exec celery -A config worker --loglevel=info --concurrency=2"
     volumes:
       - media_volume:/app/media
       - logs_volume:/app/logs
@@ -141,7 +141,7 @@ services:
     build:
       context: ./backend
     container_name: venturelink_celery_beat_prod
-    command: celery -A config beat --loglevel=info
+    entrypoint: /bin/sh -c "mkdir -p /app/logs && touch /app/logs/django.log && exec celery -A config beat --loglevel=info"
     volumes:
       - logs_volume:/app/logs
     env_file:
