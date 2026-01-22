@@ -183,7 +183,7 @@ def get_email_base_html(title, content, button_text=None, button_url=None, foote
                                 <tr>
                                     <td align="center">
                                         <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
-                                            VentureUP Link
+                                            VentureLink
                                         </h1>
                                     </td>
                                 </tr>
@@ -204,7 +204,7 @@ def get_email_base_html(title, content, button_text=None, button_url=None, foote
                     <tr>
                         <td style="padding: 32px 40px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
                             <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; text-align: center;">
-                                © 2025 VentureUP Link. All rights reserved.
+                                © 2025 VentureLink. All rights reserved.
                             </p>
                             <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
                                 Provided by <a href="https://scardustech.com" style="color: #6b7280; text-decoration: none;">ScardusTech L.L.C</a>
@@ -240,20 +240,20 @@ def send_verification_email(user_id, token):
             raise ValueError("FRONTEND_URL must be set in Django settings")
         verification_url = f"{frontend_url}/verify-email?token={token}"
         
-        subject = 'Verify your VentureUP Link account'
+        subject = 'Verify your VentureLink account'
         
         # HTML content
         html_content = get_email_base_html(
             title=subject,
             content=f"""
             <h2 style="margin: 0 0 16px 0; color: #111827; font-size: 24px; font-weight: 600;">
-                Welcome to VentureUP Link!
+                Welcome to VentureLink!
             </h2>
             <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
                 Hello {user.full_name or 'there'},
             </p>
             <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
-                Thank you for registering with VentureUP Link! We're excited to have you join our community of entrepreneurs, investors, and mentors.
+                Thank you for registering with VentureLink! We're excited to have you join our community of entrepreneurs, investors, and mentors.
             </p>
             <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
                 To complete your registration and start connecting, please verify your email address by clicking the button below:
@@ -268,7 +268,7 @@ def send_verification_email(user_id, token):
         text_content = f"""
 Hello {user.full_name or 'there'},
 
-Thank you for registering with VentureUP Link!
+Thank you for registering with VentureLink!
 
 Please verify your email address by clicking the link below:
 {verification_url}
@@ -278,7 +278,7 @@ This link will expire in 24 hours.
 If you didn't create an account, please ignore this email.
 
 Best regards,
-The VentureUP Link Team
+The VentureLink Team
         """
         
         # Send email with both HTML and plain text
@@ -318,7 +318,7 @@ def send_approval_notification(user_id, approved=True, rejection_reason=None):
         login_url = f"{frontend_url}/login"
         
         if approved:
-            subject = 'Your VentureUP Link profile has been approved!'
+            subject = 'Your VentureLink profile has been approved!'
             
             # HTML content for approval
             html_content = get_email_base_html(
@@ -336,7 +336,7 @@ def send_approval_notification(user_id, approved=True, rejection_reason=None):
                     Hello {user.full_name or 'there'},
                 </p>
                 <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
-                    Great news! Your profile has been <strong style="color: #10b981;">approved</strong> and is now live on VentureUP Link.
+                    Great news! Your profile has been <strong style="color: #10b981;">approved</strong> and is now live on VentureLink.
                 </p>
                 <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 16px; margin: 24px 0; border-radius: 4px;">
                     <p style="margin: 0 0 12px 0; color: #065f46; font-size: 15px; font-weight: 600;">
@@ -361,7 +361,7 @@ def send_approval_notification(user_id, approved=True, rejection_reason=None):
             text_content = f"""
 Hello {user.full_name},
 
-Great news! Your profile has been approved and is now live on VentureUP Link.
+Great news! Your profile has been approved and is now live on VentureLink.
 
 You can now:
 - Browse and connect with other users
@@ -371,10 +371,10 @@ You can now:
 Log in to get started: {login_url}
 
 Best regards,
-The VentureUP Link Team
+The VentureLink Team
             """
         else:
-            subject = 'Your VentureUP Link profile needs attention'
+            subject = 'Your VentureLink profile needs attention'
             
             # HTML content for rejection
             html_content = get_email_base_html(
@@ -427,7 +427,7 @@ You can update your profile and resubmit for review.
 If you have any questions, please contact us.
 
 Best regards,
-The VentureUP Link Team
+The VentureLink Team
             """
         
         # Send email with both HTML and plain text
@@ -532,7 +532,7 @@ Visit your dashboard: {dashboard_url}
 This action cannot be undone. All associated data, files, and documents have been permanently removed.
 
 Best regards,
-The VentureUP Link Team
+The VentureLink Team
         """
         
         # Send email with both HTML and plain text
@@ -572,7 +572,7 @@ def send_password_reset_email(user_id, token):
             raise ValueError("FRONTEND_URL must be set in Django settings")
         reset_url = f"{frontend_url}/reset-password?token={token}"
         
-        subject = 'Reset your VentureUP Link password'
+        subject = 'Reset your VentureLink password'
         
         # HTML content
         html_content = get_email_base_html(
@@ -590,7 +590,7 @@ def send_password_reset_email(user_id, token):
                 Hello {user.full_name or 'there'},
             </p>
             <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
-                We received a request to reset your password for your VentureUP Link account.
+                We received a request to reset your password for your VentureLink account.
             </p>
             <p style="margin: 0 0 20px 0; color: #374151; font-size: 16px;">
                 Click the button below to reset your password. This link will expire in <strong>1 hour</strong> for security.
@@ -615,7 +615,7 @@ def send_password_reset_email(user_id, token):
         text_content = f"""
 Hello {user.full_name or 'there'},
 
-We received a request to reset your password for your VentureUP Link account.
+We received a request to reset your password for your VentureLink account.
 
 Click the link below to reset your password:
 {reset_url}
@@ -630,7 +630,7 @@ Security Notice:
 If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
 
 Best regards,
-The VentureUP Link Team
+The VentureLink Team
         """
         
         # Send email with both HTML and plain text
