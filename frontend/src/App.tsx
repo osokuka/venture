@@ -139,13 +139,13 @@ function AppContent() {
             <button onClick={handleLogoClick} className="flex items-center space-x-3 group">
               <img 
                 src={logoImage} 
-                alt="VentureUP Link" 
+                alt="VentureLink" 
                 className="w-19 h-19 object-contain group-hover:scale-105 transition-transform"
                 style={{ maxWidth: '75px', maxHeight: '75px' }}
               />
               <div className="flex items-center space-x-2">
                 <span className="text-xl font-bold text-gray-900">
-                  VentureUP Link
+                  VentureLink
                 </span>
                 <Sparkles className="w-4 h-4 text-gray-600" />
               </div>
@@ -330,12 +330,12 @@ function AppContent() {
                 <span className="text-white text-2xl font-bold">VU</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-xl font-bold">VentureUP Link</span>
+                <span className="text-xl font-bold">VentureLink</span>
                 <Sparkles className="w-4 h-4 text-gray-400" />
               </div>
             </div>
             <div className="text-sm text-gray-400 text-center md:text-right">
-              <p className="mb-2">© 2025 VentureUP Link. All rights reserved.</p>
+              <p className="mb-2">© 2025 VentureLink. All rights reserved.</p>
               <p>
                 Provided by{' '}
                 <a 

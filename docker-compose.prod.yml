@@ -36,19 +36,35 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      # Database connection (from .env, with container override)
       - DB_HOST=db
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=5432
+      # Redis connection (from .env, with container override)
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ALLOWED_ORIGINS=https://ventureuplink.com,https://www.ventureuplink.com,https://backend.ventureuplink.com
-      - DJANGO_ALLOWED_HOSTS=ventureuplink.com,www.ventureuplink.com,backend.ventureuplink.com
-      - CSRF_TRUSTED_ORIGINS=https://ventureuplink.com,https://www.ventureuplink.com,https://backend.ventureuplink.com
-      - FRONTEND_URL=https://ventureuplink.com
-      - EMAIL_HOST=${EMAIL_HOST:-mail.prosolutions-ks.com}
-      - EMAIL_PORT=${EMAIL_PORT:-465}
-      - EMAIL_USE_SSL=${EMAIL_USE_SSL:-True}
-      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-ventures@prosolutions-ks.com}
-      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
-      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-ventures@prosolutions-ks.com}
+      # Django settings (from .env)
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
       - DJANGO_SETTINGS_MODULE=config.settings.production
+      # CORS and CSRF (from .env)
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+      # Frontend URL (from .env)
+      - FRONTEND_URL=${FRONTEND_URL}
+      # Email configuration (from .env)
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_USE_SSL=${EMAIL_USE_SSL}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL}
+      # Superuser creation (from .env)
+      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL}
+      - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
+      - DJANGO_SUPERUSER_NAME=${DJANGO_SUPERUSER_NAME}
     depends_on:
       db:
         condition: service_healthy
@@ -62,6 +78,8 @@ services:
   db:
     image: postgres:15-alpine
     container_name: venturelink_db_prod
+    env_file:
+      - ./backend/.env
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}

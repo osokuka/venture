@@ -48,7 +48,7 @@ export function ContactSection() {
             Get in Touch
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Ready to join VentureUP Link or have questions about our platform? 
+            Ready to join VentureLink or have questions about our platform? 
             We'd love to hear from you and help you get started.
           </p>
         </div>
@@ -60,7 +60,7 @@ export function ContactSection() {
               <h3 className="text-2xl mb-6">Connect With Us</h3>
               <p className="text-muted-foreground mb-8">
                 Follow us on social media to stay updated with the latest news, success stories, 
-                and opportunities on VentureUP Link.
+                and opportunities on VentureLink.
               </p>
             </div>
 

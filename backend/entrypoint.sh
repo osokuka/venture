@@ -38,20 +38,27 @@ python manage.py shell << EOF
 from apps.accounts.models import User
 import os
 
-admin_email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@ventureuplink.com')
-admin_password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin123')
+# Get superuser credentials from environment variables
+admin_email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
+admin_password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+admin_name = os.environ.get('DJANGO_SUPERUSER_NAME', 'Admin User')
 
-if not User.objects.filter(email=admin_email).exists():
-    print(f"Creating superuser: {admin_email}")
-    User.objects.create_superuser(
-        email=admin_email,
-        password=admin_password,
-        full_name='Admin User',
-        role='ADMIN'
-    )
-    print("Superuser created successfully!")
+# Only create superuser if email and password are provided
+if admin_email and admin_password:
+    if not User.objects.filter(email=admin_email).exists():
+        print(f"Creating superuser: {admin_email}")
+        User.objects.create_superuser(
+            email=admin_email,
+            password=admin_password,
+            full_name=admin_name,
+            role='ADMIN'
+        )
+        print("Superuser created successfully!")
+    else:
+        print(f"Superuser {admin_email} already exists.")
 else:
-    print(f"Superuser {admin_email} already exists.")
+    print("Warning: DJANGO_SUPERUSER_EMAIL or DJANGO_SUPERUSER_PASSWORD not set. Skipping superuser creation.")
+    print("You can create a superuser manually with: python manage.py createsuperuser")
 EOF
 
 echo "Starting server..."

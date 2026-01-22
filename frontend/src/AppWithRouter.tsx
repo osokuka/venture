@@ -147,12 +147,12 @@ function LandingPage() {
             <button onClick={handleLogoClick} className="flex items-center space-x-3 group">
               <img 
                 src={logoImage} 
-                alt="VentureUP Link" 
+                alt="VentureLink" 
                 className="w-19 h-19 object-contain group-hover:scale-105 transition-transform"
                 style={{ maxWidth: '75px', maxHeight: '75px' }}
               />
               <div className="flex items-center space-x-2">
-                <span className="text-xl font-bold text-gray-900">VentureUP Link</span>
+                <span className="text-xl font-bold text-gray-900">VentureLink</span>
                 <Sparkles className="w-4 h-4 text-gray-600" />
               </div>
             </button>
@@ -241,17 +241,17 @@ function LandingPage() {
               <div className="w-10 h-10 flex items-center justify-center">
                 <img 
                   src="/logos/ventureuplink.webp" 
-                  alt="VentureUP Link" 
+                  alt="VentureLink" 
                   className="w-10 h-10 object-contain"
                 />
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-xl font-bold">VentureUP Link</span>
+                <span className="text-xl font-bold">VentureLink</span>
                 <Sparkles className="w-4 h-4 text-gray-400" />
               </div>
             </div>
             <div className="text-sm text-gray-400 text-center md:text-right">
-              <p className="mb-2">© 2025 VentureUP Link. All rights reserved.</p>
+              <p className="mb-2">© 2025 VentureLink. All rights reserved.</p>
               <p>Provided by <a href="https://scardustech.com" target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-white transition-colors underline">ScardusTech L.L.C</a></p>
             </div>
           </div>

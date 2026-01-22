@@ -38,10 +38,10 @@ export function FeaturesSection() {
       darkText: "text-gray-900"
     },
     {
-      icon: MessageSquare,
-      title: "Seamless Communication",
-      description: "Built-in messaging, video calls, and document sharing keep all interactions secure and organized.",
-      highlights: ["End-to-end encryption", "Document vault", "Meeting scheduler"],
+      icon: FileText,
+      title: "ISO & GDPR Compliant",
+      description: "Enterprise-grade security and compliance standards ensure your data is protected according to international regulations.",
+      highlights: ["ISO 27001 compliant", "GDPR compliant", "Data protection"],
       bgColor: "bg-gray-800",
       lightBg: "bg-gray-50",
       textColor: "text-gray-600",

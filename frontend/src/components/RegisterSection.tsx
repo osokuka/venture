@@ -24,7 +24,7 @@ export function RegisterSection({ onRegister }: RegisterSectionProps) {
             Ready to Transform Your Journey?
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Choose your role and join the VentureUP Link ecosystem today. Each path is designed 
+            Choose your role and join the VentureLink ecosystem today. Each path is designed 
             to maximize your success and create meaningful connections.
           </p>
         </div>

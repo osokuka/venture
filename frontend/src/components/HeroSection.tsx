@@ -198,7 +198,7 @@ export function HeroSection({ onRegister }: HeroSectionProps) {
                     <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse animation-delay-200"></div>
                     <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse animation-delay-400"></div>
                   </div>
-                  <div className="flex-1 text-center text-white font-medium">VentureUP Link Dashboard</div>
+                  <div className="flex-1 text-center text-white font-medium">VentureLink Dashboard</div>
                 </div>
                 
                 <div className="p-8 space-y-6">

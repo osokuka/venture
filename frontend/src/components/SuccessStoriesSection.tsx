@@ -13,7 +13,7 @@ export function SuccessStoriesSection() {
       fundingRaised: "$2.5M",
       growth: "300%",
       employees: "15→45",
-      testimonial: "VentureUP Link connected us with the perfect investor who understood our vision. The mentorship we received was invaluable for scaling our AI platform.",
+      testimonial: "VentureLink connected us with the perfect investor who understood our vision. The mentorship we received was invaluable for scaling our AI platform.",
       founder: "Sarah Chen, CEO"
     },
     {
@@ -35,7 +35,7 @@ export function SuccessStoriesSection() {
       fundingRaised: "$3.8M",
       growth: "280%",
       employees: "12→28",
-      testimonial: "VentureUP Link's mentors helped us navigate complex healthcare regulations while investors provided strategic guidance beyond just funding.",
+      testimonial: "VentureLink's mentors helped us navigate complex healthcare regulations while investors provided strategic guidance beyond just funding.",
       founder: "Dr. Lisa Park, Co-founder"
     },
     {
@@ -127,7 +127,7 @@ export function SuccessStoriesSection() {
 
         <div className="text-center mt-12">
           <Badge variant="outline" className="px-4 py-2">
-            Join 500+ successful startups on VentureUP Link
+            Join 500+ successful startups on VentureLink
           </Badge>
         </div>
       </div>
