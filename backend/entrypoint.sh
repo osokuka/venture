@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# Create logs directory before Django runs (required for file logging)
+echo "Creating logs directory..."
+mkdir -p /app/logs
+touch /app/logs/django.log
+chmod 755 /app/logs
+chmod 644 /app/logs/django.log
+
 echo "Waiting for database..."
 while ! nc -z db 5432; do
   sleep 0.1

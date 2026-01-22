@@ -31,6 +31,7 @@ services:
     volumes:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
+      - logs_volume:/app/logs
     ports:
       - "8001:8000"  # Backend API exposed on port 8001
     env_file:
@@ -120,6 +121,7 @@ services:
     command: celery -A config worker --loglevel=info --concurrency=2
     volumes:
       - media_volume:/app/media
+      - logs_volume:/app/logs
     env_file:
       - ./backend/.env
     environment:
@@ -140,6 +142,8 @@ services:
       context: ./backend
     container_name: venturelink_celery_beat_prod
     command: celery -A config beat --loglevel=info
+    volumes:
+      - logs_volume:/app/logs
     env_file:
       - ./backend/.env
     environment:
@@ -158,6 +162,7 @@ volumes:
   postgres_data:
   static_volume:
   media_volume:
+  logs_volume:
 
 networks:
   venturelink-network:
