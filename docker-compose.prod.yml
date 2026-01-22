@@ -2,19 +2,19 @@
 
 # Production Docker Compose for VentureLink Platform
 # Note: Using external Nginx (not included in docker-compose)
-# Frontend container uses nginx internally to serve static files on port 3000
+# Frontend container uses 'serve' to serve static files on port 3000
 # Backend uses Gunicorn on port 8001
 # All ports match development setup for consistency
 
 services:
-  # Frontend - React Production Build (nginx internal, no separate nginx service)
+  # Frontend - React Production Build (serve static files, external nginx handles proxying)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: venturelink_frontend_prod
     ports:
-      - "3000:80"  # Frontend exposed on port 3000 (nginx internal)
+      - "3000:80"  # Frontend exposed on port 3000 (serve static files)
     depends_on:
       - web
     restart: always

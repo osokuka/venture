@@ -1,4 +1,6 @@
 # Multi-stage Dockerfile for React Frontend
+# Note: Using lightweight static file server instead of nginx
+# External nginx will handle reverse proxying
 
 # Stage 1: Build stage
 FROM node:20-alpine as builder
@@ -19,17 +21,21 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Stage 2: Production stage
-FROM nginx:alpine
+# Stage 2: Production stage - Lightweight static file server
+FROM node:20-alpine
+
+# Install serve globally (lightweight static file server)
+RUN npm install -g serve
+
+WORKDIR /app
 
 # Copy built files from builder
-COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/build /app/build
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Expose port
+# Expose port 80 (external nginx will proxy to this)
 EXPOSE 80
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start serve on port 80
+# -s flag: serve single-page application (SPA) mode (handles client-side routing)
+# -l 80: listen on port 80
+CMD ["serve", "-s", "build", "-l", "80"]
