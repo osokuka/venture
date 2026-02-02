@@ -52,7 +52,7 @@ services:
       - EMAIL_HOST_USER=ventures@prosolutions-ks.com
       - EMAIL_HOST_PASSWORD=ventures_APP!@
       - DEFAULT_FROM_EMAIL=ventures@prosolutions-ks.com
-      - DJANGO_SUPERUSER_EMAIL=admin@venturelink.com
+      - DJANGO_SUPERUSER_EMAIL=admin@venturelink.c
       - DJANGO_SUPERUSER_PASSWORD=admin123
       - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,ventureuplink.com,www.ventureuplink.com,backend.ventureuplink.com
       - CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://ventureuplink.com,https://ventureuplink.com,http://www.ventureuplink.com,https://www.ventureuplink.com,http://backend.ventureuplink.com,https://backend.ventureuplink.com

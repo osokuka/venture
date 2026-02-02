@@ -2868,7 +2868,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
   };
 
   // Render different views based on activeView
-  const renderCurrentView = () => {
+  const renderCurrentView = (): React.ReactNode => {
     switch (activeView) {
       case 'products':
         // Reset autoOpenPitchDeck after using it to prevent re-opening on re-renders
@@ -2908,5 +2908,7 @@ export function VentureDashboard({ user, activeView = 'overview', onViewChange, 
     }
   };
 
-  return renderCurrentView();
+  // Single explicit JSX return so parsers (esbuild/vite) see a clear component end
+  return <>{renderCurrentView()}</>;
 }
+
