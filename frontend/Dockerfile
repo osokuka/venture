@@ -11,7 +11,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 # Copy source code (includes src/assets/logos/ and public/logos/)
 # Logo files in src/assets/ will be processed by Vite during build
