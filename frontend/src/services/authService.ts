@@ -36,18 +36,22 @@ export const authService = {
   },
 
   /**
-   * Login user - tokens are stored in httpOnly cookies by backend
+   * Login user. Backend may set httpOnly cookies (production) or return tokens in body.
+   * We store tokens in localStorage when present so auth works even if cookies aren't sent cross-origin.
    */
   async login(data: LoginData): Promise<LoginResponse> {
     try {
-      const response = await apiClient.post('/auth/login', data);
-      
-      // Tokens are stored in httpOnly cookies by backend (more secure)
-      // No need to store in localStorage (prevents XSS attacks)
-      // Return empty object for backward compatibility
-      return { access: '', refresh: '' };
+      const response = await apiClient.post<LoginResponse>('/auth/login', data);
+      const access = response.data?.access ?? '';
+      const refresh = response.data?.refresh ?? '';
+      // When backend returns tokens in body (e.g. no cookies or dev), store for Bearer auth
+      if (access) {
+        localStorage.setItem('access', access);
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${access}`;
+      }
+      if (refresh) localStorage.setItem('refresh', refresh);
+      return { access, refresh };
     } catch (error: any) {
-      // Preserve the original error so we can check status code in components
       const enhancedError = new Error(getErrorMessage(error));
       (enhancedError as any).response = error.response;
       throw enhancedError;
@@ -55,15 +59,17 @@ export const authService = {
   },
 
   /**
-   * Logout user - clears httpOnly cookies via backend
+   * Logout user - clears httpOnly cookies via backend and local token storage
    */
   async logout(): Promise<void> {
     try {
-      // Call backend logout endpoint to clear httpOnly cookies
       await apiClient.post('/auth/logout');
     } catch (error) {
-      // Even if logout fails, redirect to login
       console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem('access');
+      localStorage.removeItem('refresh');
+      delete apiClient.defaults.headers.common['Authorization'];
     }
   },
 

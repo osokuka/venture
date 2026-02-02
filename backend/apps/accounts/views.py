@@ -19,13 +19,14 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.contenttypes.models import ContentType
 from .models import User, EmailVerificationToken, PasswordResetToken
 from .serializers import (
+    CustomTokenObtainPairSerializer,
     UserRegistrationSerializer,
     UserSerializer,
     EmailVerificationSerializer,
     AdminUserUpsertSerializer,
     AdminUserDetailSerializer,
     PasswordResetRequestSerializer,
-    PasswordResetConfirmSerializer
+    PasswordResetConfirmSerializer,
 )
 from .tasks import send_verification_email, send_password_reset_email
 from shared.permissions import IsAdminOrReviewer
@@ -68,13 +69,15 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     """
     Custom login view that updates last_login and sets httpOnly cookies.
     POST /api/auth/login
-    
+    Body: {"email": "user@example.com", "password": "..."}
+
     Security: Rate limited to prevent brute force attacks.
     Sets httpOnly cookies for secure token storage (prevents XSS attacks).
     """
+    serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [AnonRateThrottle]  # Rate limit: 10/hour for anonymous users
     authentication_classes = []  # Explicitly disable authentication for login (public endpoint)
-    
+
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         

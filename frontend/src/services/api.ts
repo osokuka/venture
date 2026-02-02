@@ -55,17 +55,19 @@ const apiClient: AxiosInstance = axios.create({
   withCredentials: true,  // Required for httpOnly cookies to be sent
 });
 
-// Request interceptor - Cookies are sent automatically, no manual Authorization header needed
+// Request interceptor: send Bearer token when we have one (e.g. from localStorage after login)
+// Backend accepts cookie (access_token) or Authorization header
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Don't set Content-Type for FormData - let browser set it with boundary
     if (config.data instanceof FormData && config.headers) {
       delete config.headers['Content-Type'];
     }
-    
-    // Note: httpOnly cookies are sent automatically by browser
-    // No need to manually set Authorization header
-    
+    // Use stored access token when present (login may return tokens in body or cookies)
+    const access = typeof localStorage !== 'undefined' ? localStorage.getItem('access') : null;
+    if (access && config.headers) {
+      config.headers.Authorization = `Bearer ${access}`;
+    }
     return config;
   },
   (error: AxiosError) => {
@@ -73,32 +75,41 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor - Handle token refresh
+// Response interceptor - Handle token refresh on 401
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // If 401 and not already retried, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        // Refresh token is in httpOnly cookie, sent automatically
-        // Backend reads from cookie, no need to send in body
-        const response = await axios.post(
+        // Backend accepts refresh from cookie (refresh_token) or body ({ refresh: "..." })
+        const refreshFromStorage = typeof localStorage !== 'undefined' ? localStorage.getItem('refresh') : null;
+        const body = refreshFromStorage ? { refresh: refreshFromStorage } : {};
+        const response = await axios.post<{ access?: string; refresh?: string }>(
           `${API_BASE_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }  // Ensure cookies are sent
+          body,
+          { withCredentials: true }
         );
 
-        // New access token is set in httpOnly cookie by backend
-        // No need to store in localStorage
-        
-        // Retry original request (cookies sent automatically)
+        const access = response.data?.access;
+        if (access) {
+          localStorage.setItem('access', access);
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${access}`;
+        }
+        if (response.data?.refresh) {
+          localStorage.setItem('refresh', response.data.refresh);
+        }
+
+        originalRequest.headers.Authorization = `Bearer ${access}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, logout user (cookies cleared by backend)
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('access');
+          localStorage.removeItem('refresh');
+        }
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }

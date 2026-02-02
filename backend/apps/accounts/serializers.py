@@ -5,7 +5,31 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import EmailValidator
 from django.core.exceptions import ValidationError
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, EmailVerificationToken
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    JWT login serializer that accepts 'email' and 'password'.
+    Normalizes 'email' to the username field so both {"email": "..."} and
+    {"username": "..."} work (for USERNAME_FIELD='email' and older clients).
+    """
+    def validate(self, attrs):
+        # Accept "email" or "username" (older simplejwt uses "username" in the API)
+        username_field = User.USERNAME_FIELD  # 'email' for our User
+        email_value = (
+            attrs.pop('email', None)
+            or attrs.get(username_field)
+            or attrs.pop('username', None)
+        )
+        if not email_value or not str(email_value).strip():
+            raise serializers.ValidationError(
+                {username_field: 'This field is required.'}
+            )
+        attrs[username_field] = str(email_value).strip().lower()
+        return super().validate(attrs)
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
