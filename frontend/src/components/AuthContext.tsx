@@ -36,9 +36,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (httpOnly cookies cannot be read by JavaScript - that's the security feature)
   // Skip auth check on login/register pages to prevent loops
   useEffect(() => {
-    // Don't check auth on login/register pages - let those pages handle their own flow
+    // Don't check auth on login/register pages or landing page - let those pages handle their own flow
     const path = window.location.pathname;
-    if (path === '/login' || path.startsWith('/register') || path === '/forgot-password' || path === '/reset-password' || path === '/verify-email') {
+    if (path === '/' || path === '/login' || path.startsWith('/register') || path === '/forgot-password' || path === '/reset-password' || path === '/verify-email') {
       setIsLoading(false);
       return;
     }
@@ -114,8 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         // Token invalid or not authenticated, clear any stale state
         // Cookies are managed by backend, no need to clear localStorage
-        // Only set user to null if we're not on a public page
-        if (!path.startsWith('/login') && !path.startsWith('/register') && path !== '/forgot-password' && path !== '/reset-password' && path !== '/verify-email') {
+        // Only set user to null if we're not on a public page (including landing page)
+        if (path !== '/' && !path.startsWith('/login') && !path.startsWith('/register') && path !== '/forgot-password' && path !== '/reset-password' && path !== '/verify-email') {
           setUser(null);
         }
       }

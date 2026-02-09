@@ -3490,6 +3490,39 @@
         "estimate": "0.5h",
         "status": "Pending"
       }
-    ]
+    ],
+    "status": "In Progress"
+  },
+  {
+    "key": "VL-857",
+    "summary": "Tech Debt: Landing Page Redirects to Login Instead of Showing Landing Page",
+    "description": "When users visit the root URL (/), the app incorrectly redirects them to /login instead of showing the landing page. This happens even though the landing page should be a public route that doesn't require authentication.\n\n**Issue:**\n- Visiting https://ventureuplink.com redirects to /login\n- Landing page should be accessible without authentication\n- Users cannot see the landing page content before logging in\n- This prevents new user discovery and registration\n\n**Root Cause Analysis:**\n1. **AuthContext auth check runs on landing page:**\n   - AuthContext useEffect was checking authentication even on '/' path\n   - When auth check fails (user not logged in), it may trigger redirects\n   - Fixed: Added '/' to skip list in AuthContext (line 41)\n\n2. **API interceptor redirects on 401:**\n   - When /api/auth/me fails with 401, interceptor tries refresh\n   - If refresh fails, interceptor redirects to /login\n   - Fixed: Added check to prevent redirect when on public pages including '/' (line 116)\n\n3. **Catch block in AuthContext:**\n   - When auth check fails, catch block sets user to null\n   - Previous check didn't include '/' in public pages list\n   - Fixed: Added '/' check in catch block (line 118)\n\n**Changes Made:**\n1. **frontend/src/components/AuthContext.tsx:**\n   - Added '/' to skip list in useEffect (line 41) - prevents auth check on landing page\n   - Added '/' check in catch block (line 118) - prevents setting user to null on landing page\n\n2. **frontend/src/services/api.ts:**\n   - Added public page check before redirecting to /login (line 116)\n   - Includes '/' in list of public pages that shouldn't redirect\n   - Wrapped redirect in window check for SSR safety (line 114)\n\n**Remaining Issues:**\n- May still redirect if there are race conditions or server-side redirects\n- Need to verify no other code paths trigger redirects\n- Should add comprehensive logging to debug redirect sources\n\n**Files Modified:**\n- `frontend/src/components/AuthContext.tsx` - Skip auth check on landing page\n- `frontend/src/services/api.ts` - Prevent redirect on public pages\n\n**Expected Behavior:**\n- Visiting '/' should show LandingPage component\n- No redirect to /login unless user tries to access protected routes\n- Landing page should be fully accessible without authentication\n\n**Acceptance Criteria:**\n- ✅ Landing page loads at '/' without redirecting\n- ✅ Auth check skipped on landing page\n- ✅ API interceptor doesn't redirect from landing page\n- ✅ Users can browse landing page before logging in\n- ✅ No console errors or warnings\n\n**Priority:** High - Tech Debt (Blocks user discovery)\n**Estimated Effort:** 1-2 hours (investigation + fixes)\n**Status:** In Progress - Fixes applied, needs verification",
+    "type": "Story",
+    "priority": "High",
+    "epic": "VL-1",
+    "tasks": [
+      {
+        "summary": "Skip auth check on landing page in AuthContext",
+        "description": "Update AuthContext to skip authentication check when path is '/':\n\n1. Add '/' to skip list in useEffect (line 41)\n2. Add '/' check in catch block to prevent setting user to null\n3. Ensure landing page doesn't trigger any auth-related API calls\n\n**Files Modified:**\n- `frontend/src/components/AuthContext.tsx`\n\n**Deliverable:** ✅ Auth check skipped on landing page",
+        "type": "Task",
+        "estimate": "0.5h",
+        "status": "Done"
+      },
+      {
+        "summary": "Prevent API interceptor redirect on public pages",
+        "description": "Update API interceptor to check if current path is a public page before redirecting:\n\n1. Add public page check before redirect to /login\n2. Include '/' in list of public pages\n3. Wrap redirect in window check for SSR safety\n\n**Files Modified:**\n- `frontend/src/services/api.ts`\n\n**Deliverable:** ✅ API interceptor doesn't redirect from public pages",
+        "type": "Task",
+        "estimate": "0.5h",
+        "status": "Done"
+      },
+      {
+        "summary": "Verify landing page loads without redirect",
+        "description": "Test and verify the fix:\n\n1. Clear browser cache and cookies\n2. Visit https://ventureuplink.com/\n3. Verify landing page loads (not redirected to /login)\n4. Check browser console for errors\n5. Verify no auth API calls are made on landing page\n6. Test in incognito/private browsing mode\n7. Test with different browsers\n8. Check network tab for any redirects\n\n**Deliverable:** ✅ Landing page loads correctly without redirects",
+        "type": "Task",
+        "estimate": "0.5h",
+        "status": "Pending"
+      }
+    ],
+    "status": "In Progress"
   }
 }
