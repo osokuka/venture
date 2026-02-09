@@ -1,0 +1,132 @@
+# Server Docker Compose (matches production server at /opt/venture/app)
+# Run from repo root. On server, ensure backend.env exists in same directory.
+# Build: docker compose -f docker-compose.server.yml build
+# Up:   docker compose -f docker-compose.server.yml up -d
+
+services:
+  frontend:
+    container_name: venturelink_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ventures-frontend:server
+    restart: unless-stopped
+    environment:
+      - VITE_API_BASE_URL=https://backend.ventureuplink.com/api
+      - NODE_ENV=production
+    command: ["serve", "-s", "build", "-l", "3000"]
+    networks:
+      - venturelink-network
+      - proxy
+    expose:
+      - "3000"
+    depends_on:
+      - web
+
+  web:
+    container_name: venturelink_web
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ventures-backend:server
+    restart: unless-stopped
+    env_file:
+      - ./backend.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    networks:
+      - venturelink-network
+      - proxy
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery:
+    container_name: venturelink_celery
+    image: ventures-backend:server
+    restart: unless-stopped
+    env_file:
+      - ./backend.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=${FRONTEND_URL}
+    command: ["celery", "-A", "config", "worker", "-l", "info"]
+    networks:
+      - venturelink-network
+    depends_on:
+      - db
+      - redis
+      - web
+
+  celery-beat:
+    container_name: venturelink_celery_beat
+    image: ventures-backend:server
+    restart: unless-stopped
+    env_file:
+      - ./backend.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=${FRONTEND_URL}
+    command: ["celery", "-A", "config", "beat", "-l", "info"]
+    networks:
+      - venturelink-network
+    depends_on:
+      - db
+      - redis
+      - celery
+
+  db:
+    image: postgres:15-alpine
+    container_name: venturelink_db
+    restart: unless-stopped
+    env_file:
+      - ./backend.env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - venturelink-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: venturelink_redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - venturelink-network
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+
+networks:
+  venturelink-network:
+    driver: bridge
+  proxy:
+    external: true

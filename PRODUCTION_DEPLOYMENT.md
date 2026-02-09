@@ -18,7 +18,23 @@ This guide covers deploying the VentureLink platform to production using Docker 
 3. Environment variables configured in `backend/.env`
 4. Domain names configured:
    - `ventureuplink.com` (frontend)
+   - `www.ventureuplink.com` (frontend; must resolve for Cloudflare)
    - `backend.ventureuplink.com` (backend API)
+
+### Cloudflare DNS: Resolving www
+
+If **www.ventureuplink.com** fails to resolve in Cloudflare:
+
+1. In **Cloudflare Dashboard** → your zone → **DNS** → **Records**.
+2. Add a record for the **www** subdomain:
+   - **Type:** `CNAME`
+   - **Name:** `www`
+   - **Target:** `ventureuplink.com` (or your apex A/AAAA target, e.g. your server hostname if using A record)
+   - **Proxy status:** Proxied (orange cloud) if you want traffic through Cloudflare.
+3. If the apex uses an A record to an IP, you can either:
+   - Use **CNAME** `www` → `ventureuplink.com` (Cloudflare allows CNAME to apex for same zone), or
+   - Add an **A** record for `www` with the same IP as the apex.
+4. Wait for DNS propagation (often 1–5 minutes with Cloudflare).
 
 ## Port Mapping
 
@@ -108,9 +124,42 @@ docker-compose -f docker-compose.prod.yml exec web python manage.py collectstati
 
 ### 5. Configure External Nginx
 
-Since you're using external nginx, configure it to proxy:
+Since you're using external nginx, configure it to proxy. If you use **Nginx Proxy Manager (NPM)**, follow the NPM section below; otherwise use the raw nginx config.
 
-**Frontend (ventureuplink.com):**
+#### Nginx Proxy Manager: Add www and Let's Encrypt cert
+
+1. **Add www to the frontend Proxy Host**
+   - NPM → **Hosts** → **Proxy Hosts** → edit the host for **ventureuplink.com**.
+   - In **Details**:
+     - **Domain Names:** add both domains (one per line or comma-separated, depending on NPM):
+       - `ventureuplink.com`
+       - `www.ventureuplink.com`
+     - **Scheme:** `http`
+     - **Forward Hostname / IP:** `localhost` (or your frontend host).
+     - **Forward Port:** `3000`.
+     - **Cache Assets:** optional.
+     - **Block Common Exploits:** recommended on.
+   - Save.
+
+2. **SSL certificate including www**
+   - In the same Proxy Host, open the **SSL** tab.
+   - **SSL Certificate:** choose **Request a new SSL Certificate** (or **Force Renewal** if you already have one and want to add www).
+   - Ensure **I agree to the Let's Encrypt Terms of Service** is checked.
+   - **Use a DNS Challenge** is optional (only needed for wildcards or if HTTP challenge fails behind Cloudflare; with Cloudflare proxy, HTTP challenge usually works).
+   - **Force Renewal:** turn **on** if you're adding `www` to an existing cert so NPM requests a new cert that includes both `ventureuplink.com` and `www.ventureuplink.com`.
+   - **Domain names** for the cert should list both:
+     - `ventureuplink.com`
+     - `www.ventureuplink.com`
+   - Click **Save**. NPM will request/issue the certificate (may take a minute).
+   - If you use Cloudflare proxy (orange cloud), ensure **SSL/TLS** in Cloudflare is **Full** or **Full (strict)** so HTTPS works end-to-end.
+
+3. **HTTP → HTTPS**
+   - In the same host, **SSL** tab: enable **Force SSL** so HTTP redirects to HTTPS.
+
+4. **Optional: separate Proxy Host for www**
+   - Instead of one host with two domain names, you can create a second Proxy Host for `www.ventureuplink.com` that forwards to `http://localhost:3000` and request a certificate for `www.ventureuplink.com` only. One host with both domain names is simpler and one cert covers both.
+
+**Raw nginx (reference) — Frontend (ventureuplink.com + www):**
 ```nginx
 server {
     listen 80;

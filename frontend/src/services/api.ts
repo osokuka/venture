@@ -110,7 +110,14 @@ apiClient.interceptors.response.use(
           localStorage.removeItem('access');
           localStorage.removeItem('refresh');
         }
-        window.location.href = '/login';
+        // Only redirect to login when not already on a public page (keeps landing at /)
+        if (typeof window !== 'undefined') {
+          const path = window.location.pathname;
+          const isPublicPage = path === '/' || path === '/login' || path.startsWith('/register') || path === '/forgot-password' || path === '/reset-password' || path === '/verify-email';
+          if (!isPublicPage) {
+            window.location.href = '/login';
+          }
+        }
         return Promise.reject(refreshError);
       }
     }
